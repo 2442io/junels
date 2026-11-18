@@ -191,6 +191,7 @@ class ChatEntry {
     this.error,
     this.truncated = false,
     this.tokensPerSecond,
+    this.viaVoice = false,
     DateTime? time,
   })  : steps = steps ?? [],
         time = time ?? DateTime.now();
@@ -202,6 +203,7 @@ class ChatEntry {
   String? error;
   bool truncated;
   double? tokensPerSecond;
+  final bool viaVoice; // im Gesprächsmodus gesprochen
   final DateTime time;
 
   Map<String, Object?> toJson() => {
@@ -212,6 +214,7 @@ class ChatEntry {
         'error': error,
         'truncated': truncated,
         'tps': tokensPerSecond,
+        'voice': viaVoice,
         'time': time.toIso8601String(),
       };
 
@@ -223,6 +226,7 @@ class ChatEntry {
         error: j['error'] as String?,
         truncated: j['truncated'] as bool? ?? false,
         tokensPerSecond: (j['tps'] as num?)?.toDouble(),
+        viaVoice: j['voice'] as bool? ?? false,
         time: DateTime.tryParse(j['time'] as String? ?? ''),
       );
 }
@@ -286,7 +290,7 @@ class AppSettings {
   })  : enabledTools = enabledTools ??
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
-              'web_search', 'web_fetch',
+              'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
             },
         installed = installed ?? {};
 
@@ -326,6 +330,7 @@ class AppSettings {
         'sendAfterVoice': sendAfterVoice,
         'systemCheckSeen': systemCheckSeen,
         'installed': installed,
+        'toolsVersion': toolsVersion,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -343,7 +348,15 @@ class AppSettings {
         sendAfterVoice: j['sendAfterVoice'] as bool? ?? true,
         systemCheckSeen: j['systemCheckSeen'] as bool? ?? false,
         installed: (j['installed'] as Map?)?.cast<String, String>(),
-      );
+      ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
+
+  static const toolsVersion = 3;
+
+  /// Neue Tools bei älteren Einstellungen einschalten.
+  void _migrateTools(int from) {
+    if (from < 2) enabledTools.addAll(['web_search', 'web_fetch']);
+    if (from < 3) enabledTools.addAll(['remember', 'search_history', 'knowledge_search']);
+  }
 }
 
 /// Vorlagen für das Eingabefeld.

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'knowledge_page.dart';
 import 'model_import.dart';
 import 'profile_editor.dart';
 import 'system_check.dart';
@@ -31,6 +32,16 @@ class Sidebar extends StatelessWidget {
         _ProfileSection(app: app),
         const SizedBox(height: 20),
         _ToolSection(app: app),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.local_library_outlined),
+            title: const Text('Wissensbasis & Gedächtnis'),
+            subtitle: Text('${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => openKnowledge(context),
+          ),
+        ),
         const SizedBox(height: 20),
         _ChatSection(app: app, onSelect: () => _closeDrawer(context)),
         const SizedBox(height: 20),
@@ -316,6 +327,9 @@ class _ToolSection extends StatelessWidget {
     'datetime': Icons.schedule,
     'web_search': Icons.travel_explore,
     'web_fetch': Icons.public,
+    'remember': Icons.bookmark_add_outlined,
+    'search_history': Icons.history,
+    'knowledge_search': Icons.local_library_outlined,
   };
 
   @override

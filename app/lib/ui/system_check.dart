@@ -424,15 +424,14 @@ class _EntryTile extends StatelessWidget {
               icon: const Icon(Icons.play_circle_outline),
               onPressed: () async {
                 final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(const SnackBar(content: Text('Teste Stimme …'), duration: Duration(seconds: 2)));
                 try {
-                  await app.voice.speak(
-                    e.language == 'en'
-                        ? 'Hello! This is how I sound. Everything runs locally on this device.'
-                        : 'Hallo! So klinge ich. Alles läuft lokal auf diesem Gerät.',
-                    voiceDir: app.installedPath(e)!,
-                  );
+                  final r = await app.voice.output.diagnose(app.installedPath(e)!);
+                  messenger.showSnackBar(SnackBar(content: Text(r), duration: const Duration(seconds: 8)));
                 } catch (err) {
-                  messenger.showSnackBar(SnackBar(content: Text('Wiedergabe fehlgeschlagen: $err')));
+                  messenger.showSnackBar(SnackBar(
+                      content: Text('Piper-Test fehlgeschlagen: $err\nDie App nutzt dann die Systemstimme.'),
+                      duration: const Duration(seconds: 12)));
                 }
               },
             ),

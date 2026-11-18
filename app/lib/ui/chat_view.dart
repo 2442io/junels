@@ -11,6 +11,7 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import '../state/voice_service.dart';
+import 'conversation_page.dart';
 import 'markdown_lite.dart';
 import 'system_check.dart';
 
@@ -184,7 +185,17 @@ class _UserBubble extends StatelessWidget {
                 color: scheme.primaryContainer,
                 borderRadius: BorderRadius.circular(16).copyWith(bottomRight: const Radius.circular(4)),
               ),
-              child: Text(entry.text, style: TextStyle(color: scheme.onPrimaryContainer)),
+              child: Text.rich(TextSpan(children: [
+                if (entry.viaVoice)
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Icon(Icons.mic, size: 14, color: scheme.onPrimaryContainer.withValues(alpha: 0.7)),
+                    ),
+                  ),
+                TextSpan(text: entry.text),
+              ]), style: TextStyle(color: scheme.onPrimaryContainer)),
             ),
           ],
         ),
@@ -277,7 +288,6 @@ class _SpeakButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    if (app.ttsVoicePath == null) return const SizedBox.shrink();
     return ValueListenableBuilder<Object?>(
       valueListenable: app.voice.speakingKey,
       builder: (context, key, _) {
@@ -630,6 +640,11 @@ class _InputBarState extends State<_InputBar> {
                         ],
                       ),
                       _MicButton(onTap: app.running ? null : _toggleVoice),
+                      IconButton(
+                        tooltip: 'Gesprächsmodus – freihändig sprechen',
+                        icon: const Icon(Icons.record_voice_over_outlined),
+                        onPressed: ready && !app.running ? () => openConversation(context) : null,
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
                         child: TextField(

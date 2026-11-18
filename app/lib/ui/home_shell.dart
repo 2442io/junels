@@ -9,6 +9,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'chat_view.dart';
 import 'inspector.dart';
+import 'conversation_page.dart';
 import 'sidebar.dart';
 import 'system_check.dart';
 
@@ -99,6 +100,11 @@ class _HomeShellState extends State<HomeShell> {
               icon: const Icon(Icons.public, color: Colors.orange),
               onPressed: app.revokeInternet,
             ),
+          IconButton(
+            tooltip: 'Gesprächsmodus',
+            icon: const Icon(Icons.record_voice_over_outlined),
+            onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
+          ),
           IconButton(
             tooltip: 'Systemcheck & Modelle',
             icon: const Icon(Icons.speed_outlined),

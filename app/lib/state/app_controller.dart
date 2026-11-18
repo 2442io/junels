@@ -13,6 +13,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../data/models.dart';
 import '../data/storage.dart';
+import 'conversation_mode.dart';
+import 'memory_store.dart';
 import 'voice_service.dart';
 
 enum EngineStatus { none, loading, ready, error }
@@ -39,7 +41,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   List<Conversation> conversations = [];
   Conversation? current;
 
-  final List<AgentTool> tools = [...builtinTools(), ...networkTools()];
+  late final List<AgentTool> tools;
+
+  // Gedächtnis & Wissensbasis
+  late final MemoryStore memory;
+  late final KnowledgeBase knowledge;
+  String? knowledgeProgress; // Statuszeile beim Laden von Quellen
+  CancelToken? _knowledgeCancel;
 
   // Systemcheck & Downloads
   int freeDisk = -1;
@@ -48,6 +56,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   // Sprache
   late final VoiceService voice;
+  late final ConversationMode conversation = ConversationMode(this);
 
   /// Wird von der Oberfläche gesetzt: fragt den Nutzer nach Internetzugriff.
   Future<NetworkChoice> Function(String purpose)? consentHandler;
@@ -88,6 +97,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       storage = await Storage.open();
       device = DeviceProfile.detect();
       voice = VoiceService(await getTemporaryDirectory());
+      memory = MemoryStore(File('${storage.root.path}/memory.json'));
+      await memory.load();
+      knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
+      await knowledge.load();
+      tools = [
+        ...builtinTools(),
+        ...networkTools(),
+        RememberTool((f) async {
+          await memory.add(f);
+          notifyListeners();
+        }),
+        HistorySearchTool(_searchHistory),
+        KnowledgeSearchTool(knowledge),
+      ];
       refreshFreeDisk();
       settings = await storage.loadSettings();
       darkMode.value = settings.darkMode;
@@ -161,7 +184,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Tools des Profils; Internet-Tools nur, wenn der Nutzer sie eingeschaltet hat.
   List<AgentTool> get activeTools => activeProfile.useTools
-      ? tools.where((t) => settings.enabledTools.contains(t.name)).toList()
+      ? tools
+          .where((t) => settings.enabledTools.contains(t.name))
+          .where((t) => t.name != 'knowledge_search' || !knowledge.isEmpty)
+          .toList()
       : const [];
 
   List<Attachment> get attachments => _attachments[current?.id ?? ''] ?? const [];
@@ -489,10 +515,118 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return t.text;
   }
 
+  /// Vorlesen: Piper, falls installiert, sonst die Systemstimme.
   Future<void> speakText(String text, {Object? key}) async {
-    final dir = ttsVoicePath;
-    if (dir == null) throw Exception('Keine Stimme installiert (Systemcheck).');
-    await voice.speak(text, voiceDir: dir, key: key);
+    final lang = settings.sttLanguage == 'en' ? 'en' : 'de';
+    await voice.speak(text, voiceDir: ttsVoicePath, key: key, language: lang);
+    final err = voice.output.lastError.value;
+    if (err != null) {
+      voice.output.lastError.value = null;
+      statusMessage = err;
+      notifyListeners();
+    }
+  }
+
+  // ------------------------------------------------- Gedächtnis & Verlauf
+
+  List<String> _searchHistory(String query) => searchConversations(query, [
+        for (final c in conversations)
+          if (c.id != current?.id)
+            (
+              title: c.title,
+              date: c.updated,
+              messages: [for (final e in c.entries) if (e.text.isNotEmpty) (role: e.role, text: e.text)],
+            ),
+      ]);
+
+  Future<void> addMemory(String text) async {
+    await memory.add(text);
+    notifyListeners();
+  }
+
+  Future<void> removeMemory(MemoryNote n) async {
+    await memory.remove(n);
+    notifyListeners();
+  }
+
+  /// Gesprächsmodus: Antwort wurde nach [spoken] unterbrochen.
+  Future<void> markLastAnswerInterrupted(String spoken) async {
+    final c = current;
+    if (c == null || c.entries.isEmpty) return;
+    final last = c.entries.last;
+    if (last.role != 'assistant') return;
+    last
+      ..text = spoken.trim().isEmpty ? '…(unterbrochen)' : '${spoken.trim()} …(unterbrochen)'
+      ..truncated = true;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  // --------------------------------------------------------- Wissensbasis
+
+  /// Lädt eine Webseite (optional mit Unterseiten) in die Wissensbasis.
+  Future<String?> addWebSource(String raw, {bool followLinks = false}) async {
+    var url = raw.trim();
+    if (!url.startsWith('http')) url = 'https://$url';
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty) return 'Ungültige Adresse.';
+    final cancel = _knowledgeCancel = CancelToken();
+    knowledgeProgress = 'Lade ${uri.host} …';
+    notifyListeners();
+    try {
+      final pages = await crawlSite(uri,
+          followLinks: followLinks,
+          maxPages: followLinks ? 30 : 1,
+          cancelled: () => cancel.isCancelled, onProgress: (n, u) {
+        knowledgeProgress = '$n Seite(n) geladen – $u';
+        notifyListeners();
+      });
+      if (pages.isEmpty) return 'Auf der Seite wurde kein Text gefunden.';
+      final existing = knowledge.sources.where((s) => s.origin == uri.toString()).firstOrNull;
+      final src = KnowledgeSource(
+        id: existing?.id ?? newId(),
+        name: pages.first.title.isEmpty ? uri.host : pages.first.title,
+        origin: uri.toString(),
+        kind: 'web',
+        crawl: followLinks,
+      );
+      knowledge.putSource(src, [for (final p in pages) (title: p.title, url: p.url, text: p.text)]);
+      await knowledge.save();
+      return null;
+    } catch (e) {
+      return 'Laden fehlgeschlagen: $e';
+    } finally {
+      knowledgeProgress = null;
+      _knowledgeCancel = null;
+      notifyListeners();
+    }
+  }
+
+  void cancelKnowledgeLoad() => _knowledgeCancel?.cancel();
+
+  Future<String?> refreshSource(KnowledgeSource s) =>
+      s.kind == 'web' ? addWebSource(s.origin, followLinks: s.crawl) : Future.value('Dateien bitte neu hinzufügen.');
+
+  Future<String?> addFileSource(String path, String name) async {
+    try {
+      final text = await File(path).readAsString();
+      final existing = knowledge.sources.where((s) => s.origin == name).firstOrNull;
+      knowledge.putSource(
+        KnowledgeSource(id: existing?.id ?? newId(), name: name, origin: name, kind: 'file'),
+        [(title: name, url: name, text: text)],
+      );
+      await knowledge.save();
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return '$name konnte nicht gelesen werden (nur Textdateien): $e';
+    }
+  }
+
+  Future<void> removeSource(KnowledgeSource s) async {
+    knowledge.removeSource(s.id);
+    await knowledge.save();
+    notifyListeners();
   }
 
   // --------------------------------------------------------------- Internet
@@ -650,9 +784,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   // ----------------------------------------------------------- Agenten-Lauf
 
-  Future<void> send(String input) async {
+  /// Schickt eine Nachricht an den Agenten.
+  /// [voice]: Gesprächsmodus (kurze, gesprochene Antworten).
+  /// [onAnswer]: bekommt den wachsenden Antworttext (für Vorlesen während des Schreibens).
+  Future<void> send(String input, {bool voice = false, void Function(String text, bool done)? onAnswer}) async {
     final eng = engine;
-    if (eng == null || running || input.trim().isEmpty) return;
+    if (eng == null || running || input.trim().isEmpty) {
+      onAnswer?.call('', true);
+      return;
+    }
     final conv = _ensureConversation();
     final profile = activeProfile;
 
@@ -661,7 +801,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         if (e.text.trim().isNotEmpty && e.error == null) ChatMessage(e.role, e.text),
     ];
     final docs = List<Attachment>.of(attachments);
-    final user = ChatEntry(role: 'user', text: input.trim(), attachments: docs.map((d) => d.name).toList());
+    final user = ChatEntry(
+        role: 'user', text: input.trim(), attachments: docs.map((d) => d.name).toList(), viaVoice: voice);
     final answer = ChatEntry(role: 'assistant');
     conv.entries..add(user)..add(answer);
     if (conv.title == 'Neuer Chat') {
@@ -671,9 +812,28 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     conv.updated = DateTime.now();
 
     final ctxSize = eng.contextSize;
+    // System-Prompt: Profil + Gedächtnis (+ Gesprächsmodus). Bleibt zwischen Turns gleich,
+    // damit der Präfix-Cache greift; die Wissensbasis-Auszüge kommen in die Nutzernachricht.
+    final system = StringBuffer(profile.systemPrompt.trim());
+    final mem = memory.promptBlock();
+    if (mem.isNotEmpty) system.write('\n\n$mem');
+    if (activeTools.any((t) => t.name == 'remember')) {
+      system.write('\nWenn der Nutzer etwas Wichtiges über sich erzählt oder dich bittet, '
+          'dir etwas zu merken, nutze das Tool remember.');
+    }
+    if (voice) {
+      system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
+          'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
+          'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
+          'wo sie unterbrochen wurde.');
+    }
+    var turnInput = input.trim();
+    final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
+    if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
+
     final runner = AgentRunner(
       engine: eng,
-      systemPrompt: profile.systemPrompt,
+      systemPrompt: system.toString(),
       tools: activeTools,
       maxSteps: profile.maxSteps,
       maxTokensPerStep: (ctxSize ~/ 4).clamp(256, 1024),
@@ -701,7 +861,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
 
     try {
-      await for (final ev in runner.run(history: history, userInput: input.trim(), context: ctx)) {
+      await for (final ev in runner.run(history: history, userInput: turnInput, context: ctx)) {
         switch (ev) {
           case StepStarted(step: final n):
             if (runner.agentMode) answer.steps.add(StepLog(step: n));
@@ -710,7 +870,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               final last = answer.steps.lastOrNull;
               if (last != null) last.thought = liveThought;
             }
-            if (liveAnswer != null) answer.text = liveAnswer;
+            if (liveAnswer != null) {
+              answer.text = liveAnswer;
+              onAnswer?.call(liveAnswer, false);
+            }
           case ToolCalled(:final tool, :final args, thought: final callThought):
             final last = answer.steps.lastOrNull;
             if (last != null) {
@@ -735,6 +898,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             answer
               ..text = text
               ..truncated = truncated;
+            onAnswer?.call(text, true);
             final last = answer.steps.lastOrNull;
             if (last != null && finalThought != null && finalThought.isNotEmpty) {
               last.thought = finalThought;
@@ -756,6 +920,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       answer.error = e.toString();
     } finally {
+      onAnswer?.call(answer.text, true);
       running = false;
       _runner = null;
       try {
@@ -769,7 +934,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       _pollMemory();
       notifyListeners();
     }
-    if (settings.autoSpeak && answer.error == null && answer.text.trim().isNotEmpty && ttsVoicePath != null) {
+    if (!voice && settings.autoSpeak && answer.error == null && answer.text.trim().isNotEmpty && ttsVoicePath != null) {
       unawaited(speakText(answer.text, key: answer).catchError((_) {}));
     }
   }

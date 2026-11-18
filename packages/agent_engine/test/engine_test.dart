@@ -412,6 +412,125 @@ Future<void> main() async {
     check(g.contains('tool-web-search') && g.contains('tool-web-fetch'), 'Web-Tools in der Grammatik');
   });
 
+  await group('Wissensbasis: Chunking, BM25, Crawling', () async {
+    final long = List.generate(60, (i) => 'Satz $i über Thema ${i % 5}. ').join() * 3;
+    final ch = chunkText(long);
+    check(ch.length > 3 && ch.every((c) => c.length <= 950), 'Text in ${ch.length} Abschnitte ≤ 950 Zeichen');
+    final dir = Directory.systemTemp.createTempSync('kb');
+    final kb = KnowledgeBase(dir);
+    kb.putSource(KnowledgeSource(id: 'a', name: 'Bad', origin: 'https://x.at', kind: 'web'), [
+      (title: 'Öffnungszeiten', url: 'https://x.at/zeiten', text: 'Das Hallenbad hat Montag bis Freitag von 9 bis 21 Uhr geöffnet. Am Wochenende von 10 bis 18 Uhr.'),
+      (title: 'Preise', url: 'https://x.at/preise', text: 'Eine Tageskarte kostet 7,50 Euro. Kinder zahlen 3 Euro. Die Saisonkarte kostet 120 Euro.'),
+    ]);
+    kb.putSource(KnowledgeSource(id: 'b', name: 'Rezepte', origin: 'rezepte.txt', kind: 'file'), [
+      (title: 'Kuchen', url: 'rezepte.txt', text: 'Für den Apfelkuchen braucht man Äpfel, Mehl, Butter und Zucker. Backzeit 45 Minuten.'),
+    ]);
+    var hits = kb.search('Wann hat das Hallenbad geöffnet?');
+    check(hits.isNotEmpty && hits.first.chunk.url == 'https://x.at/zeiten', 'Öffnungszeiten gefunden');
+    hits = kb.search('Was kostet die Tageskarte');
+    check(hits.isNotEmpty && hits.first.chunk.title == 'Preise', 'Preise gefunden');
+    hits = kb.search('Äpfel backen');
+    check(hits.isNotEmpty && hits.first.chunk.sourceId == 'b', 'Umlaute/Flexion: Äpfel → Apfelkuchen-Abschnitt');
+    check(kb.search('Raumfahrt Mars').isEmpty, 'kein Treffer bei fremdem Thema');
+    final ctx = kb.contextFor('Preise Kinder');
+    check(ctx.contains('[1] Preise – https://x.at/preise'), 'Kontextblock mit Quelle');
+    await kb.save();
+    final kb2 = KnowledgeBase(dir);
+    await kb2.load();
+    check(kb2.sources.length == 2 && kb2.search('Saisonkarte').isNotEmpty, 'gespeichert und neu geladen');
+    kb2.removeSource('a');
+    check(kb2.search('Saisonkarte').isEmpty, 'Quelle entfernt');
+
+    // Crawling mit lokalem Server
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((req) async {
+      final p = req.uri.path;
+      req.response.headers.contentType = ContentType.html;
+      final pages = {
+        '/docs/': '<html><head><title>Start</title></head><body><nav><a href="/docs/a">A</a></nav><main><h1>Willkommen</h1><p>${'Startseite Inhalt. ' * 10}</p><a href="/docs/a">A</a> <a href="b">B</a> <a href="/anderes/c">C</a> <a href="https://fremd.at/x">X</a> <a href="/docs/bild.png">P</a></main></body></html>',
+        '/docs/a': '<html><title>Seite A</title><body><p>${'Inhalt A über Datenschutz. ' * 10}</p></body></html>',
+        '/docs/b': '<html><title>Seite B</title><body><p>${'Inhalt B über Barrierefreiheit. ' * 10}</p></body></html>',
+      };
+      if (pages.containsKey(p)) {
+        req.response.write(pages[p]);
+      } else {
+        req.response.statusCode = 404;
+      }
+      await req.response.close();
+    });
+    final base = Uri.parse('http://127.0.0.1:${server.port}/docs/');
+    final one = await crawlSite(base);
+    check(one.length == 1 && one.first.title == 'Start' && !one.first.text.contains('<'), 'Einzelseite geladen, Titel/Text');
+    final all = await crawlSite(base, followLinks: true);
+    final urls = all.map((p) => Uri.parse(p.url).path).toSet();
+    check(urls.containsAll({'/docs/', '/docs/a', '/docs/b'}) && urls.length == 3,
+        'Unterseiten gecrawlt, fremde Pfade/Domains/Bilder ausgelassen ($urls)');
+    await server.close(force: true);
+    dir.deleteSync(recursive: true);
+  });
+
+  await group('Gedächtnis-Tools', () async {
+    final saved = <String>[];
+    final r = await RememberTool((f) async => saved.add(f)).run({'fact': 'Nutzer heißt Christoph'}, ToolContext());
+    check(saved.single == 'Nutzer heißt Christoph' && r.startsWith('Gemerkt'), 'remember speichert');
+    final convs = [
+      (title: 'Urlaub', date: DateTime(2026, 11, 1), messages: [
+        (role: 'user', text: 'Ich plane einen Urlaub in Kroatien im Juni.'),
+        (role: 'assistant', text: 'Schön! Split und Dubrovnik sind im Juni toll.'),
+      ]),
+      (title: 'Code', date: DateTime(2026, 11, 2), messages: [
+        (role: 'user', text: 'Wie schreibe ich eine PHP-Funktion?'),
+        (role: 'assistant', text: 'So: function foo() {}'),
+      ]),
+    ];
+    final h = searchConversations('Kroatien Urlaub', convs);
+    check(h.isNotEmpty && h.first.contains('„Urlaub“') && h.first.contains('Dubrovnik'), 'früheres Gespräch gefunden');
+    final tool = HistorySearchTool((q) => searchConversations(q, convs));
+    check((await tool.run({'query': 'Rakete'}, ToolContext())).startsWith('Nichts'), 'kein Treffer sauber gemeldet');
+  });
+
+  await group('Gesprochene Ausgabe: Satz-Streaming', () async {
+    final s = SentenceStreamer();
+    check(s.feed('Hallo, ich').isEmpty, 'unvollständiger Satz wartet');
+    final a = s.feed('Hallo, ich bin dein Agent. Heute ist es son');
+    check(a.length == 1 && a.first == 'Hallo, ich bin dein Agent.', 'erster Satz sofort ($a)');
+    final b = s.feed('Hallo, ich bin dein Agent. Heute ist es sonnig in **Wien**! Mehr');
+    check(b.length == 1 && b.first == 'Heute ist es sonnig in Wien!', 'Markdown entfernt ($b)');
+    final c = s.feed('Hallo, ich bin dein Agent. Heute ist es sonnig in **Wien**! Mehr gibt es nicht', done: true);
+    check(c.single == 'Mehr gibt es nicht', 'Rest am Ende');
+    check(s.spokenSoFar.endsWith('Mehr gibt es nicht'), 'gesprochener Text nachvollziehbar');
+  });
+
+  await group('Sprechpausen-Erkennung (VAD)', () async {
+    final vad = VoiceActivityDetector();
+    Float32List noise(int ms, double amp) =>
+        Float32List.fromList(List.generate(16 * ms, (i) => amp * math.sin(i * 0.37) * (i % 7 - 3) / 3));
+    Float32List tone(int ms) => Float32List.fromList(List.generate(16 * ms, (i) => 0.3 * math.sin(i * 2 * math.pi * 220 / 16000)));
+    final events = <VadEvent>[];
+    for (final chunk in [noise(1000, 0.002), tone(1200), noise(1200, 0.002)]) {
+      for (var i = 0; i < chunk.length; i += 1600) {
+        final e = vad.add(Float32List.sublistView(chunk, i, math.min(chunk.length, i + 1600)));
+        if (e != VadEvent.none) events.add(e);
+      }
+    }
+    check(events.length == 2 && events[0] == VadEvent.speechStart && events[1] == VadEvent.speechEnd,
+        'Start und Ende erkannt ($events)');
+    final u = vad.takeUtterance();
+    check(u.length > 16000 * 1.1 && u.length < 16000 * 2.4, 'Äußerung ${(u.length / 16000).toStringAsFixed(2)} s inkl. Vorlauf');
+    final vad2 = VoiceActivityDetector();
+    var any = false;
+    for (final chunk in [noise(800, 0.002), tone(120), noise(1500, 0.002)]) {
+      if (vad2.add(chunk) == VadEvent.speechEnd) any = true;
+    }
+    check(!any, 'kurzes Klicken (120 ms) zählt nicht als Sprache');
+    final vad3 = VoiceActivityDetector()..extraMarginDb = 40;
+    var started = false;
+    for (final chunk in [noise(800, 0.002), tone(1000)]) {
+      if (vad3.add(chunk) == VadEvent.speechStart) started = true;
+    }
+    check(!started, 'erhöhte Schwelle (Agent spricht) ignoriert leises Echo');
+  });
+
   if (modelPath == null) {
     print('\nAE_TEST_MODEL nicht gesetzt: Engine-Tests übersprungen.');
     _summary();
