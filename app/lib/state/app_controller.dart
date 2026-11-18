@@ -345,10 +345,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         ModelKind.stt => '${storage.voiceDir.path}/whisper',
         ModelKind.tts => '${storage.voiceDir.path}/piper',
       };
-      final file = await _downloader.download(e.url, '$dir/${e.fileName}', cancel: st.cancel, onProgress: (p) {
-        st.progress = p;
-        notifyListeners();
-      });
+      final existing = File('$dir/${e.fileName}');
+      final file = await existing.exists()
+          ? existing // vollständig geladen, z. B. wenn danach das Entpacken scheiterte
+          : await _downloader.download(e.url, existing.path, cancel: st.cancel, onProgress: (p) {
+              st.progress = p;
+              notifyListeners();
+            });
       switch (e.kind) {
         case ModelKind.llm:
           final info = await GgufInfo.read(file.path);
@@ -373,8 +376,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           st.extracting = true;
           notifyListeners();
           // Entpacken (bzip2) im Hintergrund-Isolate, damit die UI flüssig bleibt
-          final src = file.path;
-          await Isolate.run(() => extractFileToDisk(src, dir));
+          await _extractInBackground(file.path, dir);
           await file.delete();
           settings.installed[e.id] = '$dir/${e.folderName}';
           settings.ttsVoiceId ??= e.id;
@@ -745,3 +747,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     engine?.stop();
   }
 }
+
+/// Top-Level-Funktion: Die Closure für Isolate.run darf nur die beiden Pfade
+/// enthalten – eine Closure in einer Methode würde den ganzen AppController
+/// (inkl. AudioPlayer) mitschicken, was nicht erlaubt ist.
+Future<void> _extractInBackground(String archivePath, String targetDir) =>
+    Isolate.run(() => extractFileToDisk(archivePath, targetDir));
