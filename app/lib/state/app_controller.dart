@@ -169,14 +169,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   List<Artifact> get artifacts =>
       [for (final a in current?.artifacts ?? const <Map<String, dynamic>>[]) Artifact.fromJson(a)];
 
-  List<int> get contextOptions => [1024, 2048, 4096, 8192].where((c) => c <= device.maxContext).toList();
+  List<int> get contextOptions =>
+      [1024, 2048, 4096, 8192, 16384].where((c) => c <= device.maxContext).toList();
+
+  /// Gewünschte Context-Größe (automatisch = Maximum der Geräteklasse).
+  int get contextTarget => settings.contextAuto ? device.maxContext : settings.contextSize;
 
   // ---------------------------------------------------------------- Modelle
 
   Future<GgufInfo> inspectModel(String path) => GgufInfo.read(path);
 
-  FitResult checkFit(GgufInfo info) =>
-      device.checkFit(info, device.clampContext(settings.contextSize, info));
+  FitResult checkFit(GgufInfo info) => device.checkFit(info, device.clampContext(contextTarget, info));
 
   /// Übernimmt eine geprüfte Datei. [fromPickerCache]: Datei liegt in einem
   /// temporären Verzeichnis des Datei-Wählers und darf verschoben werden.
@@ -259,7 +262,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await unloadModel(notify: false);
       final info = await GgufInfo.read(m.path);
-      final ctx = device.clampContext(settings.contextSize, info);
+      final ctx = device.clampContext(contextTarget, info);
       final fit = device.checkFit(info, ctx);
       if (fit.level == FitLevel.refuse) throw EngineException(fit.message);
       // bei knappem Speicher Context zusätzlich begrenzen
@@ -292,8 +295,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (notify) notifyListeners();
   }
 
+  /// [size] <= 0 = automatisch.
   Future<void> setContextSize(int size) async {
-    settings.contextSize = device.clampContext(size, null);
+    settings.contextAuto = size <= 0;
+    if (size > 0) settings.contextSize = device.clampContext(size, null);
     await storage.saveSettings(settings);
     notifyListeners();
   }
@@ -393,6 +398,33 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void cancelDownload(CatalogEntry e) => downloads[e.id]?.cancel.cancel();
+
+  /// Lädt ein beliebiges GGUF-Modell von einer Adresse (z. B. Hugging Face „resolve“-Link).
+  /// Gibt eine Fehlermeldung zurück oder null.
+  String? downloadCustomUrl(String raw) {
+    var url = raw.trim();
+    // Hugging-Face-Seitenlink (…/blob/main/…) in Download-Link umwandeln
+    url = url.replaceFirst('/blob/', '/resolve/');
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.isScheme('https')) return 'Bitte eine https-Adresse angeben.';
+    final name = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
+    if (!name.toLowerCase().endsWith('.gguf')) return 'Die Adresse muss auf eine .gguf-Datei zeigen.';
+    final entry = CatalogEntry(
+      id: 'custom:$name',
+      kind: ModelKind.llm,
+      name: name.replaceAll('.gguf', ''),
+      description: 'Eigener Download',
+      url: uri.toString(),
+      fileName: name,
+      sizeBytes: 0,
+      minClass: DeviceClass.s,
+    );
+    unawaited(startDownload(entry));
+    return null;
+  }
+
+  List<DownloadState> get customDownloads =>
+      downloads.values.where((d) => d.entry.id.startsWith('custom:')).toList();
 
   /// Löscht ein heruntergeladenes Sprach-Modell bzw. eine Stimme.
   Future<void> removeVoiceModel(CatalogEntry e) async {

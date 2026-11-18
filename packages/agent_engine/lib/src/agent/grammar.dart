@@ -7,7 +7,15 @@ import 'tool.dart';
 class AgentGrammar {
   /// Grammatik für einen Agenten-Schritt: entweder Tool-Aufruf oder Endantwort.
   /// [allowTools] = false erzwingt eine Endantwort (z. B. nach dem Schrittlimit).
-  static String build(List<AgentTool> tools, {bool allowTools = true}) {
+  /// Zeichenbereiche für Chinesisch, Japanisch und Koreanisch (Qwen driftet sonst
+  /// gelegentlich mitten im Satz ins Chinesische).
+  static const cjkRanges = r'\u2E80-\u2FFF\u3000-\u303F\u3040-\u30FF\u3100-\u31FF\u3400-\u4DBF'
+      r'\u4E00-\u9FFF\uA960-\uA97F\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF';
+
+  /// Grammatik für freien Text ohne CJK-Schriftzeichen (Chat-Modus).
+  static String plainTextNoCjk() => 'root ::= [^$cjkRanges]*\n';
+
+  static String build(List<AgentTool> tools, {bool allowTools = true, bool blockCjk = true}) {
     final b = StringBuffer();
     final useTools = allowTools && tools.isNotEmpty;
     b.writeln(r'root ::= "{" ws "\"thought\":" ws str "," ws step ws "}"');
@@ -22,7 +30,8 @@ class AgentGrammar {
     }
     // Strings ohne Steuerzeichen; Escapes erlaubt
     b.writeln(r'str ::= "\"" chr* "\""');
-    b.writeln(r'chr ::= [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] )');
+    final cjk = blockCjk ? cjkRanges : '';
+    b.writeln(r'chr ::= [^"\\\x7F\x00-\x1F' + cjk + r'] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] )');
     b.writeln(r'int ::= "-"? [0-9] [0-9]{0,11}');
     b.writeln(r'num ::= "-"? [0-9] [0-9]{0,15} ( "." [0-9] [0-9]{0,9} )?');
     b.writeln(r'bool ::= "true" | "false"');

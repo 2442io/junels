@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -76,7 +77,9 @@ struct ae_engine {
     llama_model *       model = nullptr;
     llama_context *     ctx   = nullptr;
     const llama_vocab * vocab = nullptr;
-    llama_sampler *     smpl  = nullptr;
+    llama_sampler *     smpl  = nullptr;   // Sampler-Kette ohne Grammatik
+    llama_sampler *     grammar = nullptr; // GBNF, wird nur bei Bedarf voll angewendet
+    std::vector<llama_token_data> cand;
     llama_batch_ext *   batch = nullptr;
 
     int32_t n_ctx   = 0;
@@ -254,6 +257,7 @@ ae_engine * ae_create(const char * model_path, int32_t n_ctx, int32_t n_threads,
 void ae_destroy(ae_engine * e) {
     if (!e) return;
     if (e->smpl)  llama_sampler_free(e->smpl);
+    if (e->grammar) llama_sampler_free(e->grammar);
     if (e->batch) llama_batch_ext_free(e->batch);
     if (e->ctx)   llama_free(e->ctx);
     if (e->model) llama_model_free(e->model);
@@ -287,14 +291,32 @@ int32_t ae_format_chat(ae_engine * e, const char ** roles, const char ** content
         total += strlen(roles[i]) + strlen(contents[i]);
     }
     const char * tmpl = llama_model_chat_template(e->model, nullptr);
+    const std::string t = tmpl ? tmpl : "";
+
+    // Gemma 4 (<|turn>…<turn|>) kennt llama_chat_apply_template nicht → selbst formatieren
+    if (t.find("<|turn>") != std::string::npos) {
+        std::string o;
+        auto trim = [](std::string x) {
+            size_t a = x.find_first_not_of(" \t\n"), b = x.find_last_not_of(" \t\n");
+            return a == std::string::npos ? std::string() : x.substr(a, b - a + 1);
+        };
+        for (int32_t i = 0; i < n_msg; i++) {
+            std::string role = roles[i];
+            if (role == "assistant") role = "model";
+            o += "<|turn>" + role + "\n" + trim(contents[i]) + "<turn|>\n";
+        }
+        if (add_assistant) o += "<|turn>model\n<|channel>thought\n<channel|>";  // ohne Denkmodus
+        return copy_out(o, out, out_len);
+    }
+
     std::vector<char> buf(total * 2 + 1024);
 
-    auto apply = [&](const char * t) -> int32_t {
-        int32_t n = llama_chat_apply_template(t, msgs.data(), msgs.size(), add_assistant != 0,
+    auto apply = [&](const char * tp) -> int32_t {
+        int32_t n = llama_chat_apply_template(tp, msgs.data(), msgs.size(), add_assistant != 0,
                                               buf.data(), (int32_t) buf.size());
         if (n > (int32_t) buf.size()) {
             buf.resize(n + 1);
-            n = llama_chat_apply_template(t, msgs.data(), msgs.size(), add_assistant != 0,
+            n = llama_chat_apply_template(tp, msgs.data(), msgs.size(), add_assistant != 0,
                                           buf.data(), (int32_t) buf.size());
         }
         return n;
@@ -303,7 +325,12 @@ int32_t ae_format_chat(ae_engine * e, const char ** roles, const char ** content
     int32_t n = tmpl ? apply(tmpl) : -1;
     if (n < 0) n = apply("chatml");      // unbekanntes Template → ChatML
     if (n < 0) { set_err(e, "Chat-Template fehlgeschlagen"); return -1; }
-    return copy_out(std::string(buf.data(), n), out, out_len);
+    std::string result(buf.data(), n);
+    // Hybride Denkmodelle (Qwen3/3.5): Denkphase abschalten wie enable_thinking=false
+    if (add_assistant && t.find("<think>") != std::string::npos && t.find("enable_thinking") != std::string::npos) {
+        result += "<think>\n\n</think>\n\n";
+    }
+    return copy_out(result, out, out_len);
 }
 
 int32_t ae_count_tokens(ae_engine * e, const char * text) {
@@ -366,12 +393,12 @@ int32_t ae_begin(ae_engine * e, const char * prompt, const char * grammar,
 
     // Sampler-Kette neu aufbauen
     if (e->smpl) { llama_sampler_free(e->smpl); e->smpl = nullptr; }
-    llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (e->grammar) { llama_sampler_free(e->grammar); e->grammar = nullptr; }
     if (grammar && *grammar) {
-        llama_sampler * g = llama_sampler_init_grammar(e->vocab, grammar, "root");
-        if (!g) { llama_sampler_free(chain); set_err(e, "ungültige Grammatik"); return AE_ERROR; }
-        llama_sampler_chain_add(chain, g);
+        e->grammar = llama_sampler_init_grammar(e->vocab, grammar, "root");
+        if (!e->grammar) { set_err(e, "ungültige Grammatik"); return AE_ERROR; }
     }
+    llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (temperature <= 0.0f) {
         llama_sampler_chain_add(chain, llama_sampler_init_greedy());
     } else {
@@ -440,7 +467,32 @@ int32_t ae_next(ae_engine * e, char * buf, int32_t buf_len) {
         return ae_next(e, buf, buf_len);
     }
 
+    // Schnellweg: ohne Grammatik ziehen und nur das gezogene Token prüfen.
+    // Nur wenn es die Grammatik verletzt, wird die Grammatik auf das ganze
+    // Vokabular angewendet (spart bei 150k Tokens viel Zeit pro Schritt).
     llama_token tok = llama_sampler_sample(e->smpl, e->ctx, -1);
+    if (e->grammar) {
+        llama_token_data one = { tok, 1.0f, 0.0f };
+        llama_token_data_array single = { &one, 1, -1, false };
+        llama_sampler_apply(e->grammar, &single);
+        if (one.logit == -INFINITY) {
+            const float * logits = llama_get_logits_ith(e->ctx, -1);
+            const int32_t n_vocab = llama_vocab_n_tokens(e->vocab);
+            e->cand.resize(n_vocab);
+            for (int32_t i = 0; i < n_vocab; i++) e->cand[i] = { i, logits[i], 0.0f };
+            llama_token_data_array cur = { e->cand.data(), e->cand.size(), -1, false };
+            llama_sampler_apply(e->grammar, &cur);
+            llama_sampler_apply(e->smpl, &cur);
+            if (cur.selected < 0 || cur.selected >= (int64_t) cur.size) {
+                set_err(e, "Grammatik lässt kein Token zu");
+                e->finished = true;
+                e->finish_code = AE_ERROR;
+                return ae_next(e, buf, buf_len);
+            }
+            tok = cur.data[cur.selected].id;
+        }
+        llama_sampler_accept(e->grammar, tok);
+    }
     if (e->ttft_ms < 0) e->ttft_ms = ms_since(e->t_begin);
 
     if (llama_vocab_is_eog(e->vocab, tok)) {

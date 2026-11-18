@@ -118,6 +118,8 @@ Future<void> main() async {
     final g = AgentGrammar.build(builtinTools());
     check(g.contains('tool-text-search ::= "\\"text_search\\""'), 'Tool-Regel mit Literal');
     check(g.contains('( "\\"code\\"" | "\\"markdown\\""'), 'Enum-Werte als Alternativen');
+    check(g.contains(r'\u4E00-\u9FFF') && !AgentGrammar.build(builtinTools(), blockCjk: false).contains(r'\u4E00'),
+        'CJK-Sperre in Strings (abschaltbar)');
     final f = AgentGrammar.build(builtinTools(), allowTools: false);
     check(f.contains('step ::= final') && !f.contains('call ::='), 'Nur-Endantwort-Variante');
   });
@@ -264,20 +266,24 @@ Future<void> main() async {
     final l = DeviceProfile.detect(totalMemoryOverride: 16 * gb, cpuOverride: 10);
     String best(ModelKind k, DeviceProfile d, [int free = 100 * gb]) =>
         recommendFor(k, d, freeDiskBytes: free).first.entry.id;
-    check(best(ModelKind.llm, s) == 'qwen2.5-1.5b', 'S → Qwen 2.5 1.5B');
-    check(best(ModelKind.llm, m) == 'qwen3-4b-2507', 'M → Qwen3 4B');
-    check(best(ModelKind.llm, l) == 'qwen2.5-7b', 'L → Qwen 2.5 7B');
+    final xl = DeviceProfile.detect(totalMemoryOverride: 128 * gb, cpuOverride: 16);
+    check(best(ModelKind.llm, s) == 'qwen3.5-2b', 'S → Qwen 3.5 2B');
+    check(best(ModelKind.llm, m) == 'qwen3.5-4b', 'M → Qwen 3.5 4B');
+    check(best(ModelKind.llm, l) == 'qwen3.5-9b', 'L → Qwen 3.5 9B');
+    check(xl.deviceClass == DeviceClass.xl && xl.maxContext == 16384, 'XL bei 128 GB, 16K Context');
+    check(best(ModelKind.llm, xl) == 'gemma-4-26b-a4b', 'XL → Gemma 4 26B A4B');
+    check(best(ModelKind.stt, xl) == 'whisper-turbo', 'XL → Whisper turbo voll');
     check(best(ModelKind.stt, s) == 'whisper-base', 'S → Whisper base');
     check(best(ModelKind.stt, m) == 'whisper-turbo-q5', 'M → Whisper turbo q5');
     // Rechner (Linux/macOS) gilt als Desktop → volle Präzision
     check(best(ModelKind.stt, l) == 'whisper-turbo', 'L Desktop → Whisper turbo voll');
     check(best(ModelKind.tts, m) == 'piper-de-thorsten', 'Stimme → Thorsten');
     final noSpace = recommendFor(ModelKind.llm, l, freeDiskBytes: 1 * gb);
-    check(noSpace.firstWhere((r) => r.entry.id == 'qwen2.5-7b').suitability == Suitability.noSpace,
+    check(noSpace.firstWhere((r) => r.entry.id == 'qwen3.5-9b').suitability == Suitability.noSpace,
         'zu wenig Speicher erkannt');
     final tooBig = recommendFor(ModelKind.llm, s, freeDiskBytes: 100 * gb);
-    check(tooBig.firstWhere((r) => r.entry.id == 'qwen2.5-7b').suitability == Suitability.tooBig,
-        '7B auf S als zu groß markiert');
+    check(tooBig.firstWhere((r) => r.entry.id == 'qwen3.5-9b').suitability == Suitability.tooBig,
+        '9B auf S als zu groß markiert');
     check(modelCatalog.map((e) => e.id).toSet().length == modelCatalog.length, 'IDs eindeutig');
     check(modelCatalog.every((e) => e.url.startsWith('https://') && e.url.endsWith(e.fileName)),
         'URLs enden auf Dateiname');
@@ -477,6 +483,16 @@ Future<void> main() async {
       final err = await engine.validateGrammar(g);
       check(err == null, 'Grammatik gültig für ${subset.map((t) => t.name).join(',')} ${err ?? ''}');
     }
+    check(await engine.validateGrammar(AgentGrammar.plainTextNoCjk()) == null, 'Chat-Grammatik ohne CJK gültig');
+    // Zufallsmodell mit Llama-3-Vokabular erzeugt sonst häufig CJK-Zeichen
+    final p = await engine.formatChat(const [ChatMessage('user', 'Schreib etwas.')]);
+    final out = StringBuffer();
+    await for (final ev in engine.generate(p,
+        grammar: AgentGrammar.plainTextNoCjk(), maxTokens: 200, sampling: const SamplingParams(temperature: 1.5, seed: 7))) {
+      if (ev is TokenEvent) out.write(ev.text);
+    }
+    final cjk = RegExp(r'[\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]');
+    check(out.isNotEmpty && !cjk.hasMatch(out.toString()), 'keine CJK-Zeichen in 200 Zufallstokens (${out.length} Zeichen)');
     final bad = await engine.validateGrammar('root ::= (');
     check(bad != null, 'kaputte Grammatik erkannt');
   });
@@ -533,6 +549,23 @@ Future<void> main() async {
     check(f2.reason == AgentStopReason.answered || f2.reason == AgentStopReason.error,
         'überlange Eingabe: kontrolliert (${f2.reason})');
   });
+
+  for (final (file, name) in [('tiny_gemma4.gguf', 'Gemma 4'), ('tiny_qwen35.gguf', 'Qwen 3.5')]) {
+    final path = '${File(modelPath).parent.path}/$file';
+    if (!File(path).existsSync()) continue;
+    await group('Template: $name', () async {
+      final e2 = await LlamaEngine.load(EngineConfig(modelPath: path, contextSize: 512, threads: 2));
+      final t = await e2.formatChat(const [ChatMessage('system', 'S'), ChatMessage('user', 'Hallo'), ChatMessage('assistant', 'Hi'), ChatMessage('user', 'Und?')]);
+      print('  ${t.replaceAll('\n', r'\n')}');
+      if (name == 'Gemma 4') {
+        check(t == '<|turn>system\nS<turn|>\n<|turn>user\nHallo<turn|>\n<|turn>model\nHi<turn|>\n<|turn>user\nUnd?<turn|>\n<|turn>model\n<|channel>thought\n<channel|>',
+            'Gemma-4-Format mit abgeschaltetem Denkmodus');
+      } else {
+        check(t.contains('<|im_start|>assistant\n') && t.endsWith('<think>\n\n</think>\n\n'), 'ChatML + leerer Denkblock');
+      }
+      await e2.dispose();
+    });
+  }
 
   await engine.dispose();
   _summary();

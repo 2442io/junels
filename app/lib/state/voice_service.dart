@@ -5,6 +5,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:agent_engine/agent_engine.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -27,9 +29,10 @@ class VoiceService {
   final speakingKey = ValueNotifier<Object?>(null);
 
   AudioRecorder? _recorder;
-  StreamSubscription<Amplitude>? _ampSub;
+  StreamSubscription<Uint8List>? _pcmSub;
+  final BytesBuilder _pcm = BytesBuilder(copy: false);
+  int _recordRate = 16000;
   Timer? _timer;
-  String? _recordPath;
 
   SttEngine? _stt;
   String? _sttPath;
@@ -58,6 +61,9 @@ class VoiceService {
     return r.hasPermission();
   }
 
+  /// Nimmt rohes PCM (16 bit, mono) als Stream auf – ohne Zwischendatei.
+  /// Manche Geräte (v. a. macOS) lehnen 16 kHz ab; dann wird mit 48/44,1 kHz
+  /// aufgenommen und vor Whisper umgerechnet.
   Future<void> startRecording() async {
     if (phase.value != VoicePhase.idle) return;
     await stopSpeaking();
@@ -65,33 +71,58 @@ class VoiceService {
     if (!await r.hasPermission()) {
       throw Exception('Kein Zugriff auf das Mikrofon. Bitte in den Systemeinstellungen erlauben.');
     }
-    _recordPath = '${tempDir.path}/aufnahme_${DateTime.now().millisecondsSinceEpoch}.wav';
-    await r.start(
-      const RecordConfig(
-        encoder: AudioEncoder.wav,
-        sampleRate: 16000,
-        numChannels: 1,
-        echoCancel: true,
-        noiseSuppress: true,
-      ),
-      path: _recordPath!,
-    );
+    _pcm.clear();
+    Stream<Uint8List>? stream;
+    Object? lastError;
+    for (final rate in const [16000, 48000, 44100]) {
+      try {
+        stream = await r.startStream(RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: rate,
+          numChannels: 1,
+        ));
+        _recordRate = rate;
+        break;
+      } catch (e) {
+        lastError = e;
+        try {
+          await r.cancel();
+        } catch (_) {}
+      }
+    }
+    if (stream == null) throw Exception('Aufnahme konnte nicht gestartet werden: $lastError');
+
+    _pcmSub = stream.listen((chunk) {
+      _pcm.add(chunk);
+      // Pegel aus den Samples (RMS) für die Anzeige
+      final bd = ByteData.sublistView(chunk);
+      var sum = 0.0;
+      final n = chunk.length ~/ 2;
+      for (var i = 0; i < n; i++) {
+        final v = bd.getInt16(i * 2, Endian.little) / 32768.0;
+        sum += v * v;
+      }
+      if (n > 0) {
+        final db = 20 * math.log(math.sqrt(sum / n) + 1e-9) / math.ln10;
+        level.value = ((db + 60) / 60).clamp(0.0, 1.0);
+      }
+    });
     recordSeconds.value = 0;
     phase.value = VoicePhase.recording;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       recordSeconds.value = t.tick;
       if (t.tick >= 120) unawaited(r.stop()); // Sicherheitsgrenze 2 Minuten
     });
-    _ampSub = r.onAmplitudeChanged(const Duration(milliseconds: 120)).listen((a) {
-      // dBFS (-60..0) → 0..1
-      level.value = ((a.current + 60) / 60).clamp(0.0, 1.0);
-    });
   }
 
   Future<void> cancelRecording() async {
     _timer?.cancel();
-    await _ampSub?.cancel();
-    await _recorder?.cancel();
+    try {
+      await _recorder?.cancel();
+    } catch (_) {}
+    await _pcmSub?.cancel();
+    _pcmSub = null;
+    _pcm.clear();
     phase.value = VoicePhase.idle;
     level.value = 0;
   }
@@ -103,24 +134,29 @@ class VoiceService {
     required int threads,
   }) async {
     _timer?.cancel();
-    await _ampSub?.cancel();
     level.value = 0;
-    final path = await _recorder?.stop() ?? _recordPath;
+    try {
+      await _recorder?.stop();
+    } catch (_) {}
+    // letzte Pakete abwarten
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    await _pcmSub?.cancel();
+    _pcmSub = null;
     phase.value = VoicePhase.transcribing;
     try {
-      if (path == null || !File(path).existsSync()) throw Exception('Keine Aufnahme vorhanden');
-      final pcm = decodeWavTo16kMono(await File(path).readAsBytes());
+      final bytes = _pcm.takeBytes();
+      final bd = ByteData.sublistView(bytes);
+      final n = bytes.length ~/ 2;
+      final raw = Float32List(n);
+      for (var i = 0; i < n; i++) {
+        raw[i] = bd.getInt16(i * 2, Endian.little) / 32768.0;
+      }
+      final pcm = resampleLinear(raw, _recordRate, 16000);
       if (pcm.length < 16000 * 0.4) throw Exception('Aufnahme zu kurz');
       await _ensureStt(modelPath);
-      final t = await _stt!.transcribe(pcm, language: language, threads: threads);
-      return t;
+      return await _stt!.transcribe(pcm, language: language, threads: threads);
     } finally {
       phase.value = VoicePhase.idle;
-      if (path != null) {
-        try {
-          await File(path).delete();
-        } catch (_) {}
-      }
     }
   }
 
@@ -180,6 +216,7 @@ class VoiceService {
   Future<void> dispose() async {
     await cancelRecording();
     await stopSpeaking();
+    await _pcmSub?.cancel();
     await _stt?.dispose();
     await _tts?.dispose();
     await _player.dispose();

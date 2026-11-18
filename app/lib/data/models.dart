@@ -270,6 +270,7 @@ class Conversation {
 class AppSettings {
   AppSettings({
     this.contextSize = 2048,
+    this.contextAuto = true,
     this.activeProfileId = 'assistant',
     this.lastModelId,
     this.autoLoadLastModel = true,
@@ -290,6 +291,9 @@ class AppSettings {
         installed = installed ?? {};
 
   int contextSize;
+
+  /// true = Context automatisch auf das Maximum der Geräteklasse setzen
+  bool contextAuto;
   String activeProfileId;
   String? lastModelId;
   bool autoLoadLastModel;
@@ -309,6 +313,7 @@ class AppSettings {
 
   Map<String, Object?> toJson() => {
         'contextSize': contextSize,
+        'contextAuto': contextAuto,
         'activeProfileId': activeProfileId,
         'lastModelId': lastModelId,
         'autoLoadLastModel': autoLoadLastModel,
@@ -325,6 +330,7 @@ class AppSettings {
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
         contextSize: (j['contextSize'] as num?)?.toInt() ?? 2048,
+        contextAuto: j['contextAuto'] as bool? ?? true,
         activeProfileId: j['activeProfileId'] as String? ?? 'assistant',
         lastModelId: j['lastModelId'] as String?,
         autoLoadLastModel: j['autoLoadLastModel'] as bool? ?? true,

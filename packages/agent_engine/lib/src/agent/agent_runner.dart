@@ -77,7 +77,12 @@ class AgentRunner {
     this.toolTimeout = const Duration(seconds: 20),
     this.sampling = SamplingParams.precise,
     this.chatSampling = const SamplingParams(),
+    this.blockCjk = true,
   });
+
+  /// Chinesische/japanische/koreanische Schriftzeichen in der Ausgabe sperren
+  /// (verhindert das Abdriften von Qwen-Modellen ins Chinesische).
+  final bool blockCjk;
 
   final AgentBackend engine;
   final String systemPrompt;
@@ -101,6 +106,8 @@ class AgentRunner {
   /// Systemprompt inkl. Tool-Beschreibungen und Antwortformat.
   String buildSystemPrompt(ToolContext ctx) {
     final b = StringBuffer(systemPrompt.trim());
+    b.writeln('\n\nAntworte immer in der Sprache, in der der Nutzer schreibt (meist Deutsch). '
+        'Wechsle nie mitten in der Antwort die Sprache und verwende keine chinesischen Schriftzeichen.');
     final docs = ctx.allDocuments;
     if (agentMode) {
       b.writeln('\n');
@@ -171,7 +178,10 @@ class AgentRunner {
     GenerationStats? stats;
     FinishReason reason = FinishReason.done;
     String? error;
-    await for (final ev in engine.generate(prompt, sampling: chatSampling, maxTokens: maxTokensPerStep * 2)) {
+    await for (final ev in engine.generate(prompt,
+        grammar: blockCjk ? AgentGrammar.plainTextNoCjk() : null,
+        sampling: chatSampling,
+        maxTokens: maxTokensPerStep * 2)) {
       switch (ev) {
         case TokenEvent(:final text):
           raw.write(text);
@@ -198,8 +208,8 @@ class AgentRunner {
       void Function(AgentEvent) emit) async {
     final system = buildSystemPrompt(ctx);
     final scratch = <ChatMessage>[];
-    final grammar = AgentGrammar.build(tools);
-    final finalOnly = AgentGrammar.build(tools, allowTools: false);
+    final grammar = AgentGrammar.build(tools, blockCjk: blockCjk);
+    final finalOnly = AgentGrammar.build(tools, allowTools: false, blockCjk: blockCjk);
     String? lastCall;
 
     String? hint; // einmaliger Hinweis an das Modell (nicht Teil des Verlaufs)

@@ -39,6 +39,8 @@ class SystemCheckPage extends StatelessWidget {
                 subtitle: 'Das Gehirn des Agenten. Läuft komplett auf diesem Gerät.',
                 icon: Icons.memory,
               ),
+              const SizedBox(height: 4),
+              const _CustomUrlField(),
               const SizedBox(height: 20),
               _KindSection(
                 app: app,
@@ -69,6 +71,85 @@ class SystemCheckPage extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomUrlField extends StatefulWidget {
+  const _CustomUrlField();
+
+  @override
+  State<_CustomUrlField> createState() => _CustomUrlFieldState();
+}
+
+class _CustomUrlFieldState extends State<_CustomUrlField> {
+  final _ctrl = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final t = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Anderes Modell per Link laden', style: t.titleSmall),
+            const SizedBox(height: 2),
+            Text('Link zu einer .gguf-Datei, z. B. von Hugging Face (Seite „Files“ → Datei → Link kopieren).',
+                style: t.bodySmall),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  decoration: InputDecoration(
+                    hintText: 'https://huggingface.co/…/resolve/main/modell-Q4_K_M.gguf',
+                    errorText: _error,
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: () {
+                  final err = app.downloadCustomUrl(_ctrl.text);
+                  setState(() => _error = err);
+                  if (err == null) _ctrl.clear();
+                },
+                child: const Text('Laden'),
+              ),
+            ]),
+            for (final d in app.customDownloads)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(d.entry.fileName, style: t.bodySmall),
+                      if (d.error != null)
+                        Text(d.error!, style: t.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error))
+                      else
+                        LinearProgressIndicator(value: d.progress?.fraction),
+                    ]),
+                  ),
+                  IconButton(
+                    icon: Icon(d.error != null ? Icons.refresh : Icons.close),
+                    onPressed: () => d.error != null ? app.startDownload(d.entry) : app.cancelDownload(d.entry),
+                  ),
+                ]),
+              ),
+          ],
         ),
       ),
     );
@@ -124,7 +205,8 @@ class _DeviceCard extends StatelessWidget {
                         switch (d.deviceClass) {
                           DeviceClass.s => 'Kleine Modelle (bis 1,5B). Spracheingabe mit Whisper base.',
                           DeviceClass.m => 'Modelle bis 4B. Whisper large-v3-turbo (komprimiert) möglich.',
-                          DeviceClass.l => 'Große Modelle bis 7B und Whisper large-v3-turbo.',
+                          DeviceClass.l => 'Modelle bis 12B und Whisper large-v3-turbo.',
+                          DeviceClass.xl => 'Auch große Modelle wie Gemma 4 26B und 16K Context.',
                         },
                         style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                       ),

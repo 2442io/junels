@@ -6,13 +6,14 @@ import 'dart:math' as math;
 import 'gguf_header.dart';
 import 'llama_engine.dart';
 
-enum DeviceClass { s, m, l }
+enum DeviceClass { s, m, l, xl }
 
 extension DeviceClassLabel on DeviceClass {
   String get label => switch (this) {
         DeviceClass.s => 'S (≤ 4 GB)',
         DeviceClass.m => 'M (6–8 GB)',
-        DeviceClass.l => 'L (≥ 12 GB)',
+        DeviceClass.l => 'L (12–24 GB)',
+        DeviceClass.xl => 'XL (≥ 32 GB)',
       };
 }
 
@@ -49,12 +50,15 @@ class DeviceProfile {
         ? DeviceClass.s
         : total <= 9.5 * _gb
             ? DeviceClass.m
-            : DeviceClass.l;
+            : total <= 26 * _gb
+                ? DeviceClass.l
+                : DeviceClass.xl;
 
     final maxCtx = switch (cls) {
       DeviceClass.s => 2048,
       DeviceClass.m => 4096,
       DeviceClass.l => 8192,
+      DeviceClass.xl => 16384,
     };
 
     // Mobil: nur Performance-Kerne (meist 4), Desktop: alle bis auf zwei

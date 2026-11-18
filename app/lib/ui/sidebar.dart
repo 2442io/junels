@@ -169,12 +169,15 @@ class _ModelSection extends StatelessWidget {
             Text('Context', style: t.bodyMedium),
             const Spacer(),
             DropdownButton<int>(
-              value: app.contextOptions.contains(app.settings.contextSize)
-                  ? app.settings.contextSize
-                  : app.contextOptions.last,
+              value: app.settings.contextAuto
+                  ? 0
+                  : app.contextOptions.contains(app.settings.contextSize)
+                      ? app.settings.contextSize
+                      : app.contextOptions.last,
               underline: const SizedBox(),
               borderRadius: BorderRadius.circular(12),
               items: [
+                DropdownMenuItem(value: 0, child: Text('Auto (${app.device.maxContext ~/ 1024}K)')),
                 for (final c in app.contextOptions)
                   DropdownMenuItem(value: c, child: Text('${c ~/ 1024}K Tokens')),
               ],
@@ -182,7 +185,7 @@ class _ModelSection extends StatelessWidget {
             ),
           ],
         ),
-        if (loadedCtx != null && loadedCtx != app.settings.contextSize)
+        if (loadedCtx != null && loadedCtx < app.contextTarget && (app.loadedModel?.trainedContext ?? 1 << 30) > loadedCtx)
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
