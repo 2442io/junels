@@ -1,0 +1,19 @@
+name: agent_engine
+description: Lokale LLM-Engine (llama.cpp via FFI) und Agenten-Kern für die Offline Agent App.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+# Keine Pub-Abhängigkeiten: das Paket ist auch mit reinem Dart testbar.
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true

@@ -1,0 +1,10 @@
+third_party/
+build/
+dist/
+.dart_tool/
+**/Frameworks/AgentEngine.xcframework/
+app/android/
+app/ios/
+app/macos/
+app/build/
+pubspec.lock

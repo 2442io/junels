@@ -1,0 +1,387 @@
+// Agenten-Schleife Thought → Action → Observation (SRS Abschnitt 5).
+
+import 'dart:async';
+import 'dart:convert';
+
+import '../llama_engine.dart';
+import 'grammar.dart';
+import 'tool.dart';
+
+// ---------------------------------------------------------------------------
+// Ereignisse für die UI
+// ---------------------------------------------------------------------------
+
+sealed class AgentEvent {}
+
+class StepStarted extends AgentEvent {
+  StepStarted(this.step);
+  final int step;
+}
+
+/// Laufender Zwischenstand eines Schritts (für Live-Anzeige).
+class StepStreaming extends AgentEvent {
+  StepStreaming(this.step, {this.thought, this.answer, required this.raw});
+  final int step;
+  final String? thought;
+  final String? answer;
+  final String raw;
+}
+
+class ToolCalled extends AgentEvent {
+  ToolCalled(this.step, this.tool, this.args, this.thought);
+  final int step;
+  final String tool;
+  final Map<String, dynamic> args;
+  final String thought;
+}
+
+class ToolResult extends AgentEvent {
+  ToolResult(this.step, this.tool, this.output, {this.isError = false, required this.duration});
+  final int step;
+  final String tool;
+  final String output;
+  final bool isError;
+  final Duration duration;
+}
+
+class MetricsUpdate extends AgentEvent {
+  MetricsUpdate(this.stats);
+  final GenerationStats stats;
+}
+
+class FinalAnswer extends AgentEvent {
+  FinalAnswer(this.text, {this.thought, this.truncated = false});
+  final String text;
+  final String? thought;
+  final bool truncated;
+}
+
+class AgentFinished extends AgentEvent {
+  AgentFinished(this.reason, {this.message});
+  final AgentStopReason reason;
+  final String? message;
+}
+
+enum AgentStopReason { answered, stopped, stepLimit, error }
+
+// ---------------------------------------------------------------------------
+
+class AgentRunner {
+  AgentRunner({
+    required this.engine,
+    required this.systemPrompt,
+    this.tools = const [],
+    this.maxSteps = 8,
+    this.maxTokensPerStep = 768,
+    this.observationLimit = 2000,
+    this.toolTimeout = const Duration(seconds: 20),
+    this.sampling = SamplingParams.precise,
+    this.chatSampling = const SamplingParams(),
+  });
+
+  final AgentBackend engine;
+  final String systemPrompt;
+  final List<AgentTool> tools;
+  final int maxSteps;
+  final int maxTokensPerStep;
+  final int observationLimit;
+  final Duration toolTimeout;
+  final SamplingParams sampling;
+  final SamplingParams chatSampling;
+
+  bool _stopped = false;
+
+  void stop() {
+    _stopped = true;
+    engine.stop();
+  }
+
+  bool get agentMode => tools.isNotEmpty;
+
+  /// Systemprompt inkl. Tool-Beschreibungen und Antwortformat.
+  String buildSystemPrompt(ToolContext ctx) {
+    final b = StringBuffer(systemPrompt.trim());
+    final docs = ctx.allDocuments;
+    if (agentMode) {
+      b.writeln('\n');
+      b.writeln('Du arbeitest in Schritten und antwortest IMMER mit genau einem JSON-Objekt.');
+      b.writeln('Tool aufrufen: {"thought": "kurzer Gedanke", "action": "<tool>", "args": {...}}');
+      b.writeln('Fertig: {"thought": "kurzer Gedanke", "final_answer": "Antwort an den Nutzer"}');
+      b.writeln('\nVerfügbare Tools:');
+      for (final t in tools) {
+        b.writeln(t.describeForPrompt());
+      }
+      b.writeln('\nRegeln:');
+      b.writeln('- Nutze ein Tool nur, wenn es nötig ist. Einfache Fragen direkt mit final_answer beantworten.');
+      b.writeln('- Nach jedem Tool-Aufruf erhältst du eine Beobachtung. Erfinde keine Ergebnisse.');
+      b.writeln('- Rechne nie im Kopf, wenn calculator verfügbar ist.');
+      b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt.');
+      if (tools.any((t) => t.requiresNetwork)) {
+        b.writeln('- Internet-Tools nur nutzen, wenn aktuelle oder externe Informationen nötig sind. '
+            'Der Nutzer muss den Zugriff bestätigen. Nenne in der final_answer die genutzten Quellen (URL).');
+      }
+    }
+    if (docs.isNotEmpty) {
+      b.writeln('\nVerfügbare Dateien:');
+      for (final d in docs) {
+        b.writeln('- ${d.name} (${d.content.length} Zeichen)');
+      }
+    }
+    return b.toString();
+  }
+
+  /// Führt einen Nutzer-Turn aus. [history] enthält frühere Nutzer-/Agent-Nachrichten.
+  Stream<AgentEvent> run({
+    required List<ChatMessage> history,
+    required String userInput,
+    required ToolContext context,
+  }) {
+    _stopped = false;
+    final controller = StreamController<AgentEvent>();
+    () async {
+      try {
+        if (agentMode) {
+          await _runAgent(history, userInput, context, controller.add);
+        } else {
+          await _runChat(history, userInput, context, controller.add);
+        }
+      } catch (e) {
+        controller.add(AgentFinished(AgentStopReason.error, message: e.toString()));
+      } finally {
+        await controller.close();
+      }
+    }();
+    return controller.stream;
+  }
+
+  // ---------------------------------------------------------------- Chat-Modus
+
+  Future<void> _runChat(List<ChatMessage> history, String input, ToolContext ctx,
+      void Function(AgentEvent) emit) async {
+    emit(StepStarted(1));
+    final messages = [ChatMessage('system', buildSystemPrompt(ctx))];
+    final prompt = await _fitPrompt(
+      system: messages.first.content,
+      history: history,
+      input: input,
+      scratch: const [],
+      reserve: maxTokensPerStep * 2,
+    );
+    final raw = StringBuffer();
+    GenerationStats? stats;
+    FinishReason reason = FinishReason.done;
+    String? error;
+    await for (final ev in engine.generate(prompt, sampling: chatSampling, maxTokens: maxTokensPerStep * 2)) {
+      switch (ev) {
+        case TokenEvent(:final text):
+          raw.write(text);
+          emit(StepStreaming(1, answer: raw.toString(), raw: raw.toString()));
+        case DoneEvent():
+          stats = ev.stats;
+          reason = ev.reason;
+          error = ev.error;
+      }
+    }
+    if (stats != null) emit(MetricsUpdate(stats));
+    if (reason == FinishReason.error) {
+      emit(AgentFinished(AgentStopReason.error, message: error ?? 'Fehler bei der Generierung'));
+      return;
+    }
+    emit(FinalAnswer(raw.toString().trim(),
+        truncated: reason == FinishReason.maxTokens || reason == FinishReason.contextFull));
+    emit(AgentFinished(reason == FinishReason.stopped ? AgentStopReason.stopped : AgentStopReason.answered));
+  }
+
+  // -------------------------------------------------------------- Agenten-Modus
+
+  Future<void> _runAgent(List<ChatMessage> history, String input, ToolContext ctx,
+      void Function(AgentEvent) emit) async {
+    final system = buildSystemPrompt(ctx);
+    final scratch = <ChatMessage>[];
+    final grammar = AgentGrammar.build(tools);
+    final finalOnly = AgentGrammar.build(tools, allowTools: false);
+    String? lastCall;
+
+    String? hint; // einmaliger Hinweis an das Modell (nicht Teil des Verlaufs)
+
+    for (var step = 1; step <= maxSteps + 1; step++) {
+      if (_stopped) {
+        emit(AgentFinished(AgentStopReason.stopped));
+        return;
+      }
+      final forceFinal = step > maxSteps;
+      if (forceFinal) {
+        hint = 'Schrittlimit erreicht. Gib jetzt mit den vorhandenen Informationen die final_answer.';
+      }
+      emit(StepStarted(step));
+
+      final prompt = await _fitPrompt(
+        system: system,
+        history: history,
+        input: input,
+        scratch: [...scratch, if (hint != null) ChatMessage('user', hint)],
+        reserve: maxTokensPerStep,
+      );
+      hint = null;
+
+      final raw = StringBuffer();
+      GenerationStats? stats;
+      var reason = FinishReason.done;
+      String? error;
+      await for (final ev in engine.generate(prompt,
+          grammar: forceFinal ? finalOnly : grammar, sampling: sampling, maxTokens: maxTokensPerStep)) {
+        switch (ev) {
+          case TokenEvent(:final text):
+            raw.write(text);
+            final r = raw.toString();
+            emit(StepStreaming(step,
+                thought: extractPartialJsonString(r, 'thought'),
+                answer: extractPartialJsonString(r, 'final_answer'),
+                raw: r));
+          case DoneEvent():
+            stats = ev.stats;
+            reason = ev.reason;
+            error = ev.error;
+        }
+      }
+      if (stats != null) emit(MetricsUpdate(stats));
+      final text = raw.toString();
+
+      if (reason == FinishReason.stopped || _stopped) {
+        final partial = extractPartialJsonString(text, 'final_answer');
+        if (partial != null && partial.isNotEmpty) emit(FinalAnswer(partial, truncated: true));
+        emit(AgentFinished(AgentStopReason.stopped));
+        return;
+      }
+      if (reason == FinishReason.error) {
+        emit(AgentFinished(AgentStopReason.error, message: error ?? 'Fehler bei der Generierung'));
+        return;
+      }
+
+      Map<String, dynamic>? obj;
+      try {
+        final d = jsonDecode(text);
+        if (d is Map<String, dynamic>) obj = d;
+      } on FormatException {
+        obj = null;
+      }
+
+      if (obj == null) {
+        // abgeschnitten (maxTokens / Context voll)
+        final partial = extractPartialJsonString(text, 'final_answer');
+        if (partial != null && partial.isNotEmpty) {
+          emit(FinalAnswer(partial, thought: extractPartialJsonString(text, 'thought'), truncated: true));
+          emit(AgentFinished(AgentStopReason.answered));
+          return;
+        }
+        // abgeschnittene Ausgabe nicht in den Verlauf übernehmen
+        hint = 'Deine letzte Antwort war zu lang und wurde abgeschnitten. '
+            'Antworte kürzer mit genau einem JSON-Objekt.';
+        continue;
+      }
+
+      final thought = (obj['thought'] ?? '').toString();
+      if (obj.containsKey('final_answer')) {
+        emit(FinalAnswer(obj['final_answer'].toString(), thought: thought));
+        emit(AgentFinished(forceFinal ? AgentStopReason.stepLimit : AgentStopReason.answered));
+        return;
+      }
+
+      final toolName = (obj['action'] ?? '').toString();
+      final args = (obj['args'] is Map) ? Map<String, dynamic>.from(obj['args'] as Map) : <String, dynamic>{};
+      emit(ToolCalled(step, toolName, args, thought));
+      scratch.add(ChatMessage('assistant', jsonEncode(obj)));
+
+      final callKey = '$toolName ${jsonEncode(args)}';
+      String observation;
+      var isError = false;
+      final sw = Stopwatch()..start();
+      if (callKey == lastCall) {
+        observation = 'Du hast dieses Tool gerade mit denselben Argumenten aufgerufen. '
+            'Nutze das bisherige Ergebnis und gib die final_answer.';
+        isError = true;
+      } else {
+        final tool = tools.where((t) => t.name == toolName).firstOrNull;
+        if (tool == null) {
+          observation = 'Unbekanntes Tool "$toolName".';
+          isError = true;
+        } else {
+          try {
+            observation = await tool.run(args, ctx).timeout(toolTimeout);
+          } on TimeoutException {
+            observation = 'Fehler: Zeitüberschreitung nach ${toolTimeout.inSeconds} s.';
+            isError = true;
+          } catch (e) {
+            observation = 'Fehler: $e';
+            isError = true;
+          }
+        }
+      }
+      lastCall = callKey;
+      sw.stop();
+      if (observation.length > observationLimit) {
+        observation = '${observation.substring(0, observationLimit)}\n[… gekürzt]';
+      }
+      emit(ToolResult(step, toolName, observation, isError: isError, duration: sw.elapsed));
+      scratch.add(ChatMessage('user', 'Beobachtung ($toolName):\n$observation'));
+    }
+    emit(AgentFinished(AgentStopReason.stepLimit,
+        message: 'Das Modell hat nach ${maxSteps + 1} Schritten keine gültige Antwort geliefert.'));
+  }
+
+  /// Baut den Prompt und kürzt, bis er in den Context passt:
+  /// 1. älteste Verlaufsnachrichten, 2. älteste Agenten-Schritte (paarweise,
+  /// der letzte Schritt bleibt), 3. lange Inhalte. System-Prompt und
+  /// Nutzereingabe bleiben immer erhalten.
+  Future<String> _fitPrompt({
+    required String system,
+    required List<ChatMessage> history,
+    required String input,
+    required List<ChatMessage> scratch,
+    required int reserve,
+  }) async {
+    final budget = engine.contextSize - reserve - 16;
+    final hist = List<ChatMessage>.of(history);
+    final work = List<ChatMessage>.of(scratch);
+    var inputText = input;
+    var shortenedOnce = false;
+    var summarized = false;
+    while (true) {
+      final msgs = [
+        ChatMessage('system', system),
+        ...hist,
+        ChatMessage('user', inputText),
+        if (summarized)
+          const ChatMessage('user', '[Frühere Schritte wurden aus Platzgründen gekürzt.]'),
+        ...work,
+      ];
+      final prompt = await engine.formatChat(msgs);
+      final n = await engine.countTokens(prompt);
+      if (n <= budget) return prompt;
+
+      if (hist.isNotEmpty) {
+        hist.removeAt(0);
+        continue;
+      }
+      // ältesten Schritt (assistant + Beobachtung) entfernen, der letzte bleibt
+      if (work.length > 2) {
+        work.removeAt(0);
+        if (work.length > 2 && work.first.role == 'user') work.removeAt(0);
+        summarized = true;
+        continue;
+      }
+      if (!shortenedOnce) {
+        shortenedOnce = true;
+        String cut(String t) => t.length > 1200 ? '${t.substring(0, 1000)}\n[… gekürzt]' : t;
+        for (var i = 0; i < work.length; i++) {
+          work[i] = ChatMessage(work[i].role, cut(work[i].content));
+        }
+        inputText = cut(inputText);
+        continue;
+      }
+      throw EngineException(
+          'Die Anfrage ist zu lang für das Context-Fenster ($n Tokens, Budget $budget). '
+          'Bitte kürzen oder einen größeren Context wählen.');
+    }
+  }
+}

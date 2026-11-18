@@ -1,0 +1,59 @@
+// Baut libagent_engine.so (llama.cpp + C-Wrapper) mit dem Android NDK.
+// scripts/patch_platforms.py gleicht die AGP-Version an die App an.
+
+group = "io.t24.agent_engine"
+version = "1.0"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:9.3.1")
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace = "io.t24.agent_engine"
+    compileSdk = 36
+    ndkVersion = android.ndkVersion
+
+    externalNativeBuild {
+        cmake {
+            path = "../src/CMakeLists.txt"
+            // llama.cpp braucht CMake >= 3.18; 3.22.1 ist über den SDK-Manager verfügbar
+            version = "3.22.1"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        minSdk = 24
+        ndk {
+            // arm64 für echte Geräte, x86_64 für den Emulator
+            abiFilters "arm64-v8a", "x86_64"
+        }
+        externalNativeBuild {
+            cmake {
+                // Auch Debug-Builds optimieren, sonst ist die Inferenz extrem langsam
+                arguments "-DCMAKE_BUILD_TYPE=Release"
+                cppFlags "-O3"
+                cFlags "-O3"
+            }
+        }
+    }
+}
