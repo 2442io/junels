@@ -10,6 +10,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.13.0', [
+    'Werkzeuge nur noch, wenn die Nachricht sie braucht – „Hi“ oder normale Fragen werden direkt beantwortet (viel schneller, keine unnötige Websuche)',
+    'Rechenfragen („15 % von 2.340 €“) werden sofort exakt berechnet',
+    'Rechner versteht Prozent, Euro-Beträge und Tausenderpunkte',
+  ]),
   ('1.12.0', [
     'Dauer jeder Antwort wird angezeigt (Sekunden/Minuten)',
     'Unter der letzten Antwort: was der Agent gerade tut und seit wann (Laden, Lesen, Werkzeug, Schreiben)',

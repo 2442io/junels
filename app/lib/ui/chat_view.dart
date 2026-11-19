@@ -443,6 +443,7 @@ class _Sources extends StatelessWidget {
     IconData icon(String k) => switch (k) {
           'web' => Icons.public,
           'doc' => Icons.description_outlined,
+          'tool' => Icons.calculate_outlined,
           _ => Icons.memory,
         };
     String label(SourceRef r) => switch (r.kind) {

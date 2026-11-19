@@ -1304,16 +1304,77 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  /// Gesprächsmodus: Werkzeuge nur, wenn die Frage sie offensichtlich braucht.
-  /// Sonst direkte Antwort ohne Agenten-Schleife – deutlich schneller.
-  List<AgentTool> voiceToolsFor(String input) {
+  /// Auslöser je Werkzeug: Nur wenn die Nachricht danach klingt, bekommt das Modell
+  /// das Werkzeug zu sehen. Für „Hi“ oder normale Fragen gibt es gar keine Werkzeuge –
+  /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
+  static final _toolTriggers = <String, RegExp>{
+    'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
+    'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal)|recherch|nachrichten|news|wetter|'
+        r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
+    'calculator': RegExp(r'\d\s*(%|prozent|[+*/^×÷]|mal\b|geteilt|plus|minus|hoch)|rechne|berechne|wurzel|zins'),
+    'datetime': RegExp(r'uhrzeit|wie spät|datum|wochentag|welcher tag|kalenderwoche|wie lange (noch )?bis|in \d+ tagen'),
+    'remember': RegExp(r'merk dir|merke dir|vergiss|behalte|notier dir|erinnere dich|was weißt du über mich'),
+    'send_notification': RegExp(r'erinner|wecker|benachrichtig|push|in \d+ (minuten|stunden)|um \d{1,2}[:.]\d{2}|morgen um'),
+    'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
+    'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
+    'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
+    'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
+    'generate_image': RegExp(r'(erstell|generier|mal|zeichne|erzeug)\w* .*\b(bild|foto|illustration|logo|grafik)|bild von|zeichne|male mir'),
+    'knowledge_search': RegExp(r'wissensbasis|meine(n)? (dokument|unterlagen|quellen|notizen)|laut (dem|der|meinen)|im dokument'),
+    'search_history': RegExp(r'früher|letztes mal|haben wir (schon|mal)|hatte ich|verlauf|vorhin|gestern (gesagt|gefragt)'),
+    'read_file': RegExp(r'datei|file|\.txt|\.csv|\.md\b'),
+    'text_search': RegExp(r'such(e|en)? (in|im) (der|dem|den) (datei|text)'),
+    'json_query': RegExp(r'\bjson\b'),
+    'write_artifact': RegExp(r'\bhtml\b|webseite (bauen|erstellen)|artefakt|code (für|schreiben)|skript'),
+  };
+
+  /// Werkzeuge passend zur Nachricht (Chat und Gespräch).
+  List<AgentTool> toolsFor(String input, {bool hasImages = false, bool hasDocs = false}) {
     final t = input.toLowerCase();
-    final needs = RegExp(
-            r'https?://|www\.|\.(com|at|de|li|org|net|io)\b|internet|im netz|online|google|such|recherch|nachrichten|news|'
-            r'wetter|aktuell|heute .*(preis|kurs)|uhrzeit|wie spät|datum|wochentag|welcher tag|rechne|erinner|wecker|merk dir|merke dir|vergiss|notier|speicher|'
-            r'pdf|präsentation|folien|diagramm|bild |erzeug|erstell|dokument|datei|wissensbasis|prompt')
-        .hasMatch(t);
-    return needs ? activeTools : const [];
+    final words = RegExp(r'[\p{L}\d]{5,}', unicode: true).allMatches(t).map((m) => m.group(0)!).toSet();
+    return [
+      for (final tool in activeTools)
+        if (_toolTriggers[tool.name]?.hasMatch(t) ??
+            (tool.name == 'look_at_image'
+                ? hasImages
+                : tool.name.contains('__')
+                    // MCP: wenn Wörter aus Name/Beschreibung in der Nachricht vorkommen
+                    ? words.any((w) => '${tool.name} ${tool.title} ${tool.description}'.toLowerCase().contains(w))
+                    : false))
+          tool
+        else if (hasDocs && (tool.name == 'knowledge_search' || tool.name == 'read_file'))
+          tool,
+    ];
+  }
+
+  @Deprecated('toolsFor verwenden')
+  List<AgentTool> voiceToolsFor(String input) => toolsFor(input);
+
+  /// Reine Rechenfrage („Was ist 15 % von 2.340 €?“) sofort ausrechnen.
+  static String? quickCalc(String input) {
+    var e = input.trim().toLowerCase();
+    if (!RegExp(r'\d').hasMatch(e) || e.length > 120) return null;
+    e = e
+        .replaceFirst(RegExp(r'^(hey |hi |bitte )?(was|wie ?viel|wieviel) (ist|sind|ergibt|macht|gibt)\s+'), '')
+        .replaceFirst(RegExp(r'^(rechne|berechne|kalkuliere)( mal| bitte)?:?\s+'), '')
+        .replaceAll(RegExp(r'[?!=]+\s*$'), '')
+        .replaceAll(RegExp(r'\bmal\b'), '*')
+        .replaceAll(RegExp(r'\bgeteilt durch\b|\bdurch\b'), '/')
+        .replaceAll(RegExp(r'\bplus\b'), '+')
+        .replaceAll(RegExp(r'\bminus\b'), '-')
+        .trim();
+    if (!RegExp(r'^[\d\s.,+\-*/^()%€$a-zäöü]*$').hasMatch(e)) return null;
+    if (!RegExp(r'[+\-*/^%]|prozent|von').hasMatch(e)) return null;
+    if (RegExp(r'[a-zäöü]{3,}').allMatches(e).any((m) => !const {'von', 'prozent', 'eur', 'euro', 'of'}.contains(m.group(0)))) {
+      return null;
+    }
+    try {
+      final v = CalculatorTool.evaluate(e);
+      if (v.isNaN || v.isInfinite) return null;
+      return '$e = ${CalculatorTool.format(v)}';
+    } catch (_) {
+      return null;
+    }
   }
 
   /// true, solange der System-Prompt nach dem Laden vorgerechnet wird
@@ -1551,6 +1612,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           for (final m in RegExp(r'\[\d+\] (.+?) – (\S+)').allMatches(obs)) {
             addKb(m.group(1)!, m.group(2)!);
           }
+        case 'calculator':
+          add(SourceRef('tool', 'Rechner'));
+        case 'datetime':
+          add(SourceRef('tool', 'Uhr des Geräts'));
         case 'read_file' || 'text_search' || 'json_query':
           final n = st.args?['name']?.toString() ?? st.args?['file']?.toString();
           if (n != null && n.isNotEmpty) add(SourceRef('doc', n));
@@ -1576,9 +1641,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     ];
     // Gesprächsmodus: nur die letzten Wechsel mitschicken (kurzer Prompt = schnelle Antwort)
     if (voice && history.length > 8) history = history.sublist(history.length - 8);
-    var runTools = voice ? voiceToolsFor(input) : activeTools;
-    if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
     var docs = List<Attachment>.of(attachments);
+    var runTools = toolsFor(input,
+        hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
+    if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
     final user = ChatEntry(
         role: 'user',
         text: input.trim(),
@@ -1594,8 +1660,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     conv.updated = DateTime.now();
 
     final ctxSize = eng.contextSize;
-    final system = _systemText(voice: voice, tools: runTools);
     var turnInput = input.trim();
+    // reine Rechenfrage: exakt ausrechnen, Modell formuliert nur noch die Antwort
+    final calc = docs.isEmpty ? quickCalc(turnInput) : null;
+    if (calc != null) {
+      runTools = const [];
+      turnInput = 'Exakt berechnet (Rechner): $calc\n\nFrage des Nutzers: $turnInput\n'
+          'Antworte kurz mit diesem Ergebnis.';
+    }
+    final system = _systemText(voice: voice, tools: runTools);
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
     final ragHits = rag.isEmpty
         ? const <KnowledgeHit>[]
@@ -1744,6 +1817,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       answer.sources
         ..clear()
         ..addAll(_collectSources(answer, docs, ragHits));
+      if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));
       if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);
       running = false;

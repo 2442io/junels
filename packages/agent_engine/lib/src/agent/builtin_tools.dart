@@ -214,7 +214,22 @@ class CalculatorTool extends AgentTool {
   }
 
   static double evaluate(String expression) {
-    var e = expression.replaceAll('×', '*').replaceAll('÷', '/').replaceAll(';', ',');
+    var e = expression
+        .replaceAll('×', '*')
+        .replaceAll('÷', '/')
+        .replaceAll(';', ',')
+        .replaceAll(RegExp(r'[€$£]|EUR|USD|Euro', caseSensitive: false), '')
+        .replaceAll(RegExp(r'(?<=\d)[\u00a0\u202f ](?=\d{3}\b)'), ''); // 2 340 → 2340
+    // Tausenderpunkte ("2.340", "1.250.000") – nur bei genau 3 Ziffern danach und ohne Dezimalteil
+    e = e.replaceAllMapped(RegExp(r'\b\d{1,3}(?:\.\d{3})+(?![\d.])(?=\s*(?:,\d|[^\d.]|$))'), (m) {
+      return m[0]!.replaceAll('.', '');
+    });
+    // Prozent: "15 % von 2340" / "15% of 2340" / "15 Prozent von 2340" → 15/100*2340
+    e = e.replaceAllMapped(
+        RegExp(r'(\d+(?:[.,]\d+)?)\s*(?:%|prozent)\s*(?:von|of|aus)\s*', caseSensitive: false), (m) => '(${m[1]}/100)*');
+    e = e.replaceAll(RegExp(r'prozent', caseSensitive: false), '%');
+    // "N%" am Ende oder vor Operator/Klammer = N/100 (sonst bleibt % Modulo)
+    e = e.replaceAllMapped(RegExp(r'(\d+(?:[.,]\d+)?)\s*%(?=\s*($|[+\-*/)]))'), (m) => '(${m[1]}/100)');
     // Dezimalkomma ("1,5") nur, wenn keine Funktion mit Argumentliste vorkommt
     if (!RegExp(r'[a-zA-Z]\s*\(').hasMatch(e)) {
       e = e.replaceAllMapped(RegExp(r'(\d),(\d)'), (m) => '${m[1]}.${m[2]}');
