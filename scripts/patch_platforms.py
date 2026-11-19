@@ -62,6 +62,10 @@ def patch_android():
         perms = [
             ("android.permission.INTERNET", "Modell-Downloads und Websuche (nur nach Freigabe)"),
             ("android.permission.RECORD_AUDIO", "Spracheingabe mit Whisper (lokal)"),
+            ("android.permission.FOREGROUND_SERVICE", "Agent arbeitet im Hintergrund weiter"),
+            ("android.permission.FOREGROUND_SERVICE_DATA_SYNC", "Agent/Downloads im Hintergrund"),
+            ("android.permission.WAKE_LOCK", "CPU wach halten, solange der Agent rechnet"),
+            ("android.permission.POST_NOTIFICATIONS", "Hinweis, dass der Agent im Hintergrund arbeitet"),
         ]
         for name, why in perms:
             if f'android:name="{name}"' not in s:
@@ -70,9 +74,21 @@ def patch_android():
         s = re.sub(r'android:label="[^"]*"', f'android:label="{DISPLAY_NAME}"', s, count=1)
         if "android:largeHeap" not in s:
             s = s.replace("<application", '<application\n        android:largeHeap="true"', 1)
+        if ".AgentService" not in s:
+            s = s.replace("</application>",
+                          '    <service android:name=".AgentService" android:exported="false"\n'
+                          '            android:foregroundServiceType="dataSync" />\n    </application>', 1)
         return s
 
     edit(android / "app/src/main/AndroidManifest.xml", manifest)
+
+    # Hintergrunddienst: MainActivity (MethodChannel) + AgentService ersetzen die Vorlage
+    src = ROOT / "scripts/android"
+    for kt in sorted(android.glob("app/src/main/kotlin/**/MainActivity.kt")):
+        pkg = re.search(r"^package\s+([\w.]+)", kt.read_text(), re.M).group(1)
+        for name in ("MainActivity.kt", "AgentService.kt"):
+            (kt.parent / name).write_text((src / name).read_text().replace("__PACKAGE__", pkg))
+        log(f"Hintergrunddienst eingesetzt ({pkg})")
 
     def gradle_kts(s):
         if "abiFilters" not in s:
@@ -152,6 +168,25 @@ def patch_macos():
     if not mac.exists():
         return
     print("macOS")
+
+    def app_delegate(s):
+        if "_exit(0)" in s:
+            return s
+        hook = '''
+  // Beim Beenden räumen llama.cpp/Metal in statischen Destruktoren auf und können dabei
+  // abstürzen ("App wurde unerwartet beendet"). Alles ist bereits gespeichert →
+  // Prozess direkt beenden, ohne diese Aufräumphase.
+  override init() {
+    super.init()
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.willTerminateNotification, object: nil, queue: nil
+    ) { _ in Darwin._exit(0) }
+  }
+'''
+        i = s.rfind("}")
+        return s[:i] + hook + s[i:]
+
+    edit(mac / "Runner/AppDelegate.swift", app_delegate)
     def common(d):
         d["com.apple.security.app-sandbox"] = True
         d["com.apple.security.files.user-selected.read-write"] = True

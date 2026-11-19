@@ -154,6 +154,7 @@ class _ModelSection extends StatelessWidget {
           for (final m in app.models)
             _ModelTile(
               model: m,
+              tooBig: app.loadedModel?.id != m.id && !app.modelFitsMemory(m),
               loaded: app.loadedModel?.id == m.id,
               busy: busy,
               onLoad: () => app.loadModel(m),
@@ -219,6 +220,7 @@ class _ModelSection extends StatelessWidget {
 class _ModelTile extends StatelessWidget {
   const _ModelTile({
     required this.model,
+    this.tooBig = false,
     required this.loaded,
     required this.busy,
     required this.onLoad,
@@ -226,6 +228,7 @@ class _ModelTile extends StatelessWidget {
     required this.onDelete,
   });
   final StoredModel model;
+  final bool tooBig;
   final bool loaded;
   final bool busy;
   final VoidCallback onLoad;
@@ -242,9 +245,15 @@ class _ModelTile extends StatelessWidget {
       selected: loaded,
       selectedTileColor: scheme.secondaryContainer.withValues(alpha: 0.5),
       leading: Icon(loaded ? Icons.memory : Icons.memory_outlined, color: loaded ? scheme.primary : null),
-      title: Text(model.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${model.quantization} · ${model.sizeLabel}'),
-      onTap: busy || loaded ? null : onLoad,
+      iconColor: tooBig ? scheme.outline : null,
+      title: Text(model.displayName,
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: tooBig ? scheme.outline : null)),
+      subtitle: Text(
+          tooBig
+              ? '${model.sizeLabel} · zu groß für den Arbeitsspeicher'
+              : '${model.quantization} · ${model.sizeLabel}',
+          style: TextStyle(color: tooBig ? scheme.outline : null)),
+      onTap: busy || loaded || tooBig ? null : onLoad,
       trailing: PopupMenuButton<String>(
         enabled: !busy,
         onSelected: (v) => switch (v) {
@@ -254,7 +263,7 @@ class _ModelTile extends StatelessWidget {
           _ => null,
         },
         itemBuilder: (_) => [
-          if (!loaded) const PopupMenuItem(value: 'load', child: Text('Laden')),
+          if (!loaded && !tooBig) const PopupMenuItem(value: 'load', child: Text('Laden')),
           if (loaded) const PopupMenuItem(value: 'unload', child: Text('Entladen')),
           const PopupMenuItem(value: 'delete', child: Text('Vom Gerät löschen')),
         ],

@@ -239,19 +239,31 @@ class Recommendation {
 
 /// Bewertet alle Katalogeinträge einer Art für das Gerät.
 /// Reihenfolge: Empfehlung zuerst, dann passende, dann zu große.
-List<Recommendation> recommendFor(ModelKind kind, DeviceProfile device, {required int freeDiskBytes}) {
+List<Recommendation> recommendFor(ModelKind kind, DeviceProfile device,
+    {required int freeDiskBytes, int? availableMemory}) {
   final entries = modelCatalog.where((e) => e.kind == kind).toList();
   final result = <Recommendation>[];
   CatalogEntry? best;
 
-  // Empfehlung: Eintrag mit idealClass == Geräteklasse; sonst der größte passende
-  for (final e in entries) {
-    if (e.desktopOnly && device.isMobile) continue;
-    if (e.idealClass == device.deviceClass) best ??= e;
+  // Arbeitsspeicher: gleiche Rechnung wie beim Laden, damit nichts empfohlen wird,
+  // das danach abgelehnt wird. Stimmen (Piper) sind klein und laufen immer.
+  final budget = kind == ModelKind.tts ? 1 << 62 : device.memoryBudget(availableMemory);
+  bool memOk(CatalogEntry e) => DeviceProfile.estimateRuntimeBytes(e.sizeBytes) <= budget;
+  bool runs(CatalogEntry e) =>
+      e.minClass.index <= device.deviceClass.index && !(e.desktopOnly && device.isMobile) && memOk(e);
+
+  // Empfehlung: Eintrag mit idealClass == Geräteklasse; passt der nicht in den
+  // Arbeitsspeicher, die Empfehlung der nächstkleineren Klasse; sonst der größte passende
+  for (var c = device.deviceClass.index; c >= 0 && best == null; c--) {
+    for (final e in entries) {
+      if (e.idealClass?.index == c && runs(e)) {
+        best = e;
+        break;
+      }
+    }
   }
-  best ??= entries
-      .where((e) => e.minClass.index <= device.deviceClass.index && !(e.desktopOnly && device.isMobile))
-      .fold<CatalogEntry?>(null, (a, b) => a == null || b.sizeBytes > a.sizeBytes ? b : a);
+  best ??= entries.where(runs).fold<CatalogEntry?>(null, (a, b) => a == null || b.sizeBytes > a.sizeBytes ? b : a);
+  String gb(int b) => (b / (1 << 30)).toStringAsFixed(1);
 
   for (final e in entries) {
     final needsSpace = e.sizeBytes * (e.isArchive ? 2 : 1) + 200 * _mb;
@@ -265,6 +277,10 @@ List<Recommendation> recommendFor(ModelKind kind, DeviceProfile device, {require
       reason = e.desktopOnly && device.isMobile
           ? 'Für den Mac gedacht'
           : 'Braucht Geräteklasse ${e.minClass.label} oder mehr';
+    } else if (!memOk(e)) {
+      s = Suitability.tooBig;
+      reason = 'Braucht ca. ${gb(DeviceProfile.estimateRuntimeBytes(e.sizeBytes))} GB Arbeitsspeicher, '
+          'nutzbar sind ca. ${gb(budget)} GB';
     } else if (identical(e, best)) {
       s = Suitability.recommended;
       reason = 'Empfohlen für dieses Gerät';

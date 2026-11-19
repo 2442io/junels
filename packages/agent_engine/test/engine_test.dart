@@ -265,7 +265,7 @@ Future<void> main() async {
     final m = DeviceProfile.detect(totalMemoryOverride: 8 * gb, cpuOverride: 8);
     final l = DeviceProfile.detect(totalMemoryOverride: 16 * gb, cpuOverride: 10);
     String best(ModelKind k, DeviceProfile d, [int free = 100 * gb]) =>
-        recommendFor(k, d, freeDiskBytes: free).first.entry.id;
+        recommendFor(k, d, freeDiskBytes: free, availableMemory: 0).first.entry.id;
     final xl = DeviceProfile.detect(totalMemoryOverride: 128 * gb, cpuOverride: 16);
     check(best(ModelKind.llm, s) == 'qwen3.5-2b', 'S → Qwen 3.5 2B');
     check(best(ModelKind.llm, m) == 'qwen3.5-4b', 'M → Qwen 3.5 4B');
@@ -284,6 +284,16 @@ Future<void> main() async {
     final tooBig = recommendFor(ModelKind.llm, s, freeDiskBytes: 100 * gb);
     check(tooBig.firstWhere((r) => r.entry.id == 'qwen3.5-9b').suitability == Suitability.tooBig,
         '9B auf S als zu groß markiert');
+    // Handy mit 10.9 GB, aber nur 3.6 GB frei: Budget 40 % → 9B und 12B ausgegraut
+    final phone = DeviceProfile.detect(totalMemoryOverride: (10.9 * gb).round(), cpuOverride: 8, mobileOverride: true);
+    final pr = recommendFor(ModelKind.llm, phone, freeDiskBytes: 100 * gb, availableMemory: (3.6 * gb).round());
+    Suitability su(String id) => pr.firstWhere((r) => r.entry.id == id).suitability;
+    check(su('qwen3.5-9b') == Suitability.tooBig && su('gemma-4-12b') == Suitability.tooBig,
+        'Handy: zu große Modelle nach Arbeitsspeicher ausgegraut');
+    check(pr.first.suitability == Suitability.recommended &&
+            DeviceProfile.estimateRuntimeBytes(pr.first.entry.sizeBytes) <= phone.memoryBudget((3.6 * gb).round()),
+        'Handy: Empfehlung passt in den Speicher (${pr.first.entry.id})');
+    check(pr.first.entry.id == 'qwen3.5-4b', 'Handy: Empfehlung fällt auf die M-Empfehlung zurück');
     check(modelCatalog.map((e) => e.id).toSet().length == modelCatalog.length, 'IDs eindeutig');
     check(modelCatalog.every((e) => e.url.startsWith('https://') && e.url.endsWith(e.fileName)),
         'URLs enden auf Dateiname');

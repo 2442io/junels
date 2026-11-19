@@ -670,9 +670,8 @@ class _InputBarState extends State<_InputBar> {
                         ],
                       ),
                     ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
+                  LayoutBuilder(builder: (context, box) {
+                    final tools = <Widget>[
                       IconButton(
                         tooltip: 'Datei anhängen (TXT, MD, CSV, JSON)',
                         icon: const Icon(Icons.attach_file),
@@ -698,39 +697,58 @@ class _InputBarState extends State<_InputBar> {
                         icon: const Icon(Icons.record_voice_over_outlined),
                         onPressed: ready && !app.running ? () => openConversation(context) : null,
                       ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: TextField(
-                          controller: _ctrl,
-                          focusNode: _focus,
-                          minLines: 1,
-                          maxLines: 6,
-                          enabled: ready,
-                          textInputAction: TextInputAction.newline,
-                          decoration: InputDecoration(
-                            hintText: ready ? 'Nachricht an den Agenten …' : 'Zuerst ein Modell laden',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          ),
-                        ),
+                    ];
+                    final field = TextField(
+                      controller: _ctrl,
+                      focusNode: _focus,
+                      minLines: 1,
+                      maxLines: 6,
+                      enabled: ready,
+                      textInputAction: TextInputAction.newline,
+                      decoration: InputDecoration(
+                        hintText: ready ? 'Nachricht an den Agenten …' : 'Zuerst ein Modell laden',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: app.running
-                            ? IconButton.filledTonal(
-                                tooltip: 'Stopp',
-                                icon: const Icon(Icons.stop_rounded),
-                                onPressed: app.stop,
-                              )
-                            : IconButton.filled(
-                                tooltip: 'Senden',
-                                icon: const Icon(Icons.arrow_upward_rounded),
-                                onPressed: ready ? _send : null,
-                              ),
-                      ),
-                    ],
-                  ),
+                    );
+                    final sendButton = SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: app.running
+                          ? IconButton.filledTonal(
+                              tooltip: 'Stopp',
+                              icon: const Icon(Icons.stop_rounded),
+                              onPressed: app.stop,
+                            )
+                          : IconButton.filled(
+                              tooltip: 'Senden',
+                              icon: const Icon(Icons.arrow_upward_rounded),
+                              onPressed: ready ? _send : null,
+                            ),
+                    );
+                    final inputRow = Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [Expanded(child: field), const SizedBox(width: 8), sendButton],
+                    );
+                    // Schmale Bildschirme (Handy): Icons in eigener Zeile über einer durchgehenden Eingabe
+                    if (box.maxWidth < 640) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(children: [
+                            for (final w in tools)
+                              IconTheme.merge(data: const IconThemeData(size: 22), child: w),
+                          ]),
+                          const SizedBox(height: 2),
+                          inputRow,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [...tools, const SizedBox(width: 4), Expanded(child: inputRow)],
+                    );
+                  }),
                 ],
               ),
             ),

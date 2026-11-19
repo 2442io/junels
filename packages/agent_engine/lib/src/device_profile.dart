@@ -40,10 +40,10 @@ class DeviceProfile {
 
   /// Ermittelt das Profil des aktuellen Geräts.
   /// [isTablet] nur relevant für die Anzeige; die Klasse hängt am RAM.
-  static DeviceProfile detect({int? totalMemoryOverride, int? cpuOverride}) {
+  static DeviceProfile detect({int? totalMemoryOverride, int? cpuOverride, bool? mobileOverride}) {
     final total = totalMemoryOverride ?? LlamaEngine.totalMemory();
     final cpus = cpuOverride ?? Platform.numberOfProcessors;
-    final mobile = Platform.isAndroid || Platform.isIOS;
+    final mobile = mobileOverride ?? (Platform.isAndroid || Platform.isIOS);
     final apple = Platform.isIOS || Platform.isMacOS;
 
     final cls = total <= 4.5 * _gb
@@ -93,18 +93,27 @@ class DeviceProfile {
         quantizeKvCache: quantizeKv,
       );
 
+  /// Arbeitsspeicher, den ein Modell realistisch nutzen darf. Dieselbe Rechnung gilt
+  /// für die Empfehlung im Systemcheck und für die Prüfung beim Laden.
+  /// Das System räumt beim Laden Platz frei (Hintergrund-Apps, Cache), daher zählt
+  /// mindestens ein fester Anteil des Gesamt-RAM: 40 % mobil, 60 % am Rechner.
+  int memoryBudget([int? available]) {
+    final reported = available ?? LlamaEngine.availableMemory();
+    final floor = (totalMemory * (isMobile ? 0.4 : 0.6)).round();
+    return math.max(reported, floor);
+  }
+
+  /// Grobe Schätzung des Arbeitsspeichers für eine Modelldatei dieser Größe
+  /// (Gewichte + KV-Cache bei üblichem Context + Laufzeit).
+  static int estimateRuntimeBytes(int fileSize) => (fileSize * 1.15).round() + 300 * 1024 * 1024;
+
   /// Prüft, ob Modell + KV-Cache in den Speicher passen.
   FitResult checkFit(GgufInfo model, int contextSize, {int? availableOverride}) {
     final kv = model.estimateKvCacheBytes(contextSize, quantized: quantizeKv);
     const overhead = 300 * 1024 * 1024; // Rechenpuffer, Laufzeit
     final required = model.fileSize + kv + overhead;
 
-    final reported = availableOverride ?? LlamaEngine.availableMemory();
-    // Desktop: freier Speicher wird vom System dynamisch freigeräumt,
-    // daher mindestens 60 % des Gesamt-RAM als Budget ansetzen.
-    final budget = isMobile
-        ? (reported > 0 ? reported : totalMemory ~/ 2)
-        : math.max(reported, (totalMemory * 0.6).round());
+    final budget = memoryBudget(availableOverride);
 
     final ratio = required / budget;
     if (ratio > 1.0) {

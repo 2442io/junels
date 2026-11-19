@@ -13,6 +13,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../data/models.dart';
 import '../data/storage.dart';
+import 'background_work.dart';
 import 'conversation_mode.dart';
 import 'memory_store.dart';
 import 'voice_service.dart';
@@ -159,10 +160,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // Mobile: Generierung anhalten, wenn die App in den Hintergrund geht
+  // Android arbeitet dank Vordergrunddienst weiter; iPadOS würde die App einfrieren,
+  // dort wird die Generierung sauber angehalten.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (device.isMobile && (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
+    if (Platform.isIOS && (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
       if (running) stop();
     }
   }
@@ -205,6 +207,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // ---------------------------------------------------------------- Modelle
 
   Future<GgufInfo> inspectModel(String path) => GgufInfo.read(path);
+
+  /// Passt ein geladenes Modell grob in den Arbeitsspeicher? (wie im Systemcheck)
+  bool modelFitsMemory(StoredModel m) =>
+      DeviceProfile.estimateRuntimeBytes(m.sizeBytes) <= device.memoryBudget(availableMemory);
 
   FitResult checkFit(GgufInfo info) => device.checkFit(info, device.clampContext(contextTarget, info));
 
@@ -347,7 +353,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   List<Recommendation> recommendations(ModelKind kind) =>
-      recommendFor(kind, device, freeDiskBytes: freeDisk);
+      recommendFor(kind, device, freeDiskBytes: freeDisk, availableMemory: LlamaEngine.availableMemory());
 
   /// Pfad, falls das Katalog-Modell installiert ist.
   String? installedPath(CatalogEntry e) {
@@ -371,6 +377,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final st = DownloadState(e);
     downloads[e.id] = st;
     notifyListeners();
+    unawaited(BackgroundWork.begin('dl-${e.id}', 'Lade ${e.name} herunter …'));
     try {
       final dir = switch (e.kind) {
         ModelKind.llm => storage.modelsDir.path,
@@ -419,6 +426,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       downloads.remove(e.id);
     } catch (err) {
       st.error = err.toString();
+    } finally {
+      unawaited(BackgroundWork.end('dl-${e.id}'));
     }
     refreshFreeDisk();
     notifyListeners();
@@ -898,6 +907,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
     _runner = runner;
     running = true;
+    unawaited(BackgroundWork.begin('agent', 'Agent schreibt eine Antwort …'));
     statusMessage = null;
     notifyListeners();
     try {
@@ -980,6 +990,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         ..addAll(_collectSources(answer, docs, ragHits));
       onAnswer?.call(answer.text, true);
       running = false;
+      unawaited(BackgroundWork.end('agent'));
       _runner = null;
       try {
         await WakelockPlus.disable();
