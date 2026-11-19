@@ -93,7 +93,10 @@ jobs:
             gh release create aktuell --title "Aktuelle Version" --notes "$NOTES" --target main && break
             sleep 10
           done
+          VER=$(grep '^version:' app/pubspec.yaml | awk '{print $2}')
+          python3 -c "import json,sys; v=sys.argv[1]; print(json.dumps({'version': v.split('+')[0], 'build': int(v.split('+')[1]), 'commit': sys.argv[2], 'date': sys.argv[3], 'notes': sys.argv[4]}))" "$VER" "${GITHUB_SHA::7}" "$(date -u '+%Y-%m-%d %H:%M')" "$(git log -1 --format=%s)" > dist/version-android.json
           gh release upload aktuell dist/Junels.apk server/junels-sync.php --clobber
+          gh release upload aktuell dist/version-android.json --clobber
           gh release edit aktuell --notes "$NOTES"
       - name: Release anhängen
         if: startsWith(github.ref, 'refs/tags/v')
@@ -165,7 +168,10 @@ jobs:
             gh release create aktuell --title "Aktuelle Version" --notes "$NOTES" --target main && break
             sleep 10
           done
+          VER=$(grep '^version:' app/pubspec.yaml | awk '{print $2}')
+          python3 -c "import json,sys; v=sys.argv[1]; print(json.dumps({'version': v.split('+')[0], 'build': int(v.split('+')[1]), 'commit': sys.argv[2], 'date': sys.argv[3], 'notes': sys.argv[4]}))" "$VER" "${GITHUB_SHA::7}" "$(date -u '+%Y-%m-%d %H:%M')" "$(git log -1 --format=%s)" > dist/version-macos.json
           gh release upload aktuell dist/Junels.dmg --clobber
+          gh release upload aktuell dist/version-macos.json --clobber
           gh release edit aktuell --notes "$NOTES"
       - name: Release anhängen
         if: startsWith(github.ref, 'refs/tags/v')

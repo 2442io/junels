@@ -10,6 +10,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.12.0', [
+    'Dauer jeder Antwort wird angezeigt (Sekunden/Minuten)',
+    'Unter der letzten Antwort: was der Agent gerade tut und seit wann (Laden, Lesen, Werkzeug, Schreiben)',
+    'Updates direkt in der App: Hinweis im Menü, Download und Installation mit einem Tipp',
+  ]),
   ('1.11.0', [
     'Abgleich zwischen Mac und Android: über den eigenen Server oder direkt im WLAN, Ende-zu-Ende verschlüsselt',
     'Protokoll: Fehler, Ladezeiten und Antwortzeiten einsehen, kopieren und teilen',

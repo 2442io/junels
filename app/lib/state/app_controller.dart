@@ -17,6 +17,7 @@ import '../data/storage.dart';
 import 'background_work.dart';
 import 'conversation_mode.dart';
 import 'sync_service.dart';
+import 'update_service.dart';
 import '../tools/chart_render.dart';
 import '../tools/save_prompt_tool.dart';
 import 'memory_store.dart';
@@ -85,6 +86,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   late final VoiceService voice;
   late final ConversationMode conversation = ConversationMode(this);
   late final SyncService sync = SyncService(this);
+  late final UpdateService updates = UpdateService(storage.root);
 
   /// Wird von der Oberfläche gesetzt: fragt den Nutzer nach Internetzugriff.
   Future<NetworkChoice> Function(String purpose)? consentHandler;
@@ -99,6 +101,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   // Lauf
   bool running = false;
+
+  /// Seit wann die aktuelle Antwort läuft bzw. das Modell lädt (für die Zeitanzeige).
+  DateTime? runStarted;
+  DateTime? loadStarted;
   AgentRunner? _runner;
   final Map<String, List<Attachment>> _attachments = {};
   GenerationStats? lastStats;
@@ -201,6 +207,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (!headless) unawaited(sync.init());
+      if (!headless) unawaited(updates.init());
 
       if (!headless && settings.autoLoadLastModel && settings.lastModelId != null) {
         final m = models.where((x) => x.id == settings.lastModelId).firstOrNull;
@@ -420,6 +427,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> loadModel(StoredModel m) async {
     if (status == EngineStatus.loading || running) return;
     status = EngineStatus.loading;
+    loadStarted = DateTime.now();
     statusMessage = 'Lade ${m.displayName} …';
     notifyListeners();
     try {
@@ -1597,6 +1605,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final runner = _makeRunner(eng, system, tools: runTools);
     _runner = runner;
     running = true;
+    runStarted = DateTime.now();
     unawaited(BackgroundWork.begin('agent', 'Agent schreibt eine Antwort …'));
     statusMessage = null;
     notifyListeners();
@@ -1735,8 +1744,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       answer.sources
         ..clear()
         ..addAll(_collectSources(answer, docs, ragHits));
+      if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);
       running = false;
+      runStarted = null;
       unawaited(BackgroundWork.end('agent'));
       _runner = null;
       try {

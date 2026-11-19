@@ -203,6 +203,7 @@ class ChatEntry {
     this.error,
     this.truncated = false,
     this.tokensPerSecond,
+    this.durationMs,
     this.viaVoice = false,
     List<SourceRef>? sources,
     List<String>? files,
@@ -219,6 +220,7 @@ class ChatEntry {
   String? error;
   bool truncated;
   double? tokensPerSecond;
+  int? durationMs; // wie lange die Antwort gedauert hat
   final bool viaVoice; // im Gesprächsmodus gesprochen
   final List<SourceRef> sources;
 
@@ -234,6 +236,7 @@ class ChatEntry {
         'error': error,
         'truncated': truncated,
         'tps': tokensPerSecond,
+        if (durationMs != null) 'ms': durationMs,
         'voice': viaVoice,
         if (sources.isNotEmpty) 'sources': sources.map((e) => e.toJson()).toList(),
         if (files.isNotEmpty) 'files': files,
@@ -250,6 +253,7 @@ class ChatEntry {
         error: j['error'] as String?,
         truncated: j['truncated'] as bool? ?? false,
         tokensPerSecond: (j['tps'] as num?)?.toDouble(),
+        durationMs: (j['ms'] as num?)?.toInt(),
         viaVoice: j['voice'] as bool? ?? false,
         time: DateTime.tryParse(j['time'] as String? ?? ''),
       );
@@ -529,4 +533,13 @@ class SavedPrompt {
         notify: j['notify'] as bool? ?? true,
         lastRun: DateTime.tryParse(j['lastRun'] as String? ?? ''),
       );
+}
+
+/// Dauer lesbar: "8 s", "1 min 5 s", "1 h 2 min".
+String formatDuration(int ms) {
+  final s = (ms / 1000).round();
+  if (ms < 10000) return '${(ms / 1000).toStringAsFixed(1).replaceAll('.', ',')} s';
+  if (s < 60) return '$s s';
+  if (s < 3600) return '${s ~/ 60} min ${s % 60} s';
+  return '${s ~/ 3600} h ${(s % 3600) ~/ 60} min';
 }

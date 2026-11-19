@@ -101,7 +101,10 @@ class _HomeShellState extends State<HomeShell> {
             ? null
             : IconButton(
                 tooltip: 'Menü',
-                icon: const Icon(Icons.menu),
+                icon: ValueListenableBuilder(
+                  valueListenable: app.updates.available,
+                  builder: (context, info, _) => Badge(isLabelVisible: info != null, child: const Icon(Icons.menu)),
+                ),
                 onPressed: () => _scaffold.currentState?.openDrawer(),
               ),
         automaticallyImplyLeading: false,

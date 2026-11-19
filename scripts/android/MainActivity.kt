@@ -92,6 +92,22 @@ class MainActivity : FlutterActivity() {
                             runOnUiThread { result.error("pdf", e.message ?: e.toString(), null) }
                         }
                     }.start()
+                    "installApk" -> {
+                        try {
+                            val src = File(path)
+                            val dir = File(cacheDir, "shared").apply { mkdirs() }
+                            val f = File(dir, "Junels-update.apk")
+                            if (src.absolutePath != f.absolutePath) src.copyTo(f, overwrite = true)
+                            val uri = FileProvider.getUriForFile(this, "$packageName.files", f)
+                            val intent = Intent(Intent.ACTION_VIEW)
+                                .setDataAndType(uri, "application/vnd.android.package-archive")
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("install", e.message ?: e.toString(), null)
+                        }
+                    }
                     "open", "share" -> {
                         try {
                             val src = File(path)

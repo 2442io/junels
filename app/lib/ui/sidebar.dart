@@ -3,6 +3,7 @@
 import '../version.dart';
 import 'info_pages.dart';
 import 'sync_page.dart';
+import 'update_page.dart';
 import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart';
@@ -32,6 +33,7 @@ class Sidebar extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
+        const UpdateBanner(),
         _ModelSection(app: app),
         const SizedBox(height: 20),
         _PromptSection(app: app),
@@ -94,6 +96,15 @@ class Sidebar extends StatelessWidget {
               title: const Text('Versionsverlauf'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => openChangelog(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.system_update_outlined),
+              title: const Text('Updates'),
+              subtitle: Text(app.updates.available.value != null
+                  ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
+                  : (app.updates.hasToken ? 'Automatische Prüfung aktiv' : 'In der App aktualisieren – einrichten')),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => openUpdates(context),
             ),
           ]),
         ),

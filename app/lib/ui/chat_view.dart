@@ -1,5 +1,6 @@
 // Mitte: Streaming-Chat mit aufklappbarem Thought Log und Eingabefeld.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -67,8 +68,14 @@ class _ChatViewState extends State<ChatView> {
                   child: ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                    itemCount: entries.length,
+                    itemCount: entries.length + 1,
                     itemBuilder: (context, i) {
+                      if (i == entries.length) {
+                        return Center(
+                          child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 820), child: const _LiveStatus()),
+                        );
+                      }
                       final e = entries[i];
                       final live = app.running && i == entries.length - 1;
                       return Center(
@@ -85,6 +92,75 @@ class _ChatViewState extends State<ChatView> {
         ),
         _InputBar(onSent: () => _scrollToBottom(force: true)),
       ],
+    );
+  }
+}
+
+// --------------------------------------------- Status unter der letzten Antwort
+
+/// Zeigt unter der letzten Antwort, was gerade passiert und wie lange schon.
+class _LiveStatus extends StatefulWidget {
+  const _LiveStatus();
+
+  @override
+  State<_LiveStatus> createState() => _LiveStatusState();
+}
+
+class _LiveStatusState extends State<_LiveStatus> {
+  Timer? _tick;
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final loading = app.status == EngineStatus.loading;
+    final active = app.running || loading || app.warming;
+    if (!active) {
+      _tick?.cancel();
+      _tick = null;
+      return const SizedBox(height: 8);
+    }
+    _tick ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+    final since = app.running ? app.runStarted : (loading ? app.loadStarted : null);
+    String label;
+    if (loading) {
+      label = 'Modell wird geladen';
+    } else if (app.running) {
+      final last = app.current?.entries.lastOrNull;
+      final step = last?.steps.lastOrNull;
+      if (last == null) {
+        label = 'Agent arbeitet';
+      } else if (last.text.isNotEmpty) {
+        label = 'Schreibt die Antwort';
+      } else if (step?.tool != null && step!.observation == null) {
+        label = 'Nutzt ${step.tool}';
+      } else if (last.steps.isNotEmpty) {
+        label = 'Denkt nach (Schritt ${last.steps.length + 1})';
+      } else {
+        label = 'Liest die Anfrage';
+      }
+    } else {
+      label = 'Modell wird vorbereitet';
+    }
+    final el = since == null ? '' : ' · ${formatDuration(DateTime.now().difference(since).inMilliseconds)}';
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 8),
+      child: Row(children: [
+        SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: scheme.primary)),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text('$label …$el',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+        ),
+      ]),
     );
   }
 }
@@ -316,6 +392,13 @@ class _AssistantMessage extends StatelessWidget {
                 children: [
                   if (entry.truncated)
                     Text('gekürzt · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  if (entry.durationMs != null) ...[
+                    Icon(Icons.timer_outlined, size: 13, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 3),
+                    Text(formatDuration(entry.durationMs!), style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                    if (entry.tokensPerSecond != null)
+                      Text(' · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  ],
                   if (entry.tokensPerSecond != null)
                     Text('${entry.tokensPerSecond!.toStringAsFixed(1)} Tokens/s',
                         style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),

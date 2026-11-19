@@ -68,6 +68,7 @@ def patch_android():
             ("android.permission.POST_NOTIFICATIONS", "Hinweis, dass der Agent im Hintergrund arbeitet"),
             ("android.permission.USE_EXACT_ALARM", "Geplante Prompts pünktlich starten"),
             ("android.permission.RECEIVE_BOOT_COMPLETED", "Geplante Prompts nach Neustart wieder einplanen"),
+            ("android.permission.REQUEST_INSTALL_PACKAGES", "Updates direkt in der App installieren"),
         ]
         for name, why in perms:
             if f'android:name="{name}"' not in s:

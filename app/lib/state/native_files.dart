@@ -32,6 +32,9 @@ class NativeFiles {
   static Future<void> open(String path) => _ch.invokeMethod('open', {'path': path, 'mime': mimeFor(path)});
 
   /// Webseite im Standardbrowser öffnen.
+  /// Android: heruntergeladenes Update installieren (System-Dialog).
+  static Future<void> installApk(String path) => _ch.invokeMethod('installApk', {'path': path});
+
   static Future<void> openUrl(String url) => _ch.invokeMethod('openUrl', {'url': url});
 
   static Future<void> share(String path) => _ch.invokeMethod('share', {'path': path, 'mime': mimeFor(path)});
