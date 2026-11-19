@@ -111,6 +111,24 @@ def patch_android():
         if "abiFilters" not in s:
             s = re.sub(r"(defaultConfig\s*\{)",
                        r'\1\n        ndk { abiFilters += listOf("arm64-v8a") }', s, count=1)
+        if "JUNELS_KEYSTORE" not in s:
+            # fester Release-Schlüssel aus dem CI (Secret), sonst wie bisher der Debug-Schlüssel
+            s = s.replace("    buildTypes {", '''    signingConfigs {
+        create("release") {
+            val ks = System.getenv("JUNELS_KEYSTORE")
+            if (ks != null && file(ks).exists()) {
+                storeFile = file(ks)
+                storePassword = System.getenv("JUNELS_KEY_PASSWORD")
+                keyAlias = "junels"
+                keyPassword = System.getenv("JUNELS_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {''', 1)
+            s = s.replace('signingConfig = signingConfigs.getByName("debug")',
+                          'signingConfig = if (System.getenv("JUNELS_KEYSTORE") != null) '
+                          'signingConfigs.getByName("release") else signingConfigs.getByName("debug")', 1)
         if "pdfbox-android" not in s:
             s += '''
 // PDF-Text lesen (Apache PDFBox) und Dateien teilen (FileProvider)

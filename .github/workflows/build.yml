@@ -48,7 +48,19 @@ jobs:
           flutter create --platforms=android --org io.t24 --project-name offline_agent --no-pub .
           python3 ../scripts/patch_platforms.py .
           flutter pub get
+      - name: Signatur-Schlüssel
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/junels.jks"
+            echo "JUNELS_KEYSTORE=$RUNNER_TEMP/junels.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Kein fester Schlüssel (Secret ANDROID_KEYSTORE_B64) – Updates erfordern Neuinstallation"
+          fi
       - name: APK bauen
+        env:
+          JUNELS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/build_android.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -100,6 +112,26 @@ jobs:
           AE_APPLE_TARGETS: macos
           AE_REUSE_FRAMEWORK: '1'
         run: bash scripts/setup.sh
+      - name: Signatur-Zertifikat
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12_B64 }}
+          PW: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then echo "::warning::Kein Zertifikat (Secret MACOS_CERT_P12_B64) – ad-hoc signiert"; exit 0; fi
+          KC="$RUNNER_TEMP/junels.keychain-db"
+          KPW="$(openssl rand -hex 16)"
+          security create-keychain -p "$KPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KPW" "$KC"
+          echo "$P12" | base64 -d > "$RUNNER_TEMP/c.p12"
+          security import "$RUNNER_TEMP/c.p12" -k "$KC" -P "$PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPW" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-certificate -c "Junels Code Signing" -p "$KC" > "$RUNNER_TEMP/c.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/c.pem"
+          security find-identity -p codesigning "$KC"
+          echo "MAC_SIGN_IDENTITY=Junels Code Signing" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/c.p12"
       - name: DMG bauen
         run: bash scripts/build_macos.sh
       - uses: actions/upload-artifact@v4

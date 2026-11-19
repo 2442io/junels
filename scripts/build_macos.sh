@@ -18,6 +18,18 @@ if [ -n "${DEVELOPER_ID:-}" ]; then
     --entitlements macos/Runner/Release.entitlements -s "$DEVELOPER_ID" "$APP"
 fi
 
+if [ -z "${DEVELOPER_ID:-}" ] && [ -n "${MAC_SIGN_IDENTITY:-}" ]; then
+  # eigenes (selbst signiertes) Zertifikat: gleiche Signatur bei jedem Build,
+  # damit macOS den App-Container (Modelle, Chats) der neuen Version zuordnet
+  echo "==> Signiere mit $MAC_SIGN_IDENTITY"
+  find "$APP/Contents/Frameworks" -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" \) | while read -r f; do
+    codesign --force --sign "$MAC_SIGN_IDENTITY" "$f"
+  done
+  codesign --force --sign "$MAC_SIGN_IDENTITY" --entitlements macos/Runner/Release.entitlements "$APP"
+  codesign --verify --verbose "$APP" || echo "Warnung: Signaturprüfung meldet Probleme"
+  codesign -d -r- "$APP" 2>&1 | tail -1
+fi
+
 mkdir -p "$ROOT/dist"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"

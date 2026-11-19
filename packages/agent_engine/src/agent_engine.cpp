@@ -606,7 +606,11 @@ int32_t ae_vision_begin(ae_engine * e, const char * prompt, const char ** image_
     }
 
     mtmd_input_chunks * chunks = mtmd_input_chunks_init();
-    mtmd_input_text txt = { prompt, true, true };
+    mtmd_input_text txt;
+    txt.text          = prompt;
+    txt.text_len      = strlen(prompt);
+    txt.add_special   = llama_vocab_get_add_bos(e->vocab);
+    txt.parse_special = true;
     int32_t rc = mtmd_tokenize(e->vision, chunks, &txt, (const mtmd_bitmap **) bitmaps.data(), bitmaps.size());
     free_bitmaps();
     if (rc != 0) {
