@@ -290,7 +290,8 @@ class _AssistantMessage extends StatelessWidget {
           if (entry.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: MarkdownLite(entry.text, selectable: false),
+              child: MarkdownLite(entry.text,
+                  selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
             ),
           if (entry.error != null)
             Container(

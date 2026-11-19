@@ -82,6 +82,8 @@ class CreateDocumentTool extends AgentTool {
   @override
   String get name => 'create_document';
   @override
+  String get keywords => 'pdf dokument bericht brief zusammenfassung datei';
+  @override
   String get title => 'PDF-Dokument erstellen';
   @override
   String get description =>
@@ -113,6 +115,8 @@ class CreatePresentationTool extends AgentTool {
 
   @override
   String get name => 'create_presentation';
+  @override
+  String get keywords => 'präsentation folien folie slides powerpoint pptx vortrag deck';
   @override
   String get title => 'Präsentation erstellen';
   @override
@@ -163,6 +167,8 @@ class CreateChartTool extends AgentTool {
 
   @override
   String get name => 'create_chart';
+  @override
+  String get keywords => 'diagramm chart grafik balken linie torte kurve statistik werte';
   @override
   String get title => 'Diagramm erstellen';
   @override
@@ -218,6 +224,8 @@ class GenerateImageTool extends AgentTool {
   @override
   String get name => 'generate_image';
   @override
+  String get keywords => 'bild bilder foto illustration malen male zeichne erzeuge logo';
+  @override
   String get title => 'Bild generieren';
   @override
   String get description =>
@@ -251,6 +259,8 @@ class LookAtImageTool extends AgentTool {
 
   @override
   String get name => 'look_at_image';
+  @override
+  String get keywords => 'bild foto screenshot anhang scan sieh schau erkenne';
   @override
   String get title => 'Bild ansehen';
   @override

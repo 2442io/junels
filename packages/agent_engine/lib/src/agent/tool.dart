@@ -118,6 +118,9 @@ abstract class AgentTool {
   /// true = braucht Internet (fragt vorher den Nutzer)
   bool get requiresNetwork => false;
 
+  /// Zusätzliche Suchwörter, damit das Tool bei knappem Context passend ausgewählt wird.
+  String get keywords => '';
+
   Future<String> run(Map<String, dynamic> args, ToolContext ctx);
 
   String describeForPrompt() {

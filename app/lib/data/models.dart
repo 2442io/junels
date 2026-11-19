@@ -317,6 +317,7 @@ class AppSettings {
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
               'create_document', 'create_presentation', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
+              'save_prompt',
             },
         installed = installed ?? {};
 
@@ -376,7 +377,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 5;
+  static const toolsVersion = 6;
 
   /// Neue Tools bei älteren Einstellungen einschalten.
   void _migrateTools(int from) {
@@ -386,6 +387,7 @@ class AppSettings {
       enabledTools.addAll(['create_document', 'create_presentation', 'create_chart', 'generate_image', 'look_at_image']);
     }
     if (from < 5) enabledTools.add('send_notification');
+    if (from < 6) enabledTools.add('save_prompt');
   }
 }
 

@@ -17,6 +17,7 @@ import '../data/storage.dart';
 import 'background_work.dart';
 import 'conversation_mode.dart';
 import '../tools/chart_render.dart';
+import '../tools/save_prompt_tool.dart';
 import 'memory_store.dart';
 import 'native_files.dart';
 import 'voice_service.dart';
@@ -152,6 +153,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           await BackgroundWork.requestNotifyPermission();
           await BackgroundWork.notify(title, text, conversationId: current?.id, at: at);
         }),
+        SavePromptTool(savePrompt, () => prompts),
       ];
       refreshFreeDisk();
       settings = await storage.loadSettings();
@@ -414,14 +416,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final ctx = device.clampContext(contextTarget, info);
       final fit = device.checkFit(info, ctx);
       if (fit.level == FitLevel.refuse) throw EngineException(fit.message);
-      // bei knappem Speicher den größten Context wählen, der noch passt (mind. 2K)
+      // Selbst gewählter Context bleibt (nur wenn er gar nicht passt, wird verkleinert).
+      // Automatisch: der größte, der gut passt – mindestens 4K, solange das noch geht.
       var effectiveCtx = ctx;
-      if (fit.level == FitLevel.warn) {
-        for (final c in [8192, 6144, 4096, 3072, 2048]) {
-          if (c > ctx) continue;
-          effectiveCtx = c;
-          if (device.checkFit(info, c).level == FitLevel.ok) break;
-        }
+      if (settings.contextAuto && fit.level == FitLevel.warn) {
+        final options = [32768, 16384, 8192, 6144, 4096, 3072, 2048].where((c) => c <= ctx).toList();
+        effectiveCtx = options.firstWhere((c) => device.checkFit(info, c).level == FitLevel.ok,
+            orElse: () => options.firstWhere((c) => c >= 4096 && device.checkFit(info, c).level != FitLevel.refuse,
+                orElse: () => options.isEmpty ? ctx : options.last));
       }
       final sw = Stopwatch()..start();
       engine = await LlamaEngine.load(device.engineConfig(m.path, effectiveCtx));
@@ -458,6 +460,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (size > 0) settings.contextSize = device.clampContext(size, null);
     await storage.saveSettings(settings);
     notifyListeners();
+    // gleich mit der neuen Größe neu laden, damit die Einstellung wirkt
+    final m = loadedModel;
+    if (m != null && !running && status == EngineStatus.ready) await loadModel(m);
   }
 
   // ------------------------------------------------------ Systemcheck & Downloads

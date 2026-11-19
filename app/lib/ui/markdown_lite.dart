@@ -1,23 +1,54 @@
 // Kleiner Markdown-Renderer ohne Abhängigkeiten: Überschriften, Listen,
 // fett/kursiv, Inline-Code, Codeblöcke und Tabellen (als Monospace-Block).
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+final _imageLine = RegExp(r'^\s*!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)\s*$');
+final _bareImage = RegExp(r'^\s*(?:[-*]\s+)?(?:Bild:\s*)?(https?://\S+\.(?:png|jpe?g|gif|webp)(?:\?\S*)?)\s*$', caseSensitive: false);
+
 class MarkdownLite extends StatelessWidget {
-  const MarkdownLite(this.text, {super.key, this.selectable = true});
+  const MarkdownLite(this.text, {super.key, this.selectable = true, this.networkImages = false});
   final String text;
   final bool selectable;
 
+  /// Bilder aus dem Internet direkt laden (sonst erst nach Antippen).
+  final bool networkImages;
+
   @override
   Widget build(BuildContext context) {
-    final blocks = _parse(text);
+    // Bild-Zeilen herauslösen, der Rest wird normal gesetzt
+    final parts = <Widget>[];
+    final buf = <String>[];
+    var inCode = false;
+    void flush() {
+      if (buf.isEmpty) return;
+      for (final b in _parse(buf.join('\n'))) {
+        parts.add(_buildBlock(context, b));
+      }
+      buf.clear();
+    }
+
+    for (final line in text.split('\n')) {
+      if (line.trimLeft().startsWith('```')) inCode = !inCode;
+      final m = inCode ? null : _imageLine.firstMatch(line);
+      final bare = inCode || m != null ? null : _bareImage.firstMatch(line);
+      if (m != null || bare != null) {
+        flush();
+        parts.add(_MdImage(src: m?.group(2) ?? bare!.group(1)!, alt: m?.group(1) ?? '', autoLoad: networkImages));
+      } else {
+        buf.add(line);
+      }
+    }
+    flush();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < blocks.length; i++) ...[
+        for (var i = 0; i < parts.length; i++) ...[
           if (i > 0) const SizedBox(height: 8),
-          _buildBlock(context, blocks[i]),
+          parts[i],
         ],
       ],
     );
@@ -257,5 +288,63 @@ class CodeBlock extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Bild im Markdown: lokale Datei sofort, Internet-Bild nach Freigabe bzw. Antippen.
+class _MdImage extends StatefulWidget {
+  const _MdImage({required this.src, required this.alt, required this.autoLoad});
+  final String src;
+  final String alt;
+  final bool autoLoad;
+
+  @override
+  State<_MdImage> createState() => _MdImageState();
+}
+
+class _MdImageState extends State<_MdImage> {
+  late bool _load = widget.autoLoad;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final remote = widget.src.startsWith('http');
+    Widget err(Object e, [Object? _]) => Container(
+          padding: const EdgeInsets.all(10),
+          color: scheme.surfaceContainerHighest,
+          child: Text('Bild nicht verfügbar: ${widget.src}', style: t.bodySmall),
+        );
+    final Widget img;
+    if (!remote) {
+      final f = File(widget.src);
+      img = f.existsSync() ? Image.file(f, fit: BoxFit.contain) : err('');
+    } else if (_load) {
+      img = Image.network(widget.src, fit: BoxFit.contain, errorBuilder: (c, e, s) => err(e),
+          loadingBuilder: (c, child, p) => p == null
+              ? child
+              : const SizedBox(height: 120, child: Center(child: CircularProgressIndicator(strokeWidth: 2))));
+    } else {
+      img = InkWell(
+        onTap: () => setState(() => _load = true),
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.image_outlined),
+            const SizedBox(width: 8),
+            Flexible(child: Text('Bild aus dem Internet laden (${Uri.tryParse(widget.src)?.host ?? ''})', style: t.bodySmall)),
+          ]),
+        ),
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 360),
+        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: img),
+      ),
+      if (widget.alt.isNotEmpty)
+        Padding(padding: const EdgeInsets.only(top: 4), child: Text(widget.alt, style: t.bodySmall)),
+    ]);
   }
 }

@@ -398,6 +398,7 @@ class _ToolSection extends StatelessWidget {
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,
     'send_notification': Icons.notifications_active_outlined,
+    'save_prompt': Icons.bookmark_add_outlined,
     'search_history': Icons.history,
     'knowledge_search': Icons.local_library_outlined,
   };

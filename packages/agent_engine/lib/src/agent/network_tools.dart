@@ -25,6 +25,8 @@ class WebSearchTool extends AgentTool {
   @override
   String get name => 'web_search';
   @override
+  String get keywords => 'url web internet suche suchen google recherche news nachrichten aktuell heute neueste wetter preis';
+  @override
   String get title => 'Websuche';
   @override
   String get description => 'Sucht im Internet und liefert Titel, Adresse und Kurztext der besten Treffer.';
@@ -97,6 +99,8 @@ class WebFetchTool extends AgentTool {
   @override
   String get name => 'web_fetch';
   @override
+  String get keywords => 'url http https www link seite webseite website öffnen aufrufen abrufen holen lesen news nachrichten artikel';
+  @override
   String get title => 'Webseite lesen';
   @override
   String get description => 'Lädt eine Webseite und liefert ihren Text (gekürzt).';
@@ -113,12 +117,52 @@ class WebFetchTool extends AgentTool {
     if (uri == null || uri.host.isEmpty) throw ToolException('Ungültige Adresse "$url"');
     if (_isPrivateHost(uri.host)) throw ToolException('Lokale Netzwerkadressen sind nicht erlaubt.');
     await ctx.ensureNetwork('Webseite lesen: ${uri.host}');
-    final html = await fetcher(uri);
+    var html = await fetcher(uri);
+    var source = uri;
+    // RSS/Atom direkt?
+    var items = extractFeedItems(html, source);
+    if (items.isEmpty) {
+      items = extractPageItems(html, source);
+      // Seite mit wenig Text (per JavaScript gebaut)? → verlinkten Feed probieren
+      final feed = RegExp(r'<link[^>]+type=["\x27]application/(?:rss|atom)\+xml["\x27][^>]*>', caseSensitive: false)
+          .firstMatch(html);
+      if (feed != null && items.length < 3) {
+        final href = RegExp(r'href=["\x27]([^"\x27]+)["\x27]').firstMatch(feed.group(0)!)?.group(1);
+        if (href != null) {
+          try {
+            final feedUri = uri.resolve(htmlDecode(href));
+            final xml = await fetcher(feedUri);
+            final fi = extractFeedItems(xml, feedUri);
+            if (fi.isNotEmpty) {
+              items = fi;
+              source = feedUri;
+            }
+          } catch (_) {}
+        }
+      }
+    }
     final titleM = RegExp(r'<title[^>]*>(.*?)</title>', dotAll: true, caseSensitive: false).firstMatch(html);
-    var text = htmlToText(html);
-    if (text.length > maxChars) text = '${text.substring(0, maxChars)}\n[… gekürzt]';
     final title = titleM == null ? '' : '${htmlToText(titleM.group(1)!)}\n';
-    return '$title$url\n\n$text';
+    final b = StringBuffer('$title$url\n');
+    if (items.isNotEmpty) {
+      b.writeln('\nEINTRÄGE (${items.length}${source != uri ? ', aus Feed $source' : ''}) – Titel / Bild / Link:');
+      for (final i in items.take(20)) {
+        b.writeln('- ${i.title}${i.date.isEmpty ? '' : ' (${i.date})'}');
+        if (i.image.isNotEmpty) b.writeln('  Bild: ${i.image}');
+        if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
+        if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
+      }
+      b.writeln('\nBilder in der Antwort als Markdown einbinden: ![Titel](Bild-URL)');
+    }
+    var text = htmlToText(html);
+    final room = maxChars - b.length;
+    if (room > 500) {
+      if (text.length > room) text = '${text.substring(0, room)}\n[… gekürzt]';
+      b.writeln('\nTEXT:\n$text');
+    } else if (text.trim().isEmpty && items.isEmpty) {
+      b.writeln('\n(Die Seite enthält keinen lesbaren Text – sie wird vermutlich per JavaScript aufgebaut.)');
+    }
+    return b.toString();
   }
 
   static bool _isPrivateHost(String h) =>
@@ -188,3 +232,112 @@ String htmlDecode(String s) => s.replaceAllMapped(RegExp(r'&(#x?[0-9a-fA-F]+|[a-
           }[e] ??
           m.group(0)!;
     });
+
+/// Eintrag einer News-/Übersichtsseite.
+class PageItem {
+  PageItem(this.title, this.link, this.image, {this.summary = '', this.date = ''});
+  final String title;
+  final String link;
+  final String image;
+  final String summary;
+  final String date;
+}
+
+String _abs(Uri base, String? u) {
+  if (u == null) return '';
+  final v = htmlDecode(u.trim());
+  if (v.isEmpty || v.startsWith('data:') || v.startsWith('javascript:')) return '';
+  try {
+    return base.resolve(v).toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+String? _imgSrc(String block) {
+  final img = RegExp(r'<img\b[^>]*>', caseSensitive: false).firstMatch(block)?.group(0);
+  if (img != null) {
+    for (final attr in ['data-src', 'data-lazy-src', 'src', 'data-original']) {
+      final m = RegExp('\\b$attr=["\x27]([^"\x27]+)["\x27]', caseSensitive: false).firstMatch(img);
+      if (m != null && !m.group(1)!.startsWith('data:')) return m.group(1);
+    }
+    final set = RegExp(r'srcset=["\x27]([^"\x27\s,]+)', caseSensitive: false).firstMatch(img);
+    if (set != null) return set.group(1);
+  }
+  return RegExp(r'background(?:-image)?\s*:\s*url\(\s*["\x27]?([^"\x27)]+)', caseSensitive: false).firstMatch(block)?.group(1);
+}
+
+/// Einträge aus RSS/Atom.
+List<PageItem> extractFeedItems(String xml, Uri base) {
+  final head = xml.length > 600 ? xml.substring(0, 600) : xml;
+  if (!RegExp(r'<(rss|feed|rdf:RDF)\b', caseSensitive: false).hasMatch(head)) return const [];
+  String tag(String block, String name) {
+    final m = RegExp('<$name\\b[^>]*>(.*?)</$name>', dotAll: true, caseSensitive: false).firstMatch(block);
+    if (m == null) return '';
+    var v = m.group(1)!.trim();
+    final cdata = RegExp(r'^<!\[CDATA\[(.*)\]\]>$', dotAll: true).firstMatch(v);
+    if (cdata != null) v = cdata.group(1)!;
+    return v;
+  }
+
+  final out = <PageItem>[];
+  for (final m in RegExp(r'<(item|entry)\b[^>]*>(.*?)</\1>', dotAll: true, caseSensitive: false).allMatches(xml)) {
+    final b = m.group(2)!;
+    var link = tag(b, 'link');
+    if (link.isEmpty) {
+      link = RegExp(r'<link\b[^>]*href=["\x27]([^"\x27]+)', caseSensitive: false).firstMatch(b)?.group(1) ?? '';
+    }
+    final desc = tag(b, 'description').isNotEmpty ? tag(b, 'description') : tag(b, 'summary');
+    final img = RegExp(r'<(?:media:content|media:thumbnail|enclosure)\b[^>]*url=["\x27]([^"\x27]+)', caseSensitive: false)
+            .firstMatch(b)
+            ?.group(1) ??
+        _imgSrc(htmlDecode(desc)) ??
+        _imgSrc(tag(b, 'content:encoded'));
+    final summary = htmlToText(htmlDecode(desc));
+    out.add(PageItem(
+      htmlToText(htmlDecode(tag(b, 'title'))),
+      _abs(base, link),
+      _abs(base, img),
+      summary: summary.length > 200 ? '${summary.substring(0, 197)}…' : summary,
+      date: tag(b, 'pubDate').isNotEmpty ? tag(b, 'pubDate') : tag(b, 'updated'),
+    ));
+  }
+  return out;
+}
+
+/// Einträge einer HTML-Übersichtsseite: Artikel bzw. Links mit Bild oder Überschrift.
+List<PageItem> extractPageItems(String html, Uri base) {
+  final clean = html
+      .replaceAll(RegExp(r'<script\b.*?</script>', dotAll: true, caseSensitive: false), '')
+      .replaceAll(RegExp(r'<style\b.*?</style>', dotAll: true, caseSensitive: false), '');
+  final blocks = <String>[
+    for (final m in RegExp(r'<article\b.*?</article>', dotAll: true, caseSensitive: false).allMatches(clean)) m.group(0)!,
+  ];
+  if (blocks.length < 3) {
+    blocks
+      ..clear()
+      ..addAll([
+        for (final m in RegExp(r'<a\b[^>]*href=[^>]*>.*?</a>', dotAll: true, caseSensitive: false).allMatches(clean))
+          if (RegExp(r'<img\b|<h[1-4]\b', caseSensitive: false).hasMatch(m.group(0)!)) m.group(0)!,
+      ]);
+  }
+  final out = <PageItem>[];
+  final seen = <String>{};
+  for (final b in blocks) {
+    final href = RegExp(r'<a\b[^>]*href=["\x27]([^"\x27#][^"\x27]*)["\x27]', caseSensitive: false).firstMatch(b)?.group(1);
+    final link = _abs(base, href);
+    final h = RegExp(r'<h[1-4]\b[^>]*>(.*?)</h[1-4]>', dotAll: true, caseSensitive: false).firstMatch(b)?.group(1);
+    final alt = RegExp(r'<img\b[^>]*alt=["\x27]([^"\x27]+)', caseSensitive: false).firstMatch(b)?.group(1);
+    var title = htmlToText(h ?? '').trim();
+    if (title.isEmpty) title = htmlToText(b).trim();
+    if (title.isEmpty && alt != null) title = htmlDecode(alt);
+    if (title.length > 160) title = '${title.substring(0, 157)}…';
+    final key = link.isNotEmpty ? link : title;
+    if (title.isEmpty || !seen.add(key)) continue;
+    final summary = h == null ? '' : htmlToText(b.replaceFirst(h, '')).trim();
+    out.add(PageItem(title, link, _abs(base, _imgSrc(b)),
+        summary: summary.length > 160 ? '${summary.substring(0, 157)}…' : summary));
+    if (out.length >= 30) break;
+  }
+  return out;
+}

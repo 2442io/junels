@@ -116,9 +116,13 @@ class AgentRunner {
   Future<void> _selectTools(String input, ToolContext ctx) async {
     _active = null;
     final budget = engine.contextSize - _reserve - 16;
-    final words = input.toLowerCase().split(RegExp(r'[^a-zäöüß0-9]+')).where((w) => w.length > 3).toSet();
+    final lower = input.toLowerCase();
+    final words = lower.split(RegExp(r'[^a-zäöüß0-9]+')).where((w) => w.length > 2).toSet();
+    final hasUrl = RegExp(r'https?://|www\.|\b[a-z0-9-]+\.(?:com|at|de|ch|org|net|io|li|eu)\b').hasMatch(lower);
     int relevance(AgentTool t) {
-      final hay = '${t.name} ${t.title} ${t.description}'.toLowerCase();
+      if (lower.contains(t.name)) return 100;
+      if (hasUrl && t.name == 'web_fetch') return 100;
+      final hay = '${t.name} ${t.title} ${t.description} ${t.keywords}'.toLowerCase();
       return words.where(hay.contains).length;
     }
 
@@ -161,6 +165,14 @@ class AgentRunner {
       b.writeln('- Nach jedem Tool-Aufruf erhältst du eine Beobachtung. Erfinde keine Ergebnisse.');
       b.writeln('- Rechne nie im Kopf, wenn calculator verfügbar ist.');
       b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt.');
+      if (activeTools.any((t) => t.name == 'web_fetch' || t.name == 'web_search')) {
+        b.writeln('- Du KANNST das Internet nutzen: web_fetch liest eine Webseite (z. B. eine vom Nutzer genannte URL), '
+            'web_search sucht im Web. Behaupte nie, du hättest keinen Internetzugriff.');
+      }
+      if (activeTools.any((t) => t.name.startsWith('create_'))) {
+        b.writeln('- Dateien (PDF, Präsentation) nur erstellen, wenn der Nutzer ausdrücklich danach fragt. '
+            'Fehler oder Hinweise nie als Datei, sondern in der final_answer.');
+      }
       if (activeTools.any((t) => t.requiresNetwork)) {
         b.writeln('- Internet-Tools nur nutzen, wenn aktuelle oder externe Informationen nötig sind. '
             'Der Nutzer muss den Zugriff bestätigen. Nenne in der final_answer die genutzten Quellen (URL).');

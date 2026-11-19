@@ -49,6 +49,8 @@ class NotifyTool extends AgentTool {
   @override
   String get name => 'send_notification';
   @override
+  String get keywords => 'erinnere erinnerung erinnern benachrichtigung push mitteilung später wecker uhr';
+  @override
   String get title => 'Push-Nachricht senden';
   @override
   String get description =>

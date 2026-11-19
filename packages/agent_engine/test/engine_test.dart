@@ -580,6 +580,38 @@ Future<void> main() async {
     tmp.deleteSync(recursive: true);
   });
 
+  await group('web_fetch: News-Einträge, Bilder, Feeds', () async {
+    const page = '''<html><head><title>AI News</title>
+<link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body>
+<script>var x = "<a href='/x'><h2>falsch</h2></a>";</script>
+<div class="card"><a href="/p/1"><img data-src="/img/1.jpg" alt="Bild 1"><h3>Erste &amp; beste News</h3><p>Kurztext eins</p></a></div>
+<div class="card"><a href="https://ext.example.com/2"><div style="background-image:url('https://cdn.example.com/2.png')"></div><h3>Zweite News</h3></a></div>
+<a href="/p/3"><h2>Dritte News</h2></a>
+<a href="/impressum">Impressum</a>
+</body></html>''';
+    final items = extractPageItems(page, Uri.parse('https://rtb.li/p/ainews'));
+    check(items.length == 3, 'drei Einträge erkannt (${items.length})');
+    check(items[0].title == 'Erste & beste News' && items[0].image == 'https://rtb.li/img/1.jpg' &&
+        items[0].link == 'https://rtb.li/p/1', 'Titel, Bild (data-src) und Link');
+    check(items[1].image == 'https://cdn.example.com/2.png' && items[1].link == 'https://ext.example.com/2', 'Hintergrundbild');
+    const rss = '''<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel>
+<item><title><![CDATA[Feed Eins]]></title><link>https://a.example/1</link><pubDate>Thu, 19 Nov 2026</pubDate>
+<media:content url="https://a.example/1.jpg"/><description>&lt;p&gt;Hallo&lt;/p&gt;</description></item>
+<item><title>Feed Zwei</title><link>https://a.example/2</link><description>&lt;img src="https://a.example/2.jpg"&gt; Text</description></item>
+</channel></rss>''';
+    final f = extractFeedItems(rss, Uri.parse('https://a.example/feed'));
+    check(f.length == 2 && f[0].title == 'Feed Eins' && f[0].image == 'https://a.example/1.jpg' && f[1].image == 'https://a.example/2.jpg',
+        'RSS mit media:content und Bild in der Beschreibung');
+    final tool = WebFetchTool(fetcher: (u) async => u.path.endsWith('feed.xml') ? rss : page);
+    final out = await tool.run({'url': 'https://rtb.li/p/ainews'}, ToolContext(requestNetwork: (_) async => true));
+    check(out.contains('EINTRÄGE (3)') && out.contains('Bild: https://rtb.li/img/1.jpg') && out.contains('![Titel](Bild-URL)'),
+        'web_fetch liefert Einträge mit Bildern');
+    final jsPage = '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body><div id="app"></div></body></html>';
+    final out2 = await WebFetchTool(fetcher: (u) async => u.path.endsWith('feed.xml') ? rss : jsPage)
+        .run({'url': 'https://x.example'}, ToolContext(requestNetwork: (_) async => true));
+    check(out2.contains('aus Feed') && out2.contains('Feed Zwei'), 'JavaScript-Seite → verlinkter Feed');
+  });
+
   await group('Push-Nachrichten: Zeitangaben', () async {
     final now = DateTime(2026, 11, 19, 14, 0);
     check(parseWhen('', now) == null && parseWhen('jetzt', now) == null, 'leer/jetzt = sofort');
