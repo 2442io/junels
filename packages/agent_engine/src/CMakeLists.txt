@@ -43,6 +43,12 @@ if(ANDROID)
     set(GGML_CPU_ARM_ARCH "armv8.2-a+dotprod" CACHE STRING "" FORCE)
   endif()
   set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+  # keine Debug-Infos: die NDK-Vorgabe -g macht die Objektdateien (v. a. stable-diffusion.cpp)
+  # mehrere GB groß – der CI-Runner lief damit voll
+  string(APPEND CMAKE_C_FLAGS " -g0")
+  string(APPEND CMAKE_CXX_FLAGS " -g0")
+  string(APPEND CMAKE_C_FLAGS_RELEASE " -g0")
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " -g0")
 endif()
 
 if(APPLE)
