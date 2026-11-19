@@ -1,6 +1,6 @@
 name: offline_agent
 description: Native Offline Agent App – lokale KI-Agenten ohne Cloud und ohne App Store.
-version: 1.3.0+4
+version: 1.3.1+5
 publish_to: none
 
 environment:
@@ -28,3 +28,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+dependency_overrides:
+  # 2.3.x nutzt JNI und stürzt beim Start ab (ClassNotFoundException android/content/Context)
+  path_provider_android: 2.2.23

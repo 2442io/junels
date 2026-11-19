@@ -16,6 +16,20 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 enum VoicePhase { idle, recording, transcribing }
 
+/// Protokolldatei für Sprachfehler (wird beim Start gesetzt).
+File? voiceLogFile;
+
+void voiceLog(String msg) {
+  final line = '${DateTime.now().toIso8601String()}  $msg\n';
+  debugPrint(line);
+  final f = voiceLogFile;
+  if (f == null) return;
+  try {
+    if (f.existsSync() && f.lengthSync() > 200000) f.writeAsStringSync('');
+    f.writeAsStringSync(line, mode: FileMode.append, flush: true);
+  } catch (_) {}
+}
+
 // ===========================================================================
 // Mikrofon
 // ===========================================================================
@@ -208,7 +222,8 @@ class SpeechOutput {
       if (clip == null) {
         await _speakSystem(item.text); // Piper nicht verfügbar → Systemstimme
       } else {
-        await _play(clip);
+        final ok = await _play(clip);
+        if (!ok && gen == _generation) await _speakSystem(item.text);
         unawaited(File(clip.path!).delete().then((_) {}, onError: (_) {}));
       }
     }
@@ -235,15 +250,16 @@ class SpeechOutput {
           onTimeout: () => throw Exception('Piper antwortet nicht (Zeitüberschreitung)'));
       engineLabel = 'Piper';
       return c;
-    } catch (e) {
+    } catch (e, st) {
       // Piper defekt → für diese Sitzung auf Systemstimme umschalten
+      voiceLog('Piper-Fehler ($dir): $e\n$st');
       lastError.value = 'Piper: $e – nutze Systemstimme.';
       voiceDir = null;
       return null;
     }
   }
 
-  Future<void> _play(_Clip clip) async {
+  Future<bool> _play(_Clip clip) async {
     final done = _playDone = Completer<void>();
     final sub = _player.onPlayerComplete.listen((_) {
       if (!done.isCompleted) done.complete();
@@ -253,8 +269,11 @@ class SpeechOutput {
       // Sicherheitsnetz, falls das Ende-Ereignis ausbleibt
       final ms = (clip.seconds * 1000).round() + 1500;
       await done.future.timeout(Duration(milliseconds: ms), onTimeout: () {});
-    } catch (e) {
+      return true;
+    } catch (e, st) {
+      voiceLog('Wiedergabe-Fehler (${clip.path}): $e\n$st');
       lastError.value = 'Wiedergabe: $e';
+      return false;
     } finally {
       await sub.cancel();
     }
@@ -269,22 +288,44 @@ class SpeechOutput {
       engineLabel = 'Systemstimme';
       await t.speak(text).timeout(Duration(seconds: 10 + text.length ~/ 8), onTimeout: () => null);
     } catch (e) {
+      voiceLog('Systemstimme-Fehler: $e');
       lastError.value = 'Systemstimme: $e';
     }
   }
 
-  /// Test für den Systemcheck: erzeugt einen Satz und meldet Details.
-  Future<String> diagnose(String dir) async {
+  /// Test für den Systemcheck: erzeugt einen Satz, spielt ihn ab und meldet Details.
+  /// Wirft nie – liefert (ok, Bericht).
+  Future<(bool, String)> diagnose(String dir) async {
     final sw = Stopwatch()..start();
-    final w = await _TtsWorker.start(dir).timeout(const Duration(seconds: 60));
-    final load = sw.elapsedMilliseconds;
-    final path = '${tempDir.path}/diag.wav';
-    final c = await w.synth('Hallo! So klinge ich.', path, 1.0).timeout(const Duration(seconds: 45));
-    await w.dispose();
-    if (c.path == null) return 'Piper hat kein Audio erzeugt (Ladezeit $load ms).';
-    await _play(c);
-    return 'Piper OK: ${c.seconds.toStringAsFixed(1)} s Audio, ${c.sampleRate} Hz, '
-        'geladen in $load ms, erzeugt in ${sw.elapsedMilliseconds - load} ms.';
+    final report = StringBuffer('Stimmen-Ordner: $dir\n');
+    try {
+      final files = Directory(dir).listSync(recursive: true).whereType<File>().map((f) => f.path.substring(dir.length)).toList();
+      report.writeln('Dateien: ${files.length} (onnx: ${files.where((f) => f.endsWith('.onnx')).join(', ')})');
+    } catch (e) {
+      report.writeln('Ordner nicht lesbar: $e');
+    }
+    _TtsWorker? w;
+    try {
+      w = await _TtsWorker.start(dir).timeout(const Duration(seconds: 60),
+          onTimeout: () => throw Exception('Laden dauert über 60 s'));
+      final load = sw.elapsedMilliseconds;
+      report.writeln('Geladen in $load ms.');
+      final path = '${tempDir.path}/diag_${DateTime.now().millisecondsSinceEpoch}.wav';
+      final c = await w.synth('Hallo! So klinge ich.', path, 1.0).timeout(const Duration(seconds: 45),
+          onTimeout: () => throw Exception('Erzeugen dauert über 45 s'));
+      report.writeln('Audio: ${c.seconds.toStringAsFixed(1)} s, ${c.sampleRate} Hz, '
+          '${File(c.path!).lengthSync()} Bytes, erzeugt in ${sw.elapsedMilliseconds - load} ms.');
+      final played = await _play(c);
+      report.writeln(played ? 'Wiedergabe gestartet.' : 'Wiedergabe fehlgeschlagen: ${lastError.value}');
+      voiceLog('Diagnose OK\n$report');
+      return (played, report.toString());
+    } catch (e, st) {
+      report.writeln('FEHLER: $e');
+      voiceLog('Diagnose fehlgeschlagen\n$report$st');
+      return (false, report.toString());
+    } finally {
+      await w?.dispose();
+    }
   }
 
   Future<void> dispose() async {
@@ -466,6 +507,43 @@ class _TtsWorker {
   }
 }
 
+/// Lädt die sherpa-onnx-Bibliothek; probiert mehrere Orte (macOS-App-Bundle).
+void _initSherpa() {
+  final errors = <String>[];
+  try {
+    sherpa.initBindings();
+    return;
+  } catch (e) {
+    errors.add('Standard: $e');
+  }
+  final candidates = <String>[];
+  final exe = File(Platform.resolvedExecutable).parent; // …/Contents/MacOS
+  if (Platform.isMacOS) {
+    final fw = Directory('${exe.parent.path}/Frameworks');
+    candidates.add('${fw.path}/libsherpa-onnx-c-api.dylib');
+    try {
+      for (final f in fw.listSync(recursive: true).whereType<File>()) {
+        if (f.path.endsWith('libsherpa-onnx-c-api.dylib') || f.path.endsWith('/sherpa_onnx_macos')) {
+          candidates.add(f.path);
+        }
+      }
+    } catch (e) {
+      errors.add('Frameworks nicht lesbar: $e');
+    }
+  } else if (Platform.isAndroid) {
+    candidates.add('libsherpa-onnx-c-api.so');
+  }
+  for (final c in candidates) {
+    try {
+      sherpa.initBindings(c);
+      return;
+    } catch (e) {
+      errors.add('$c: $e');
+    }
+  }
+  throw Exception('sherpa-onnx-Bibliothek nicht ladbar:\n${errors.join('\n')}');
+}
+
 void _ttsMain(SendPort out) {
   final inbox = ReceivePort();
   out.send(inbox.sendPort);
@@ -477,7 +555,7 @@ void _ttsMain(SendPort out) {
     try {
       switch (m['cmd']) {
         case 'load':
-          sherpa.initBindings();
+          _initSherpa();
           final dir = Directory(m['dir'] as String);
           if (!dir.existsSync()) {
             out.send({'id': id, 'ok': false, 'error': 'Stimmen-Ordner fehlt: ${dir.path}'});

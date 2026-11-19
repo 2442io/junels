@@ -425,14 +425,23 @@ class _EntryTile extends StatelessWidget {
               onPressed: () async {
                 final messenger = ScaffoldMessenger.of(context);
                 messenger.showSnackBar(const SnackBar(content: Text('Teste Stimme …'), duration: Duration(seconds: 2)));
-                try {
-                  final r = await app.voice.output.diagnose(app.installedPath(e)!);
-                  messenger.showSnackBar(SnackBar(content: Text(r), duration: const Duration(seconds: 8)));
-                } catch (err) {
-                  messenger.showSnackBar(SnackBar(
-                      content: Text('Piper-Test fehlgeschlagen: $err\nDie App nutzt dann die Systemstimme.'),
-                      duration: const Duration(seconds: 12)));
-                }
+                final (ok, report) = await app.voice.output.diagnose(app.installedPath(e)!);
+                messenger.hideCurrentSnackBar();
+                if (!context.mounted) return;
+                await showDialog<void>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text(ok ? 'Piper funktioniert' : 'Piper-Test fehlgeschlagen'),
+                    content: SingleChildScrollView(
+                      child: SelectableText(
+                        ok ? report : '$report\nDie App nutzt bis dahin die Systemstimme. '
+                            'Bitte schick mir einen Screenshot dieser Meldung.',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                  ),
+                );
               },
             ),
           IconButton(

@@ -96,6 +96,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       WidgetsBinding.instance.addObserver(this);
       storage = await Storage.open();
       device = DeviceProfile.detect();
+      voiceLogFile = File('${storage.documentsDir.path}/junels_log.txt');
       voice = VoiceService(await getTemporaryDirectory());
       memory = MemoryStore(File('${storage.root.path}/memory.json'));
       await memory.load();
