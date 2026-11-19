@@ -7,12 +7,14 @@
 
 // ignore_for_file: avoid_print
 
+import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:agent_engine/agent_engine.dart';
+import 'package:agent_engine/src/sync/sync_crypto.dart' show hmacSha256, pbkdf2, chacha20;
 
 var _failed = 0;
 var _passed = 0;
@@ -519,6 +521,146 @@ Future<void> main() async {
     check(s.spokenSoFar.endsWith('Mehr gibt es nicht'), 'gesprochener Text nachvollziehbar');
   });
 
+  await group('Abgleich: Kryptografie', () async {
+    check(hexOf(sha256(utf8.encode('abc'))) == 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad', 'SHA-256 (abc)');
+    check(hexOf(sha256(utf8.encode('a' * 1000))) == '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3', 'SHA-256 (1000×a)');
+    check(hexOf(hmacSha256(List.filled(20, 0x0b), utf8.encode('Hi There'))) ==
+        'b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7', 'HMAC-SHA256 (RFC 4231)');
+    check(hexOf(pbkdf2(utf8.encode('password'), utf8.encode('salt'), 1, 32)) ==
+        '120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b', 'PBKDF2 1 Runde');
+    check(hexOf(pbkdf2(utf8.encode('password'), utf8.encode('salt'), 4096, 32)) ==
+        'c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a', 'PBKDF2 4096 Runden');
+    final key = List.generate(32, (i) => i);
+    final nonce = [0, 0, 0, 0, 0, 0, 0, 0x4a, 0, 0, 0, 0];
+    final ct = chacha20(key, nonce, utf8.encode("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."));
+    check(hexOf(ct).startsWith('6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d'),
+        'ChaCha20 (RFC 8439)');
+    final k1 = SyncKeys.fromPassphrase('mein geheimes Passwort', iterations: 1000);
+    final k2 = SyncKeys.fromPassphrase('mein geheimes Passwort', iterations: 1000);
+    final k3 = SyncKeys.fromPassphrase('anderes', iterations: 1000);
+    final sealed = k1.seal('{"hallo":"Wörld"}');
+    check(k2.open(sealed) == '{"hallo":"Wörld"}' && k1.account == k2.account, 'gleiches Passwort entschlüsselt');
+    var rejected = false;
+    try {
+      k3.open(sealed);
+    } on FormatException {
+      rejected = true;
+    }
+    check(rejected && k3.account != k1.account, 'falsches Passwort abgelehnt');
+    check(k1.seal('x') != k1.seal('x'), 'zufällige Nonce');
+  });
+
+  await group('Abgleich: zwei Geräte über Hub und WLAN', () async {
+    final keys = SyncKeys.fromPassphrase('test', iterations: 100);
+    var now = 1000;
+    final mac = _MapSource({'chat:1': '{"t":"Hallo"}', 'mem:a': '{"t":"Ich heiße Christoph"}'});
+    final phone = _MapSource({'prompt:x': '{"t":"Briefing"}'});
+    final hub = SyncHub();
+    final eMac = SyncEngine(keys: keys, source: mac, clock: () => now);
+    final ePhone = SyncEngine(keys: keys, source: phone, clock: () => now);
+    Future<Map<String, dynamic>> viaHub(Map<String, dynamic> r) async =>
+        jsonDecode(jsonEncode(hub.handle(r, account: keys.account))) as Map<String, dynamic>;
+
+    var r = await eMac.syncWith('hub', viaHub);
+    check(r.sent == 2 && r.received == 0, 'Mac sendet 2 ($r)');
+    now += 10;
+    r = await ePhone.syncWith('hub', viaHub);
+    check(r.sent == 1 && r.received == 2 && phone.data.length == 3, 'Handy bekommt Chat + Notiz ($r)');
+    now += 10;
+    r = await eMac.syncWith('hub', viaHub);
+    check(r.received == 1 && mac.data['prompt:x'] == '{"t":"Briefing"}', 'Mac bekommt Prompt ($r)');
+    // erneuter Abgleich ohne Änderungen: nichts zu tun
+    r = await eMac.syncWith('hub', viaHub);
+    check(r.sent == 0 && r.received == 0, 'keine Änderungen → nichts übertragen ($r)');
+    // Handy ändert Chat und löscht Notiz
+    now += 10;
+    phone.data['chat:1'] = '{"t":"Hallo, geändert"}';
+    phone.data.remove('mem:a');
+    r = await ePhone.syncWith('hub', viaHub);
+    check(r.sent == 2, 'Änderung und Löschung gesendet ($r)');
+    now += 10;
+    r = await eMac.syncWith('hub', viaHub);
+    check(mac.data['chat:1'] == '{"t":"Hallo, geändert"}' && !mac.data.containsKey('mem:a'), 'Mac übernimmt Änderung und Löschung');
+    // Konflikt: beide ändern, neuere gewinnt
+    now += 10;
+    mac.data['prompt:x'] = '{"t":"Mac-Version"}';
+    await eMac.syncWith('hub', viaHub);
+    now += 10;
+    phone.data['prompt:x'] = '{"t":"Handy-Version (neuer)"}';
+    await ePhone.syncWith('hub', viaHub);
+    now += 10;
+    await eMac.syncWith('hub', viaHub);
+    await ePhone.syncWith('hub', viaHub);
+    check(mac.data['prompt:x'] == '{"t":"Handy-Version (neuer)"}' && phone.data['prompt:x'] == mac.data['prompt:x'],
+        'Konflikt: neuere Änderung gewinnt auf beiden Geräten');
+    check(hub.items.values.every((i) => !i.b.contains('Handy') && !i.b.contains('Hallo')), 'Hub sieht nur verschlüsselte Daten');
+
+    // WLAN: Handy stellt bereit, Mac verbindet sich per HTTP
+    final hub2 = SyncHub();
+    final lanPhone = SyncEngine(keys: keys, source: phone, clock: () => now);
+    final host = LanSyncHost(
+      account: keys.account,
+      name: 'Testhandy',
+      port: 47391,
+      onRequest: (req) async {
+        await lanPhone.syncWith('local', (q) async => hub2.handle(q, account: keys.account));
+        final resp = hub2.handle(req, account: keys.account);
+        unawaited(Future<void>.delayed(const Duration(milliseconds: 50),
+            () => lanPhone.syncWith('local', (q) async => hub2.handle(q, account: keys.account))));
+        return resp;
+      },
+    );
+    await host.start();
+    try {
+      final fresh = _MapSource({'chat:neu': '{"t":"vom Mac"}'});
+      final eFresh = SyncEngine(keys: keys, source: fresh, clock: () => now);
+      final url = Uri.parse('http://127.0.0.1:47391/junels-sync');
+      r = await eFresh.syncWith('lan', (q) => syncHttpPost(url, q));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      check(fresh.data['prompt:x'] == phone.data['prompt:x'] && phone.data['chat:neu'] == '{"t":"vom Mac"}',
+          'WLAN: beide Richtungen übertragen ($r)');
+      var denied = false;
+      try {
+        await SyncEngine(keys: SyncKeys.fromPassphrase('falsch', iterations: 100), source: _MapSource({}))
+            .syncWith('lan', (q) => syncHttpPost(url, q));
+      } on SyncException catch (e) {
+        denied = e.message.contains('403') || e.message.contains('Passwort');
+      }
+      check(denied, 'WLAN: falsches Passwort abgewiesen');
+    } finally {
+      await host.stop();
+    }
+  });
+
+  final syncUrl = Platform.environment['AE_TEST_SYNC_URL'] ?? '';
+  if (syncUrl.isNotEmpty) {
+    await group('Abgleich: PHP-Server', () async {
+      final keys = SyncKeys.fromPassphrase('php-test-${DateTime.now().microsecondsSinceEpoch}', iterations: 100);
+      final url = Uri.parse(syncUrl);
+      final a = _MapSource({'chat:1': '{"t":"Hallo vom Mac"}', 'mem:x': '{"t":"Notiz"}'});
+      final b = _MapSource({'prompt:p': '{"t":"Briefing"}'});
+      final ea = SyncEngine(keys: keys, source: a);
+      final eb = SyncEngine(keys: keys, source: b);
+      var r = await ea.syncWith('srv', (q) => syncHttpPost(url, q));
+      check(r.sent == 2, 'Mac → Server ($r)');
+      r = await eb.syncWith('srv', (q) => syncHttpPost(url, q));
+      check(r.received == 2 && b.data['chat:1'] == '{"t":"Hallo vom Mac"}', 'Handy ← Server ($r)');
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      b.data.remove('mem:x');
+      await eb.syncWith('srv', (q) => syncHttpPost(url, q));
+      r = await ea.syncWith('srv', (q) => syncHttpPost(url, q));
+      check(a.data['prompt:p'] == '{"t":"Briefing"}' && !a.data.containsKey('mem:x'), 'Prompt und Löschung beim Mac ($r)');
+      var denied = false;
+      try {
+        await SyncEngine(keys: SyncKeys.fromPassphrase('fremd', iterations: 100), source: _MapSource({}))
+            .syncWith('srv', (q) => syncHttpPost(url, q));
+      } on SyncException catch (e) {
+        denied = e.message.contains('403');
+      }
+      check(denied, 'fremdes Konto abgewiesen (Server an erstes Konto gebunden)');
+    });
+  }
+
   await group('Sprechpausen-Erkennung (VAD)', () async {
     final vad = VoiceActivityDetector();
     Float32List noise(int ms, double amp) =>
@@ -904,4 +1046,19 @@ class ScriptedBackend implements AgentBackend {
   }
   @override
   void stop() {}
+}
+
+class _MapSource implements SyncSource {
+  _MapSource(Map<String, String> init) : data = Map.of(init);
+  final Map<String, String> data;
+  @override
+  Future<Map<String, String>> exportAll() async => Map.of(data);
+  @override
+  Future<void> apply(String key, String? json) async {
+    if (json == null) {
+      data.remove(key);
+    } else {
+      data[key] = json;
+    }
+  }
 }

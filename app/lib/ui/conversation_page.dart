@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
 import '../state/conversation_mode.dart';
+import 'internet_menu.dart';
 import 'system_check.dart';
 
 Future<void> openConversation(BuildContext context) async {
@@ -64,6 +65,7 @@ class _ConversationPageState extends State<ConversationPage> {
         backgroundColor: Colors.transparent,
         title: const Text('Gespräch'),
         actions: [
+          const InternetMenu(),
           IconButton(
             tooltip: 'Einstellungen',
             icon: const Icon(Icons.tune),

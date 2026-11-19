@@ -204,6 +204,15 @@ class KnowledgeBase {
     _reindex();
   }
 
+  /// Quelle mit fertigen Abschnitten übernehmen (Abgleich).
+  void putRaw(KnowledgeSource source, List<KnowledgeChunk> raw) {
+    sources.removeWhere((s) => s.id == source.id);
+    chunks.removeWhere((c) => c.sourceId == source.id);
+    sources.add(source);
+    chunks.addAll(raw);
+    _reindex();
+  }
+
   void removeSource(String id) {
     sources.removeWhere((s) => s.id == id);
     chunks.removeWhere((c) => c.sourceId == id);

@@ -1,6 +1,8 @@
 // Linke Sidebar: Modell-Manager, Agent-Profile, Tool-Konfigurator, Chats.
 
 import '../version.dart';
+import 'info_pages.dart';
+import 'sync_page.dart';
 import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart';
@@ -49,6 +51,19 @@ class Sidebar extends StatelessWidget {
         ),
         Card(
           child: ListTile(
+            leading: const Icon(Icons.sync),
+            title: const Text('Abgleich Mac ↔ Handy'),
+            subtitle: Text(!app.sync.configured
+                ? 'Über eigenen Server oder WLAN'
+                : app.sync.lastSync == null
+                    ? 'Eingerichtet'
+                    : 'Zuletzt ${TimeOfDay.fromDateTime(app.sync.lastSync!).format(context)}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => openSync(context),
+          ),
+        ),
+        Card(
+          child: ListTile(
             leading: const Icon(Icons.hub_outlined),
             title: const Text('MCP-Server'),
             subtitle: Text(app.mcpServers.isEmpty
@@ -64,11 +79,35 @@ class Sidebar extends StatelessWidget {
         _VoiceSection(app: app),
         const SizedBox(height: 20),
         _SettingsSection(app: app),
-        const SizedBox(height: 24),
+        const SizedBox(height: 12),
+        Card(
+          child: Column(children: [
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Protokoll'),
+              subtitle: const Text('Fehler und Zeiten einsehen'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => openLog(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Versionsverlauf'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => openChangelog(context),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
         Center(
-          child: Text(
-            'Junels $appVersion (Build $appBuild)',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          child: InkWell(
+            onTap: () => openChangelog(context),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Text(
+                'Junels $appVersion (Build $appBuild)',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ),
           ),
         ),
       ],

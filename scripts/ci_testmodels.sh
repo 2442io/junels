@@ -23,4 +23,9 @@ if [ ! -s sd_turbo.gguf ]; then
   echo "Lade SD-Turbo"
   curl -sfL -o sd_turbo.gguf https://huggingface.co/Green-Sky/SD-Turbo-GGUF/resolve/main/sd_turbo-f16-q8_0.gguf
 fi
+if [ ! -s hybrid.gguf ]; then
+  H=LiquidAI/LFM2-350M-GGUF
+  f=$(pick $H 'Q4_K_M\.gguf$' || true); [ -n "$f" ] || f=LFM2-350M-Q4_K_M.gguf
+  echo "Lade $H/$f"; curl -sfL -o hybrid.gguf "https://huggingface.co/$H/resolve/main/$f" || rm -f hybrid.gguf
+fi
 ls -la

@@ -274,16 +274,18 @@ def patch_macos():
         # ausgehende Verbindungen: Modell-Downloads und Websuche, nur nach Freigabe in der App
         d["com.apple.security.network.client"] = True
         d["com.apple.security.device.audio-input"] = True
+        # eingehende Verbindungen: Abgleich mit dem Handy im WLAN (nur wenn in der App eingeschaltet)
+        d["com.apple.security.network.server"] = True
 
     def release(d):
         common(d)
-        d.pop("com.apple.security.network.server", None)
 
     edit_plist(mac / "Runner/Release.entitlements", release)
     edit_plist(mac / "Runner/DebugProfile.entitlements", common)  # network.server bleibt für Hot Reload
 
     def mac_info(d):
         d["NSMicrophoneUsageDescription"] = "Für die Spracheingabe. Die Erkennung läuft lokal auf dem Mac."
+        d["NSLocalNetworkUsageDescription"] = "Für den Abgleich von Chats und Gedächtnis mit deinem Handy im WLAN."
 
     edit_plist(mac / "Runner/Info.plist", mac_info)
     edit(mac / "Runner/Configs/AppInfo.xcconfig",

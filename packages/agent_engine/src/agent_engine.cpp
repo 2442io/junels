@@ -88,6 +88,18 @@ struct ae_engine {
     int32_t n_batch = 0;
 
     std::vector<llama_token> cached;   // Tokens, die aktuell im KV-Cache liegen
+
+    // Rekurrente/hybride Modelle (Qwen3.5, Mamba …) können den Cache nicht teilweise
+    // zurücksetzen. Darum merken wir uns Zustände nach dem Prompt ("Checkpoints") und
+    // setzen beim nächsten Prompt dort wieder auf, statt alles neu zu rechnen.
+    struct Snap {
+        std::vector<llama_token> toks;
+        std::vector<uint8_t>     data;
+        uint64_t                 used = 0;
+    };
+    bool              use_snaps = false;
+    std::vector<Snap> snaps;
+    uint64_t          snap_clock = 0;
     std::atomic<bool> stop{false};
 
     // laufende Generierung
@@ -230,6 +242,8 @@ ae_engine * ae_create(const char * model_path, int32_t n_ctx, int32_t n_threads,
         cp.n_threads       = n_threads;
         cp.n_threads_batch = n_threads;
         cp.no_perf         = true;
+        // volle SWA-Caches (Gemma u. a.): sonst ist kein Wiederverwenden des Präfixes möglich
+        cp.swa_full        = true;
         if (quant) {
             cp.type_k = GGML_TYPE_Q8_0;
             cp.type_v = GGML_TYPE_Q8_0;
@@ -254,6 +268,7 @@ ae_engine * ae_create(const char * model_path, int32_t n_ctx, int32_t n_threads,
     e->n_ctx   = (int32_t) llama_n_ctx(ctx);
     e->n_batch = std::min(e->n_ctx, 512);
     e->batch   = llama_batch_ext_init(ctx);
+    e->use_snaps = llama_model_is_recurrent(model) || llama_model_is_hybrid(model);
     llama_set_abort_callback(ctx, abort_cb, e);
     copy_out("", err, err_len);
     return e;
@@ -382,6 +397,57 @@ static int32_t process_tokens(ae_engine * e, const std::vector<llama_token> & to
     return 0;
 }
 
+// Zustand nach dem aktuellen Prompt merken (nur rekurrente/hybride Modelle).
+static void take_snapshot(ae_engine * e) {
+    if (!e->use_snaps || e->cached.size() < 32) return;
+    for (auto t : e->cached) if (t < 0) return;   // Bild-Zustände nicht
+    const size_t sz = llama_state_seq_get_size(e->ctx, 0);
+    if (sz == 0 || sz > (size_t) 768 * 1024 * 1024) return;
+    ae_engine::Snap * slot = nullptr;
+    for (auto & s : e->snaps) if (s.toks == e->cached) slot = &s;
+    if (!slot) {
+        if (e->snaps.size() >= 3) {
+            size_t lru = 0;
+            for (size_t i = 1; i < e->snaps.size(); i++) if (e->snaps[i].used < e->snaps[lru].used) lru = i;
+            e->snaps.erase(e->snaps.begin() + (long) lru);
+        }
+        e->snaps.emplace_back();
+        slot = &e->snaps.back();
+    }
+    try {
+        slot->data.resize(sz);
+    } catch (...) {
+        e->snaps.pop_back();
+        return;
+    }
+    if (llama_state_seq_get_data(e->ctx, slot->data.data(), sz, 0) == 0) {
+        for (size_t i = 0; i < e->snaps.size(); i++) if (&e->snaps[i] == slot) { e->snaps.erase(e->snaps.begin() + (long) i); break; }
+        return;
+    }
+    slot->toks = e->cached;
+    slot->used = ++e->snap_clock;
+}
+
+// Besten passenden Checkpoint für [toks] laden; liefert die Anzahl wiederverwendeter Tokens.
+static size_t restore_snapshot(ae_engine * e, const std::vector<llama_token> & toks) {
+    ae_engine::Snap * best = nullptr;
+    for (auto & s : e->snaps) {
+        if (s.toks.size() >= toks.size()) continue;   // mind. ein Token neu auswerten
+        if (best && s.toks.size() <= best->toks.size()) continue;
+        if (std::equal(s.toks.begin(), s.toks.end(), toks.begin())) best = &s;
+    }
+    if (!best) return 0;
+    llama_memory_t mem = llama_get_memory(e->ctx);
+    llama_memory_clear(mem, true);
+    if (llama_state_seq_set_data(e->ctx, best->data.data(), best->data.size(), 0) == 0) {
+        llama_memory_clear(mem, true);
+        return 0;
+    }
+    best->used = ++e->snap_clock;
+    e->cached = best->toks;
+    return best->toks.size();
+}
+
 static llama_sampler * make_sampler(float temperature, float top_p, float min_p, int32_t seed) {
     llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
     if (temperature <= 0.0f) {
@@ -434,14 +500,17 @@ int32_t ae_begin(ae_engine * e, const char * prompt, const char * grammar,
     if (keep == toks.size()) keep--;   // mind. ein Token neu auswerten, um Logits zu bekommen
 
     llama_memory_t mem = llama_get_memory(e->ctx);
+    auto t0 = clk::now();
     if (!llama_memory_seq_rm(mem, 0, (llama_pos) keep, -1)) {
-        llama_memory_clear(mem, true);   // z. B. rekurrente Modelle: kein Teil-Löschen möglich
-        keep = 0;
+        // rekurrente/hybride Modelle: kein Teil-Löschen → letzten passenden Checkpoint laden
+        llama_memory_clear(mem, true);
+        e->cached.clear();
+        keep = restore_snapshot(e, toks);
     }
     e->cached.resize(keep);
 
-    auto t0 = clk::now();
     int32_t rc = process_tokens(e, toks, keep);
+    if (rc == 0) take_snapshot(e);
     e->prompt_ms     = ms_since(t0);
     e->prompt_new    = (int32_t) (toks.size() - keep);
     e->prompt_reused = (int32_t) keep;
@@ -673,6 +742,7 @@ int32_t ae_state_load(ae_engine * e, const char * path) {
     }
     toks.resize(n);
     e->cached = toks;
+    take_snapshot(e);
     return (int32_t) n;
 }
 

@@ -17,19 +17,32 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 enum VoicePhase { idle, recording, transcribing }
 
-/// Protokolldatei für Sprachfehler (wird beim Start gesetzt).
+/// Protokolldatei der App (wird beim Start gesetzt).
 File? voiceLogFile;
 
-void voiceLog(String msg) {
-  final line = '${DateTime.now().toIso8601String()}  $msg\n';
+/// Neue Protokollzeile (für die Protokoll-Seite).
+final logTick = ValueNotifier<int>(0);
+
+/// Eintrag ins App-Protokoll. [area] z. B. "Modell", "Agent", "Sprache", "Sync".
+void appLog(String area, String msg, {bool error = false}) {
+  final ts = DateTime.now().toIso8601String().substring(0, 19).replaceFirst('T', ' ');
+  final line = '$ts  ${error ? 'FEHLER' : 'info  '}  [$area] ${msg.replaceAll('\n', ' ⏎ ')}\n';
   debugPrint(line);
   final f = voiceLogFile;
   if (f == null) return;
   try {
-    if (f.existsSync() && f.lengthSync() > 200000) f.writeAsStringSync('');
+    if (f.existsSync() && f.lengthSync() > 400000) {
+      // ältere Hälfte verwerfen
+      final all = f.readAsStringSync();
+      f.writeAsStringSync(all.substring(all.length ~/ 2));
+    }
     f.writeAsStringSync(line, mode: FileMode.append, flush: true);
+    logTick.value++;
   } catch (_) {}
 }
+
+void voiceLog(String msg) =>
+    appLog('Sprache', msg, error: RegExp(r'fehl|Fehler|nicht verfügbar|Exception', caseSensitive: false).hasMatch(msg));
 
 // ===========================================================================
 // Mikrofon

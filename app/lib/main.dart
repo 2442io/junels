@@ -1,12 +1,26 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'state/app_controller.dart';
 import 'state/app_scope.dart';
 import 'state/background_work.dart';
+import 'state/voice_service.dart' show appLog;
 import 'ui/home_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  final prev = FlutterError.onError;
+  FlutterError.onError = (d) {
+    appLog('App', '${d.exceptionAsString()}${d.stack == null ? '' : ' @ ${d.stack.toString().split('\n').take(3).join(' | ')}'}',
+        error: true);
+    prev?.call(d);
+  };
+  PlatformDispatcher.instance.onError = (e, st) {
+    appLog('App', '$e @ ${st.toString().split('\n').take(3).join(' | ')}', error: true);
+    return false;
+  };
   final controller = AppController();
   controller.init();
   runApp(OfflineAgentApp(controller: controller));

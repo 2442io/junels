@@ -16,11 +16,21 @@ import '../data/models.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
 import 'conversation_mode.dart';
+import 'sync_service.dart';
 import '../tools/chart_render.dart';
 import '../tools/save_prompt_tool.dart';
 import 'memory_store.dart';
 import 'native_files.dart';
 import 'voice_service.dart';
+
+enum InternetMode {
+  off('Internet aus'),
+  ask('Jedes Mal fragen'),
+  allowed('Für diesen Chat erlaubt');
+
+  const InternetMode(this.label);
+  final String label;
+}
 
 enum EngineStatus { none, loading, ready, error }
 
@@ -74,6 +84,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // Sprache
   late final VoiceService voice;
   late final ConversationMode conversation = ConversationMode(this);
+  late final SyncService sync = SyncService(this);
 
   /// Wird von der Oberfläche gesetzt: fragt den Nutzer nach Internetzugriff.
   Future<NetworkChoice> Function(String purpose)? consentHandler;
@@ -189,12 +200,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         Future<void>.delayed(const Duration(seconds: 5), _checkSchedule);
       }
 
+      if (!headless) unawaited(sync.init());
+
       if (!headless && settings.autoLoadLastModel && settings.lastModelId != null) {
         final m = models.where((x) => x.id == settings.lastModelId).firstOrNull;
         if (m != null) unawaited(loadModel(m));
       }
     } catch (e) {
       initError = e.toString();
+      appLog('Start', 'Start fehlgeschlagen: $e', error: true);
       initialized = true;
       notifyListeners();
     }
@@ -432,12 +446,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           '${fit.level == FitLevel.warn ? ' – ${fit.message}' : ''}';
       settings.lastModelId = m.id;
       await storage.saveSettings(settings);
+      appLog('Modell', '${m.displayName} geladen in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s, '
+          'Context ${engine!.contextSize}, ${device.threads} Threads');
       if (!headless) unawaited(warmUp());
     } catch (e) {
       engine = null;
       loadedModel = null;
       status = EngineStatus.error;
       statusMessage = 'Laden fehlgeschlagen: $e';
+      appLog('Modell', 'Laden von ${m.displayName} fehlgeschlagen: $e', error: true);
     }
     _pollMemory();
     notifyListeners();
@@ -785,9 +802,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // --------------------------------------------------------------- Internet
 
   Future<bool> _requestNetwork(Conversation conv, String purpose) async {
+    if (conv.internetOff) return false;
     if (conv.internetAllowed || _turnInternetAllowed) return true;
     final ask = consentHandler;
     if (ask == null) return false;
+    onConsentAsk?.call(purpose);
     final choice = await ask(purpose);
     switch (choice) {
       case NetworkChoice.once:
@@ -803,11 +822,26 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> revokeInternet() async {
+  Future<void> revokeInternet() => setInternetMode(InternetMode.ask);
+
+  /// Wird aufgerufen, wenn gleich nach Internet gefragt wird (Gesprächsmodus: ansagen).
+  void Function(String purpose)? onConsentAsk;
+
+  InternetMode get internetMode {
     final c = current;
-    if (c == null) return;
-    c.internetAllowed = false;
+    if (c == null) return InternetMode.ask;
+    if (c.internetOff) return InternetMode.off;
+    return c.internetAllowed ? InternetMode.allowed : InternetMode.ask;
+  }
+
+  /// Internet für den aktuellen Chat: aus / fragen / erlaubt.
+  Future<void> setInternetMode(InternetMode m) async {
+    final c = _ensureConversation();
+    c
+      ..internetOff = m == InternetMode.off
+      ..internetAllowed = m == InternetMode.allowed;
     await storage.saveConversation(c);
+    appLog('Internet', 'Chat „${c.title}“: ${m.label}');
     notifyListeners();
   }
 
@@ -1374,6 +1408,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Android: Wecker für die nächsten Termine (auch bei geschlossener App).
+  /// Nach einem Abgleich: Prompts speichern und Wecker neu setzen.
+  Future<void> promptsChangedExternally() async {
+    await storage.savePrompts(prompts);
+    unawaited(_syncAlarms());
+    notifyListeners();
+  }
+
+  /// Oberfläche nach Änderungen von außen (Abgleich) neu zeichnen.
+  void refreshUi() => notifyListeners();
+
   Future<void> _syncAlarms() async {
     final now = DateTime.now();
     await BackgroundWork.schedule([
@@ -1524,7 +1568,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     ];
     // Gesprächsmodus: nur die letzten Wechsel mitschicken (kurzer Prompt = schnelle Antwort)
     if (voice && history.length > 8) history = history.sublist(history.length - 8);
-    final runTools = voice ? voiceToolsFor(input) : activeTools;
+    var runTools = voice ? voiceToolsFor(input) : activeTools;
+    if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
     var docs = List<Attachment>.of(attachments);
     final user = ChatEntry(
         role: 'user',
@@ -1679,6 +1724,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       answer.error = e.toString();
     } finally {
+      if (answer.error != null) appLog('Agent', 'Antwort fehlgeschlagen: ${answer.error}', error: true);
+      for (final st in answer.steps) {
+        if (st.isError == true) appLog('Tool', '${st.tool}: ${st.observation ?? ''}', error: true);
+      }
+      final ms = lastStats;
+      appLog('Agent', '${voice ? 'Gespräch' : 'Chat'}: ${answer.steps.length} Schritt(e)'
+          '${ms == null ? '' : ', Prompt ${ms.promptTokens} neu/${ms.reusedTokens} aus Cache, '
+              'erstes Token ${(ms.timeToFirstTokenMs / 1000).toStringAsFixed(1)} s, ${ms.tokensPerSecond.toStringAsFixed(1)} Tokens/s'}');
       answer.sources
         ..clear()
         ..addAll(_collectSources(answer, docs, ragHits));

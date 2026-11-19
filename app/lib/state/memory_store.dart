@@ -46,6 +46,19 @@ class MemoryStore {
     await _save();
   }
 
+  /// Für den Abgleich: Notiz übernehmen bzw. löschen (ohne Duplikate).
+  Future<void> putSynced(MemoryNote n) async {
+    notes.removeWhere((x) => x.text.toLowerCase() == n.text.toLowerCase());
+    notes.add(n);
+    notes.sort((a, b) => a.created.compareTo(b.created));
+    await _save();
+  }
+
+  Future<void> removeText(String text) async {
+    notes.removeWhere((x) => x.text.toLowerCase() == text.toLowerCase());
+    await _save();
+  }
+
   Future<void> remove(MemoryNote n) async {
     notes.remove(n);
     await _save();

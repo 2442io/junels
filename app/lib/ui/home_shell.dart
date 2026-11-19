@@ -9,6 +9,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'chat_view.dart';
 import 'inspector.dart';
+import 'internet_menu.dart';
 import 'conversation_page.dart';
 import 'sidebar.dart';
 import 'system_check.dart';
@@ -43,6 +44,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   final _scaffold = GlobalKey<ScaffoldState>();
   bool _inspectorVisible = true;
+  bool _focus = false; // Fokus-Modus: nur der Chat
   bool _firstRunHandled = false;
 
   void _onReady(AppController app) {
@@ -82,10 +84,20 @@ class _HomeShellState extends State<HomeShell> {
       final scheme = Theme.of(context).colorScheme;
       final divider = VerticalDivider(width: 1, color: scheme.outlineVariant);
 
+      final focusButton = IconButton(
+        tooltip: _focus ? 'Fokus beenden' : 'Fokus: nur der Chat',
+        icon: Icon(_focus ? Icons.fullscreen_exit : Icons.center_focus_strong_outlined),
+        onPressed: () {
+          final s = _scaffold.currentState;
+          if (s?.isDrawerOpen ?? false) s!.closeDrawer();
+          if (s?.isEndDrawerOpen ?? false) s!.closeEndDrawer();
+          setState(() => _focus = !_focus);
+        },
+      );
       final appBar = AppBar(
-        titleSpacing: desktop ? 16 : 0,
+        titleSpacing: desktop || _focus ? 16 : 0,
         title: _TitleBar(app: app),
-        leading: desktop
+        leading: desktop || _focus
             ? null
             : IconButton(
                 tooltip: 'Menü',
@@ -93,13 +105,11 @@ class _HomeShellState extends State<HomeShell> {
                 onPressed: () => _scaffold.currentState?.openDrawer(),
               ),
         automaticallyImplyLeading: false,
-        actions: [
-          if (app.current?.internetAllowed ?? false)
-            IconButton(
-              tooltip: 'Internet für diesen Chat erlaubt – tippen zum Widerrufen',
-              icon: const Icon(Icons.public, color: Colors.orange),
-              onPressed: app.revokeInternet,
-            ),
+        actions: _focus
+            ? [focusButton, const SizedBox(width: 4)]
+            : [
+          focusButton,
+          const InternetMenu(),
           IconButton(
             tooltip: 'Gesprächsmodus',
             icon: const Icon(Icons.record_voice_over_outlined),
@@ -148,22 +158,22 @@ class _HomeShellState extends State<HomeShell> {
       return Scaffold(
         key: _scaffold,
         appBar: appBar,
-        drawer: desktop
+        drawer: desktop || _focus
             ? null
             : Drawer(width: drawerWidth, child: const SafeArea(child: Sidebar(inDrawer: true))),
-        endDrawer: compact
+        endDrawer: compact && !_focus
             ? Drawer(width: (w * 0.92).clamp(280.0, 420.0), child: const SafeArea(child: InspectorPanel()))
             : null,
         body: SafeArea(
           top: false,
           child: Row(
             children: [
-              if (desktop) ...[
+              if (desktop && !_focus) ...[
                 const SizedBox(width: 300, child: Sidebar()),
                 divider,
               ],
               const Expanded(child: ChatView()),
-              if (!compact && _inspectorVisible) ...[
+              if (!compact && _inspectorVisible && !_focus) ...[
                 divider,
                 SizedBox(width: desktop ? 360 : 320, child: const InspectorPanel()),
               ],

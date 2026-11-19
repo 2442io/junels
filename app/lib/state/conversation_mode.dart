@@ -97,6 +97,12 @@ class ConversationMode {
     _silero?.reset();
     _manualBuf.clear();
     _manualHeard = false;
+    // Fragt der Agent nach Internet, das ansagen – der Nutzer schaut evtl. nicht aufs Display
+    app.onConsentAsk = (_) {
+      if (!active) return;
+      final out = app.voice.output;
+      out.add('Dafür brauche ich das Internet. Bitte bestätige das auf dem Bildschirm.');
+    };
     // Gesprächs-Prompt vorrechnen → erste Antwort ohne Wartezeit
     unawaited(app.warmUp(voice: true));
     state.value = ConvState.listening;
@@ -106,6 +112,7 @@ class ConversationMode {
   }
 
   Future<void> stop() async {
+    app.onConsentAsk = null;
     _turn++;
     state.value = ConvState.off;
     await app.voice.mic.stop();
@@ -278,6 +285,9 @@ class ConversationMode {
       if (done) out.finish();
     });
     voiceLog('Antwort: erste Worte nach ${firstMs < 0 ? '–' : _sec(firstMs)}, fertig nach ${_sec(sw.elapsedMilliseconds)}');
+    if (firstMs > 8000) {
+      timing.value = '${timing.value}\nTipp: Für flüssige Gespräche ein kleineres Modell laden (z. B. Gemma 4 E2B).';
+    }
     if (myTurn != _turn) return;
     if (agentText.value.trim().isEmpty) {
       error.value = app.statusMessage ?? 'Keine Antwort erhalten – ist das Sprachmodell geladen?';

@@ -93,7 +93,7 @@ jobs:
             gh release create aktuell --title "Aktuelle Version" --notes "$NOTES" --target main && break
             sleep 10
           done
-          gh release upload aktuell dist/Junels.apk --clobber
+          gh release upload aktuell dist/Junels.apk server/junels-sync.php --clobber
           gh release edit aktuell --notes "$NOTES"
       - name: Release anhängen
         if: startsWith(github.ref, 'refs/tags/v')
@@ -197,7 +197,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: testmodels
-          key: testmodels-v1
+          key: testmodels-v2
       - name: Engine bauen
         run: |
           bash scripts/fetch_llama.sh
@@ -210,12 +210,20 @@ jobs:
         run: |
           set -o pipefail
           export AE_LIB_PATH=$GITHUB_WORKSPACE/build-linux/libagent_engine.so
+          # PHP-Sync-Server für den Abgleich-Test
+          mkdir -p /tmp/syncsrv && cp $GITHUB_WORKSPACE/server/junels-sync.php /tmp/syncsrv/
+          if command -v php >/dev/null; then
+            (php -S 127.0.0.1:8765 -t /tmp/syncsrv > /tmp/syncsrv.log 2>&1 &)
+            sleep 1
+            export AE_TEST_SYNC_URL=http://127.0.0.1:8765/junels-sync.php
+          fi
           dart run test/engine_test.dart
           dart run test/mcp_test.dart
           AE_TEST_VISION_MODEL=$(ls $GITHUB_WORKSPACE/testmodels/vlm-model.gguf) \
           AE_TEST_MMPROJ=$GITHUB_WORKSPACE/testmodels/vlm-mmproj.gguf \
           AE_TEST_IMAGE=$GITHUB_WORKSPACE/third_party/llama.cpp/tools/mtmd/test-1.jpeg \
           AE_TEST_SD_MODEL=$GITHUB_WORKSPACE/testmodels/sd_turbo.gguf \
+          AE_TEST_HYBRID_MODEL=$GITHUB_WORKSPACE/testmodels/hybrid.gguf \
           AE_TEST_OUT=$GITHUB_WORKSPACE/testout \
           dart run test/media_test.dart
       - name: Download-Adressen prüfen

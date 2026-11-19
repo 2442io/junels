@@ -31,6 +31,35 @@ Future<void> group(String name, Future<void> Function() body) async {
 
 Future<void> main() async {
   final outDir = Directory(Platform.environment['AE_TEST_OUT'] ?? 'testout')..createSync(recursive: true);
+  // Hybride/rekurrente Modelle (LFM2, Qwen3.5): Präfix-Wiederverwendung über Checkpoints
+  final hModel = Platform.environment['AE_TEST_HYBRID_MODEL'] ?? '';
+  if (hModel.isNotEmpty && File(hModel).existsSync()) {
+    await group('Hybrides Modell: Checkpoints statt Neuberechnung', () async {
+      final he = await LlamaEngine.load(EngineConfig(modelPath: hModel, contextSize: 4096, threads: 2));
+      try {
+        final sys = 'Du bist ein hilfreicher Assistent. ' * 40;
+        Future<GenerationStats?> run(String p) async {
+          GenerationStats? st;
+          await for (final ev in he.generate(p, maxTokens: 8)) {
+            if (ev is DoneEvent) st = ev.stats;
+          }
+          return st;
+        }
+
+        final a = await run('$sys\nFrage: Was ist 2+2?\nAntwort:');
+        // gleicher Anfang, anderes Ende → mit Checkpoint nur der neue Teil
+        final b = await run('$sys\nFrage: Was ist 2+2?\nAntwort: 4\nFrage: Und 3+3?\nAntwort:');
+        check(a != null && b != null, 'zwei Antworten erzeugt');
+        print('     a: neu ${a?.promptTokens}, wiederverwendet ${a?.reusedTokens}; '
+            'b: neu ${b?.promptTokens}, wiederverwendet ${b?.reusedTokens}');
+        check((b?.reusedTokens ?? 0) > 100, 'Präfix wiederverwendet (${b?.reusedTokens} Tokens)');
+        final c = await run('$sys\nFrage: Wie heißt die Hauptstadt von Österreich?\nAntwort:');
+        check((c?.reusedTokens ?? 0) > 100 || (c?.promptTokens ?? 0) > 0, 'anderer Verlauf läuft weiter');
+      } finally {
+        await he.dispose();
+      }
+    });
+  }
   // Bildverständnis: nur mit echtem Vision-Modell (z. B. im CI SmolVLM-256M)
   final vModel = Platform.environment['AE_TEST_VISION_MODEL'] ?? '';
   final vProj = Platform.environment['AE_TEST_MMPROJ'] ?? '';

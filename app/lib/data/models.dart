@@ -263,6 +263,7 @@ class Conversation {
     List<Map<String, dynamic>>? artifacts,
     DateTime? updated,
     this.internetAllowed = false,
+    this.internetOff = false,
   })  : entries = entries ?? [],
         artifacts = artifacts ?? [],
         updated = updated ?? DateTime.now();
@@ -275,6 +276,7 @@ class Conversation {
 
   /// Nutzer hat Internet für diesen ganzen Chat freigegeben.
   bool internetAllowed;
+  bool internetOff; // Internet in diesem Chat ganz aus (keine Web-Tools)
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -283,6 +285,7 @@ class Conversation {
         'artifacts': artifacts,
         'updated': updated.toIso8601String(),
         'internetAllowed': internetAllowed,
+        'internetOff': internetOff,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -292,6 +295,7 @@ class Conversation {
         artifacts: [for (final a in (j['artifacts'] as List? ?? const [])) (a as Map).cast<String, dynamic>()],
         updated: DateTime.tryParse(j['updated'] as String? ?? ''),
         internetAllowed: j['internetAllowed'] as bool? ?? false,
+        internetOff: j['internetOff'] as bool? ?? false,
       );
 }
 
