@@ -395,6 +395,14 @@ class VoiceService {
     return _stt!;
   }
 
+  /// Whisper aus dem Speicher nehmen (nach dem Gesprächsmodus – Platz fürs Sprachmodell).
+  Future<void> releaseStt() async {
+    final s = _stt;
+    _stt = null;
+    _sttPath = null;
+    await s?.dispose();
+  }
+
   // ------------------------------------------------------------ Diktat-Taste
 
   Future<void> startRecording() async {

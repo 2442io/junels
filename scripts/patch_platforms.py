@@ -325,8 +325,22 @@ def flutter_template(rel: str):
     return p if p.exists() else None
 
 
+def write_version():
+    """lib/version.dart aus pubspec.yaml erzeugen (Anzeige im Menü)."""
+    import re
+    m = re.search(r"^version:\s*([^\s#]+)", (APP / "pubspec.yaml").read_text(), re.M)
+    if not m:
+        return
+    name, _, build = m.group(1).partition("+")
+    (APP / "lib/version.dart").write_text(
+        "// Automatisch aus pubspec.yaml erzeugt (scripts/patch_platforms.py).\n"
+        f"const appVersion = '{name}';\nconst appBuild = '{build}';\n")
+    log(f"lib/version.dart: {name} ({build})")
+
+
 if __name__ == "__main__":
     print(f"Patche {APP}")
+    write_version()
     patch_android()
     patch_ios()
     patch_macos()

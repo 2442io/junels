@@ -93,6 +93,13 @@ const _stop = {
   'zu', 'im', 'in', 'am', 'an', 'auf', 'mit', 'von', 'fuer', 'für', 'wie', 'was', 'wer', 'wo', 'es', 'ich', 'du', 'sie',
   'wir', 'ihr', 'er', 'nicht', 'auch', 'als', 'bei', 'aus', 'nach', 'so', 'dass', 'the', 'and', 'or', 'of', 'to', 'is',
   'are', 'for', 'on', 'with', 'by', 'it', 'this', 'that', 'be', 'at', 'from', 'as',
+  // Fragewörter und Allerweltswörter – sagen nichts über das Thema
+  'welch', 'welcher', 'welche', 'welches', 'welchen', 'wann', 'warum', 'wieso', 'weshalb', 'wieviel', 'wie viel',
+  'man', 'mir', 'mich', 'mein', 'meine', 'dein', 'deine', 'uns', 'euch', 'kann', 'kannst', 'koennen', 'bitte', 'gibt',
+  'mache', 'machen', 'macht', 'mach', 'tun', 'hat', 'habe', 'hast', 'haben', 'wird', 'werden', 'wurde', 'war', 'bin',
+  'noch', 'schon', 'sehr', 'mal', 'jetzt', 'heute', 'gerade', 'etwas', 'alle', 'viel', 'mehr', 'gut', 'ja', 'nein',
+  'sag', 'sage', 'sagen', 'erklaer', 'erklaere', 'zeig', 'zeige', 'gib', 'what', 'how', 'why', 'when', 'which', 'who',
+  'do', 'does', 'can', 'you', 'me', 'my', 'today', 'please',
 };
 
 /// Zerlegt Text in überlappende Abschnitte an Absatz-/Satzgrenzen.
@@ -204,24 +211,41 @@ class KnowledgeBase {
   }
 
   /// BM25-Suche. [minScore] filtert schwache Treffer.
-  List<KnowledgeHit> search(String query, {int k = 4, double minScore = 0.5}) {
+  ///
+  /// Ein Abschnitt zählt nur, wenn er den Großteil der Frage abdeckt
+  /// ([minCoverage] = Anteil der Suchwörter). So liefert
+  /// „Wie mache ich Spaghetti?“ keine Seite, nur weil dort „mache“ vorkommt.
+  List<KnowledgeHit> search(String query, {int k = 4, double minScore = 0.5, double minCoverage = 0.5}) {
     final q = knowledgeTokens(query).toSet();
     if (q.isEmpty || chunks.isEmpty) return [];
     const k1 = 1.4, b = 0.75;
     final n = chunks.length;
+    double idfOf(String t) {
+      final df = _df[t] ?? 0;
+      return math.log(1 + (n - df + 0.5) / (df + 0.5));
+    }
+
     final hits = <KnowledgeHit>[];
     for (var i = 0; i < n; i++) {
       var score = 0.0;
+      var matched = 0;
       for (final t in q) {
         final f = _tf[i][t];
         if (f == null) continue;
-        final df = _df[t] ?? 0;
-        final idf = math.log(1 + (n - df + 0.5) / (df + 0.5));
+        final idf = idfOf(t);
+        matched++;
         score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * _len[i] / _avgLen));
       }
-      if (score >= minScore) hits.add(KnowledgeHit(chunks[i], score));
+      if (score >= minScore && matched / q.length >= minCoverage) {
+        hits.add(KnowledgeHit(chunks[i], score));
+      }
     }
     hits.sort((a, b) => b.score.compareTo(a.score));
+    // deutlich schwächere Treffer als der beste weglassen
+    if (hits.isNotEmpty) {
+      final top = hits.first.score;
+      hits.removeWhere((h) => h.score < top * 0.4);
+    }
     // höchstens 2 Abschnitte pro Seite, damit mehrere Quellen zu Wort kommen
     final perUrl = <String, int>{};
     final result = <KnowledgeHit>[];

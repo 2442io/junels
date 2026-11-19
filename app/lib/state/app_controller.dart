@@ -232,11 +232,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didHaveMemoryPressure() {
-    if (running) {
-      stop();
-      statusMessage = 'Das System meldet Speicherknappheit – Generierung wurde gestoppt.';
-      notifyListeners();
-    }
+    // Android meldet das bei großen Modellen ständig (onTrimMemory) – nicht abbrechen,
+    // nur protokollieren. Wird es wirklich knapp, beendet das System selbst.
+    voiceLog('Hinweis: System meldet Speicherdruck${running ? ' (Antwort läuft weiter)' : ''}');
   }
 
   // --------------------------------------------------------------- Getter
@@ -455,7 +453,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Einstellungen des Gesprächsmodus ändern und speichern.
-  Future<void> setVoiceOptions({bool? manualEnd, int? pauseMs, bool? nearField}) async {
+  Future<void> setVoiceOptions({bool? manualEnd, int? pauseMs, bool? nearField, bool? smartVad}) async {
+    if (smartVad != null) settings.voiceSmartVad = smartVad;
     if (manualEnd != null) settings.voiceManualEnd = manualEnd;
     if (pauseMs != null) settings.voicePauseMs = pauseMs;
     if (nearField != null) settings.voiceNearField = nearField;
@@ -1219,7 +1218,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// System-Prompt: Profil + Gedächtnis (+ Gesprächsmodus). Bleibt zwischen Turns gleich,
   /// damit der Präfix-Cache greift; die Wissensbasis-Auszüge kommen in die Nutzernachricht.
-  String _systemText({bool voice = false}) {
+  String _systemText({bool voice = false, List<AgentTool>? tools}) {
+    final activeTools = tools ?? this.activeTools;
     final profile = activeProfile;
     final system = StringBuffer(profile.systemPrompt.trim());
     final mem = memory.promptBlock();
@@ -1247,12 +1247,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return system.toString();
   }
 
-  AgentRunner _makeRunner(LlamaEngine eng, String system) {
+  AgentRunner _makeRunner(LlamaEngine eng, String system, {List<AgentTool>? tools}) {
     final profile = activeProfile;
     return AgentRunner(
       engine: eng,
       systemPrompt: system,
-      tools: activeTools,
+      tools: tools ?? activeTools,
       maxSteps: profile.maxSteps,
       // Platz für ganze Dokumente in einem Tool-Aufruf
       maxTokensPerStep: (eng.contextSize ~/ 3).clamp(256, 4096),
@@ -1262,19 +1262,33 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
+  /// Gesprächsmodus: Werkzeuge nur, wenn die Frage sie offensichtlich braucht.
+  /// Sonst direkte Antwort ohne Agenten-Schleife – deutlich schneller.
+  List<AgentTool> voiceToolsFor(String input) {
+    final t = input.toLowerCase();
+    final needs = RegExp(
+            r'https?://|www\.|\.(com|at|de|li|org|net|io)\b|internet|im netz|online|google|such|recherch|nachrichten|news|'
+            r'wetter|aktuell|heute .*(preis|kurs)|uhrzeit|wie spät|datum|wochentag|welcher tag|rechne|erinner|wecker|merk dir|merke dir|vergiss|notier|speicher|'
+            r'pdf|präsentation|folien|diagramm|bild |erzeug|erstell|dokument|datei|wissensbasis|prompt')
+        .hasMatch(t);
+    return needs ? activeTools : const [];
+  }
+
   /// true, solange der System-Prompt nach dem Laden vorgerechnet wird
   bool warming = false;
 
   /// Rechnet nach dem Laden den System-Prompt vor (oder lädt ihn von der Platte),
   /// damit die erste Antwort sofort beginnt.
-  Future<void> warmUp() async {
+  Future<void> warmUp({bool voice = false}) async {
     final eng = engine;
     final m = loadedModel;
     if (eng == null || m == null || running || warming) return;
     warming = true;
     notifyListeners();
     try {
-      final r = _makeRunner(eng, _systemText());
+      final r = voice
+          ? _makeRunner(eng, _systemText(voice: true, tools: const []), tools: const [])
+          : _makeRunner(eng, _systemText());
       final prompt = await eng.formatChat([ChatMessage('system', r.buildSystemPrompt(ToolContext()))]);
       var h = 0xcbf29ce484222325;
       for (final c in '${m.path}|${m.sizeBytes}|${eng.contextSize}|${device.quantizeKv}|$prompt'.codeUnits) {
@@ -1504,10 +1518,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final conv = _ensureConversation();
 
-    final history = <ChatMessage>[
+    var history = <ChatMessage>[
       for (final e in conv.entries)
         if (e.text.trim().isNotEmpty && e.error == null) ChatMessage(e.role, e.text),
     ];
+    // Gesprächsmodus: nur die letzten Wechsel mitschicken (kurzer Prompt = schnelle Antwort)
+    if (voice && history.length > 8) history = history.sublist(history.length - 8);
+    final runTools = voice ? voiceToolsFor(input) : activeTools;
     var docs = List<Attachment>.of(attachments);
     final user = ChatEntry(
         role: 'user',
@@ -1524,7 +1541,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     conv.updated = DateTime.now();
 
     final ctxSize = eng.contextSize;
-    final system = _systemText(voice: voice);
+    final system = _systemText(voice: voice, tools: runTools);
     var turnInput = input.trim();
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
     final ragHits = rag.isEmpty
@@ -1532,7 +1549,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         : knowledge.search(turnInput).where((h) => rag.contains(h.chunk.url)).toList();
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
-    final runner = _makeRunner(eng, system);
+    final runner = _makeRunner(eng, system, tools: runTools);
     _runner = runner;
     running = true;
     unawaited(BackgroundWork.begin('agent', 'Agent schreibt eine Antwort …'));

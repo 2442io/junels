@@ -1,5 +1,6 @@
 // Linke Sidebar: Modell-Manager, Agent-Profile, Tool-Konfigurator, Chats.
 
+import '../version.dart';
 import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart';
@@ -63,6 +64,13 @@ class Sidebar extends StatelessWidget {
         _VoiceSection(app: app),
         const SizedBox(height: 20),
         _SettingsSection(app: app),
+        const SizedBox(height: 24),
+        Center(
+          child: Text(
+            'Junels $appVersion (Build $appBuild)',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        ),
       ],
     );
   }

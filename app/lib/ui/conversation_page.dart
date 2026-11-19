@@ -121,7 +121,7 @@ class _ConversationPageState extends State<ConversationPage> {
                       valueListenable: conv.manualEnd,
                       builder: (context, manual, _) {
                         if (!manual) return const SizedBox(height: 8);
-                        if (st == ConvState.hearing) {
+                        if (st == ConvState.hearing || st == ConvState.listening) {
                           return Padding(
                             padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
                             child: Row(
@@ -136,7 +136,7 @@ class _ConversationPageState extends State<ConversationPage> {
                                 FilledButton.icon(
                                   style: FilledButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18)),
-                                  onPressed: conv.finishSpeaking,
+                                  onPressed: st == ConvState.hearing ? conv.finishSpeaking : null,
                                   icon: const Icon(Icons.send),
                                   label: const Text('Fertig – antworten'),
                                 ),
@@ -168,6 +168,23 @@ class _ConversationPageState extends State<ConversationPage> {
                           ),
                         ),
                       ),
+                    ),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: conv.voiced,
+                      builder: (context, v, _) => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(Icons.circle, size: 10, color: v ? Colors.green : scheme.outlineVariant),
+                        const SizedBox(width: 6),
+                        Text(v ? 'Stimme erkannt' : 'keine Stimme', style: t.labelSmall),
+                      ]),
+                    ),
+                    ValueListenableBuilder<String>(
+                      valueListenable: conv.timing,
+                      builder: (context, tm, _) => tm.isEmpty
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(tm, style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            ),
                     ),
                     ValueListenableBuilder<String?>(
                       valueListenable: conv.error,
@@ -242,7 +259,7 @@ void _showVoiceSettings(BuildContext context) {
               const SizedBox(height: 6),
               Text(
                 st.voiceManualEnd
-                    ? 'Absender-Modus: Pausen beenden nichts. Du tippst auf „Fertig – antworten“ (oder den Kreis).'
+                    ? 'Absender-Modus: Alles wird aufgenommen, Pausen beenden nichts. Du tippst auf „Fertig – antworten“ (oder den Kreis).'
                     : 'Die Antwort startet nach einer Sprechpause.',
                 style: t.bodySmall,
               ),
@@ -266,6 +283,13 @@ void _showVoiceSettings(BuildContext context) {
                 subtitle: const Text('Leisere Stimmen im Hintergrund (andere Personen, Durchsagen) ignorieren'),
                 value: st.voiceNearField,
                 onChanged: (v) => app.setVoiceOptions(nearField: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('KI-Spracherkennung (Silero)'),
+                subtitle: const Text('Unterscheidet Sprache von Lärm. Ausschalten, falls deine Stimme nicht erkannt wird.'),
+                value: st.voiceSmartVad,
+                onChanged: (v) => app.setVoiceOptions(smartVad: v),
               ),
               ValueListenableBuilder<bool>(
                 valueListenable: app.conversation.smartVad,

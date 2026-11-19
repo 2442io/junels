@@ -312,6 +312,7 @@ class AppSettings {
     this.voiceManualEnd = false,
     this.voicePauseMs = 1200,
     this.voiceNearField = true,
+    this.voiceSmartVad = true,
     this.systemCheckSeen = false,
     Map<String, String>? installed,
   })  : enabledTools = enabledTools ??
@@ -343,6 +344,7 @@ class AppSettings {
   bool voiceManualEnd; // Gesprächsmodus: Ende per "Fertig"-Taste statt Sprechpause
   int voicePauseMs; // Gesprächsmodus: so lange Pause beendet die Äußerung
   bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
+  bool voiceSmartVad; // Gesprächsmodus: Silero-Spracherkennung statt nur Lautstärke
   bool systemCheckSeen;
 
   /// Installierte Sprach-Modelle: Katalog-ID → Pfad (Datei oder Ordner)
@@ -364,6 +366,7 @@ class AppSettings {
         'voiceManualEnd': voiceManualEnd,
         'voicePauseMs': voicePauseMs,
         'voiceNearField': voiceNearField,
+        'voiceSmartVad': voiceSmartVad,
         'systemCheckSeen': systemCheckSeen,
         'installed': installed,
         'toolsVersion': toolsVersion,
@@ -385,6 +388,7 @@ class AppSettings {
         voiceManualEnd: j['voiceManualEnd'] as bool? ?? false,
         voicePauseMs: (j['voicePauseMs'] as num?)?.toInt() ?? 1200,
         voiceNearField: j['voiceNearField'] as bool? ?? true,
+        voiceSmartVad: j['voiceSmartVad'] as bool? ?? true,
         systemCheckSeen: j['systemCheckSeen'] as bool? ?? false,
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);

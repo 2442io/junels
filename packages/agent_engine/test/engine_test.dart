@@ -442,6 +442,14 @@ Future<void> main() async {
     hits = kb.search('Äpfel backen');
     check(hits.isNotEmpty && hits.first.chunk.sourceId == 'b', 'Umlaute/Flexion: Äpfel → Apfelkuchen-Abschnitt');
     check(kb.search('Raumfahrt Mars').isEmpty, 'kein Treffer bei fremdem Thema');
+    kb.putSource(KnowledgeSource(id: 'c', name: 'Amt', origin: 'https://amt.example', kind: 'web'), [
+      (title: 'Bildnachweise', url: 'https://amt.example/bild', text: 'Heute mache ich die Bildnachweise. Wie man Fotos lizenziert.'),
+      (title: 'Führerschein', url: 'https://amt.example/fs', text: 'Welcher Tag ist heute? Der Führerschein wird am Donnerstag ausgestellt.'),
+    ]);
+    check(kb.search('Wie mache ich Spaghetti?').isEmpty, 'keine Zufallstreffer über Allerweltswörter (Spaghetti)');
+    check(kb.search('Welcher Wochentag ist heute?').isEmpty, 'keine Zufallstreffer (Wochentag)');
+    check(kb.search('Führerschein ausstellen').isNotEmpty, 'echte Treffer bleiben');
+    kb.removeSource('c');
     final ctx = kb.contextFor('Preise Kinder');
     check(ctx.contains('[1] Preise – https://x.at/preise'), 'Kontextblock mit Quelle');
     await kb.save();
