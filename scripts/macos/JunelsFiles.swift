@@ -1,0 +1,44 @@
+
+// Kanal "junels/files": PDF-Text lesen (PDFKit), Dateien öffnen, im Finder zeigen, teilen.
+enum JunelsFiles {
+  static func register(_ controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(name: "junels/files", binaryMessenger: controller.engine.binaryMessenger)
+    channel.setMethodCallHandler { call, result in
+      let args = call.arguments as? [String: Any] ?? [:]
+      let path = args["path"] as? String ?? ""
+      let url = URL(fileURLWithPath: path)
+      switch call.method {
+      case "pdfText":
+        DispatchQueue.global(qos: .userInitiated).async {
+          guard let doc = PDFDocument(url: url) else {
+            DispatchQueue.main.async { result(FlutterError(code: "pdf", message: "PDF konnte nicht geöffnet werden", details: nil)) }
+            return
+          }
+          if doc.isLocked {
+            DispatchQueue.main.async { result(FlutterError(code: "pdf", message: "PDF ist passwortgeschützt", details: nil)) }
+            return
+          }
+          let maxPages = min(doc.pageCount, args["maxPages"] as? Int ?? 300)
+          var text = ""
+          for i in 0..<maxPages {
+            if let page = doc.page(at: i), let s = page.string { text += s + "\n\n" }
+          }
+          DispatchQueue.main.async { result(["text": text, "pages": doc.pageCount]) }
+        }
+      case "open":
+        result(NSWorkspace.shared.open(url))
+      case "reveal":
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        result(true)
+      case "share":
+        let picker = NSSharingServicePicker(items: [url])
+        let view = controller.view
+        let rect = NSRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+        picker.show(relativeTo: rect, of: view, preferredEdge: .minY)
+        result(true)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+}

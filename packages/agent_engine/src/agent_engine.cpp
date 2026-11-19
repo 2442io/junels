@@ -3,6 +3,8 @@
 
 #include "agent_engine.h"
 #include "llama.h"
+#include "mtmd.h"
+#include "mtmd-helper.h"
 
 #include <algorithm>
 #include <atomic>
@@ -106,6 +108,9 @@ struct ae_engine {
     double  gen_ms      = 0;
 
     std::string last_error;
+
+    // Bildverständnis (optional): Projektor-Datei zum Sprachmodell
+    mtmd_context * vision = nullptr;
 };
 
 static bool abort_cb(void * data) {
@@ -256,6 +261,7 @@ ae_engine * ae_create(const char * model_path, int32_t n_ctx, int32_t n_threads,
 
 void ae_destroy(ae_engine * e) {
     if (!e) return;
+    if (e->vision) mtmd_free(e->vision);
     if (e->smpl)  llama_sampler_free(e->smpl);
     if (e->grammar) llama_sampler_free(e->grammar);
     if (e->batch) llama_batch_ext_free(e->batch);
@@ -376,6 +382,19 @@ static int32_t process_tokens(ae_engine * e, const std::vector<llama_token> & to
     return 0;
 }
 
+static llama_sampler * make_sampler(float temperature, float top_p, float min_p, int32_t seed) {
+    llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    if (temperature <= 0.0f) {
+        llama_sampler_chain_add(chain, llama_sampler_init_greedy());
+    } else {
+        if (top_p > 0.0f && top_p < 1.0f) llama_sampler_chain_add(chain, llama_sampler_init_top_p(top_p, 1));
+        if (min_p > 0.0f)                 llama_sampler_chain_add(chain, llama_sampler_init_min_p(min_p, 1));
+        llama_sampler_chain_add(chain, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(chain, llama_sampler_init_dist(seed < 0 ? LLAMA_DEFAULT_SEED : (uint32_t) seed));
+    }
+    return chain;
+}
+
 int32_t ae_begin(ae_engine * e, const char * prompt, const char * grammar,
                  float temperature, float top_p, float min_p, int32_t seed, int32_t max_tokens) {
     if (!e || !prompt) return AE_ERROR;
@@ -398,16 +417,7 @@ int32_t ae_begin(ae_engine * e, const char * prompt, const char * grammar,
         e->grammar = llama_sampler_init_grammar(e->vocab, grammar, "root");
         if (!e->grammar) { set_err(e, "ungültige Grammatik"); return AE_ERROR; }
     }
-    llama_sampler * chain = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    if (temperature <= 0.0f) {
-        llama_sampler_chain_add(chain, llama_sampler_init_greedy());
-    } else {
-        if (top_p > 0.0f && top_p < 1.0f) llama_sampler_chain_add(chain, llama_sampler_init_top_p(top_p, 1));
-        if (min_p > 0.0f)                 llama_sampler_chain_add(chain, llama_sampler_init_min_p(min_p, 1));
-        llama_sampler_chain_add(chain, llama_sampler_init_temp(temperature));
-        llama_sampler_chain_add(chain, llama_sampler_init_dist(seed < 0 ? LLAMA_DEFAULT_SEED : (uint32_t) seed));
-    }
-    e->smpl = chain;
+    e->smpl = make_sampler(temperature, top_p, min_p, seed);
 
     // Prompt tokenisieren
     std::vector<llama_token> toks = tokenize(e->vocab, prompt, llama_vocab_get_add_bos(e->vocab));
@@ -531,6 +541,107 @@ int32_t ae_next(ae_engine * e, char * buf, int32_t buf_len) {
     std::string out = e->pending.substr(0, ok);
     e->pending.erase(0, ok);
     return copy_out(out, buf, buf_len);
+}
+
+// ---------------------------------------------------------------------------
+// Bildverständnis über libmtmd
+// ---------------------------------------------------------------------------
+
+const char * ae_vision_marker(void) { return mtmd_default_marker(); }
+
+int32_t ae_vision_load(ae_engine * e, const char * mmproj_path, int32_t n_threads, int32_t use_gpu) {
+    if (!e || !mmproj_path) return 0;
+    take_llama_error();
+    if (e->vision) { mtmd_free(e->vision); e->vision = nullptr; }
+    mtmd_context_params p = mtmd_context_params_default();
+    p.use_gpu       = use_gpu != 0;
+    p.print_timings = false;
+    p.n_threads     = n_threads > 0 ? n_threads : 4;
+    p.warmup        = false;
+    // dynamische Auflösung begrenzen, damit ein Bild in einen Batch passt
+    p.image_max_tokens = std::min(e->n_batch, 512);
+    e->vision = mtmd_init_from_file(mmproj_path, e->model, p);
+    if (!e->vision) { set_err(e, "Projektor-Datei passt nicht zum Modell oder ist beschädigt"); return 0; }
+    if (!mtmd_support_vision(e->vision)) {
+        mtmd_free(e->vision);
+        e->vision = nullptr;
+        set_err(e, "Projektor-Datei unterstützt keine Bilder");
+        return 0;
+    }
+    return 1;
+}
+
+int32_t ae_vision_ready(ae_engine * e) { return e && e->vision ? 1 : 0; }
+
+int32_t ae_vision_begin(ae_engine * e, const char * prompt, const char ** image_paths, int32_t n_images,
+                        float temperature, int32_t max_tokens) {
+    if (!e || !prompt) return AE_ERROR;
+    if (!e->vision) { set_err(e, "Bildverständnis nicht geladen"); return AE_ERROR; }
+    take_llama_error();
+    e->stop.store(false);
+    e->active = false;
+    e->finished = false;
+    e->finish_code = AE_DONE;
+    e->pending.clear();
+    e->gen_tokens = 0;
+    e->gen_ms = 0;
+    e->ttft_ms = -1;
+    e->t_begin = clk::now();
+    e->max_tokens = max_tokens > 0 ? max_tokens : 768;
+    if (e->smpl) { llama_sampler_free(e->smpl); e->smpl = nullptr; }
+    if (e->grammar) { llama_sampler_free(e->grammar); e->grammar = nullptr; }
+    e->smpl = make_sampler(temperature, 0.95f, 0.05f, -1);
+
+    std::vector<mtmd_bitmap *> bitmaps;
+    auto free_bitmaps = [&]() { for (auto * b : bitmaps) mtmd_bitmap_free(b); };
+    for (int32_t i = 0; i < n_images; i++) {
+        mtmd_helper_bitmap_wrapper w =
+            mtmd_helper_bitmap_init_from_file(e->vision, image_paths[i], false, mtmd_helper_init_opt_default());
+        if (!w.bitmap) {
+            free_bitmaps();
+            set_err(e, std::string("Bild nicht lesbar (JPG/PNG/GIF/BMP): ") + image_paths[i]);
+            return AE_ERROR;
+        }
+        bitmaps.push_back(w.bitmap);
+    }
+
+    mtmd_input_chunks * chunks = mtmd_input_chunks_init();
+    mtmd_input_text txt = { prompt, true, true };
+    int32_t rc = mtmd_tokenize(e->vision, chunks, &txt, (const mtmd_bitmap **) bitmaps.data(), bitmaps.size());
+    free_bitmaps();
+    if (rc != 0) {
+        mtmd_input_chunks_free(chunks);
+        set_err(e, rc == 1 ? "Anzahl Bild-Markierungen passt nicht zur Anzahl Bilder" : "Bild-Vorbereitung fehlgeschlagen");
+        return AE_ERROR;
+    }
+    size_t n_tok = mtmd_helper_get_n_tokens(chunks);
+    if ((int32_t) n_tok >= e->n_ctx - 16) {
+        mtmd_input_chunks_free(chunks);
+        set_err(e, "Bild + Frage (" + std::to_string(n_tok) + " Tokens) passen nicht in den Context");
+        return AE_CONTEXT_FULL;
+    }
+
+    // KV-Cache neu beginnen; der Text-Cache ist danach ungültig
+    llama_memory_clear(llama_get_memory(e->ctx), true);
+    e->cached.clear();
+    auto t0 = clk::now();
+    llama_pos n_past = 0;
+    rc = mtmd_helper_eval_chunks(e->vision, e->ctx, chunks, 0, 0, e->n_batch, true, &n_past);
+    mtmd_input_chunks_free(chunks);
+    e->prompt_ms     = ms_since(t0);
+    e->prompt_new    = (int32_t) n_tok;
+    e->prompt_reused = 0;
+    if (rc != 0) {
+        llama_memory_clear(llama_get_memory(e->ctx), true);
+        if (e->stop.load()) { e->finished = true; e->active = true; return 0; }
+        set_err(e, "Bild-Auswertung fehlgeschlagen");
+        return AE_ERROR;
+    }
+    // Positionen belegen, Inhalt markieren als "nicht wiederverwendbar" (-1)
+    e->cached.assign((size_t) n_past, (llama_token) -1);
+    e->active = true;
+    e->t_gen_start = clk::now();
+    return 0;
 }
 
 void ae_stop(ae_engine * e) {

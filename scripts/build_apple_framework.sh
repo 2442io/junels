@@ -13,6 +13,11 @@ JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 TARGETS="${AE_APPLE_TARGETS:-ios ios-sim macos}"
 
 [ "$(uname)" = "Darwin" ] || { echo "Nur auf macOS ausführbar."; exit 1; }
+# CI: fertiges Framework aus dem Cache verwenden
+if [ "${AE_REUSE_FRAMEWORK:-0}" = "1" ] && [ -d "$ROOT/packages/agent_engine/macos/Frameworks/AgentEngine.xcframework" ]; then
+  echo "AgentEngine.xcframework aus dem Cache – kein Neubau nötig."
+  exit 0
+fi
 command -v cmake >/dev/null || { echo "CMake fehlt: brew install cmake"; exit 1; }
 bash "$ROOT/scripts/fetch_llama.sh"
 
@@ -41,7 +46,7 @@ for t in $TARGETS; do
       build ios-sim -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
         -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_MIN" -DAE_MIN_OS="$IOS_MIN" ;;
     macos)
-      build macos -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+      build macos -DCMAKE_OSX_ARCHITECTURES="${AE_MAC_ARCHS:-arm64;x86_64}" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_MIN" -DAE_MIN_OS="$MAC_MIN" ;;
   esac
   ARGS+=(-framework "$OUT/$t/AgentEngine.framework")

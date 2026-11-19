@@ -232,6 +232,19 @@ class LlamaEngine implements AgentBackend {
     SamplingParams sampling = const SamplingParams(),
     int maxTokens = 1024,
   }) {
+    return _stream({
+      'cmd': 'gen',
+      'prompt': prompt,
+      'grammar': grammar ?? '',
+      'temp': sampling.temperature,
+      'top_p': sampling.topP,
+      'min_p': sampling.minP,
+      'seed': sampling.seed,
+      'max': maxTokens,
+    });
+  }
+
+  Stream<GenerationEvent> _stream(Map<String, Object?> msg) {
     if (_disposed) throw EngineException('Engine wurde bereits freigegeben');
     if (_generating) throw EngineException('Es läuft bereits eine Generierung');
     _generating = true;
@@ -257,18 +270,32 @@ class LlamaEngine implements AgentBackend {
         controller.close();
       }
     });
-    _send.send({
-      'cmd': 'gen',
-      'id': id,
-      'prompt': prompt,
-      'grammar': grammar ?? '',
-      'temp': sampling.temperature,
-      'top_p': sampling.topP,
-      'min_p': sampling.minP,
-      'seed': sampling.seed,
-      'max': maxTokens,
-    });
+    _send.send({...msg, 'id': id});
     return controller.stream;
+  }
+
+  /// Markierung, die im formatierten Prompt für jedes Bild stehen muss.
+  static String get imageMarker => fromNativeUtf8(NativeEngine.instance.visionMarker());
+
+  bool _visionReady = false;
+  String? _visionPath;
+
+  /// true, wenn eine Projektor-Datei (Bildverständnis) geladen ist.
+  bool get visionReady => _visionReady;
+
+  /// Lädt die Projektor-Datei (mmproj-*.gguf) zum aktuellen Modell.
+  Future<void> loadVision(String mmprojPath) async {
+    if (_visionReady && _visionPath == mmprojPath) return;
+    final r = await _call({'cmd': 'vload', 'path': mmprojPath, 'threads': config.threads, 'gpu': config.gpuLayers != 0 ? 1 : 0});
+    if (r['ok'] != true) throw EngineException(r['error'] as String? ?? 'Bildverständnis konnte nicht geladen werden');
+    _visionReady = true;
+    _visionPath = mmprojPath;
+  }
+
+  /// Antwort zu Bildern. [prompt] ist bereits formatiert und enthält je Bild [imageMarker].
+  Stream<GenerationEvent> generateWithImages(String prompt, List<String> imagePaths,
+      {double temperature = 0.2, int maxTokens = 768}) {
+    return _stream({'cmd': 'vgen', 'prompt': prompt, 'images': imagePaths, 'temp': temperature, 'max': maxTokens});
   }
 
   /// Bricht die laufende Generierung sofort ab (direkter FFI-Aufruf,
@@ -314,6 +341,52 @@ void _engineMain(SendPort out) {
   }
 
   String err() => fromNativeUtf8(n.lastError(engine));
+
+  void runLoop(Object? id, int maxTokens) {
+      var produced = 0;
+      // kleine Stücke bündeln: weniger Nachrichten, flüssigere UI
+      final pending = StringBuffer();
+      var lastFlush = DateTime.now();
+      while (true) {
+        final r = n.next(engine, textBuf, 4096);
+        if (r >= 0) {
+          produced++;
+          if (r > 0) pending.write(fromNativeUtf8(textBuf, r));
+          final now = DateTime.now();
+          if (pending.isNotEmpty &&
+              now.difference(lastFlush).inMilliseconds >= 30) {
+            out.send({'id': id, 'type': 'tok', 'text': pending.toString()});
+            pending.clear();
+            lastFlush = now;
+          }
+          continue;
+        }
+        if (pending.isNotEmpty) {
+          out.send({'id': id, 'type': 'tok', 'text': pending.toString()});
+        }
+        final stats = readStats();
+        String reason;
+        if (r == aeContextFull) {
+          reason = 'contextFull';
+        } else if (r == aeError) {
+          reason = 'error';
+        } else if (stats[2].round() >= maxTokens) {
+          reason = 'maxTokens';
+        } else {
+          reason = 'done';
+        }
+        out.send({
+          'id': id,
+          'type': 'done',
+          'reason': reason,
+          'stats': stats,
+          'error': r == aeError ? err() : null,
+          'produced': produced,
+        });
+        break;
+      }
+  }
+
 
   inbox.listen((dynamic msg) {
     final m = msg as Map;
@@ -400,52 +473,47 @@ void _engineMain(SendPort out) {
             });
             return;
           }
-          var produced = 0;
-          final maxTokens = m['max'] as int;
-          // kleine Stücke bündeln: weniger Nachrichten, flüssigere UI
-          final pending = StringBuffer();
-          var lastFlush = DateTime.now();
-          while (true) {
-            final r = n.next(engine, textBuf, 4096);
-            if (r >= 0) {
-              produced++;
-              if (r > 0) pending.write(fromNativeUtf8(textBuf, r));
-              final now = DateTime.now();
-              if (pending.isNotEmpty &&
-                  now.difference(lastFlush).inMilliseconds >= 30) {
-                out.send({'id': id, 'type': 'tok', 'text': pending.toString()});
-                pending.clear();
-                lastFlush = now;
-              }
-              continue;
-            }
-            if (pending.isNotEmpty) {
-              out.send({'id': id, 'type': 'tok', 'text': pending.toString()});
-            }
-            final stats = readStats();
-            String reason;
-            if (r == aeContextFull) {
-              reason = 'contextFull';
-            } else if (r == aeError) {
-              reason = 'error';
-            } else if (stats[2].round() >= maxTokens) {
-              reason = 'maxTokens';
-            } else {
-              reason = 'done';
-            }
-            out.send({
-              'id': id,
-              'type': 'done',
-              'reason': reason,
-              'stats': stats,
-              'error': r == aeError ? err() : null,
-              'produced': produced,
-            });
-            break;
-          }
+          runLoop(id, m['max'] as int);
         } finally {
           nativeFree(prompt);
           nativeFree(grammar);
+        }
+
+      case 'vload':
+        final path = toNativeUtf8(m['path'] as String);
+        try {
+          final ok = n.visionLoad(engine, path, m['threads'] as int, m['gpu'] as int) == 1;
+          out.send({'id': id, 'ok': ok, 'error': ok ? null : err()});
+        } finally {
+          nativeFree(path);
+        }
+
+      case 'vgen':
+        final prompt = toNativeUtf8(m['prompt'] as String);
+        final images = (m['images'] as List).cast<String>();
+        final arr = nativeAlloc<Pointer<Uint8>>(images.length * sizeOf<Pointer>());
+        for (var i = 0; i < images.length; i++) {
+          arr[i] = toNativeUtf8(images[i]);
+        }
+        try {
+          final rc = n.visionBegin(engine, prompt, arr, images.length, (m['temp'] as num).toDouble(), m['max'] as int);
+          if (rc != 0) {
+            out.send({
+              'id': id,
+              'type': 'done',
+              'reason': rc == aeContextFull ? 'contextFull' : 'error',
+              'stats': readStats(),
+              'error': err(),
+            });
+            return;
+          }
+          runLoop(id, m['max'] as int);
+        } finally {
+          for (var i = 0; i < images.length; i++) {
+            nativeFree(arr[i]);
+          }
+          nativeFree(arr);
+          nativeFree(prompt);
         }
 
       case 'dispose':

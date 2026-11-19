@@ -5,7 +5,7 @@
 
 import 'device_profile.dart';
 
-enum ModelKind { llm, stt, tts }
+enum ModelKind { llm, stt, tts, image }
 
 class CatalogEntry {
   const CatalogEntry({
@@ -21,6 +21,7 @@ class CatalogEntry {
     this.language,
     this.isArchive = false,
     this.desktopOnly = false,
+    this.vision = false,
   });
 
   final String id;
@@ -43,6 +44,15 @@ class CatalogEntry {
 
   /// Nur auf dem Mac empfehlen (z. B. Whisper in voller Präzision)
   final bool desktopOnly;
+
+  /// Sprachmodell kann Bilder verstehen (Projektor-Datei mmproj-*.gguf im selben Repo).
+  final bool vision;
+
+  /// Hugging-Face-Repo (owner/name) aus der URL, sonst null.
+  String? get hfRepo {
+    final m = RegExp(r'huggingface\.co/([^/]+/[^/]+)/resolve/').firstMatch(url);
+    return m?.group(1);
+  }
 
   String get sizeLabel => sizeBytes >= 1 << 30
       ? '${(sizeBytes / (1 << 30)).toStringAsFixed(1)} GB'
@@ -76,6 +86,7 @@ const modelCatalog = <CatalogEntry>[
     sizeBytes: 1300 * _mb,
     minClass: DeviceClass.s,
     idealClass: DeviceClass.s,
+    vision: true,
   ),
   CatalogEntry(
     id: 'gemma-4-e2b',
@@ -86,6 +97,7 @@ const modelCatalog = <CatalogEntry>[
     fileName: 'gemma-4-E2B-it-Q4_K_M.gguf',
     sizeBytes: 3430 * _mb,
     minClass: DeviceClass.m,
+    vision: true,
   ),
   CatalogEntry(
     id: 'qwen3.5-4b',
@@ -97,6 +109,7 @@ const modelCatalog = <CatalogEntry>[
     sizeBytes: 2780 * _mb,
     minClass: DeviceClass.m,
     idealClass: DeviceClass.m,
+    vision: true,
   ),
   CatalogEntry(
     id: 'gemma-4-e4b',
@@ -107,6 +120,7 @@ const modelCatalog = <CatalogEntry>[
     fileName: 'gemma-4-E4B-it-Q4_K_M.gguf',
     sizeBytes: 5340 * _mb,
     minClass: DeviceClass.l,
+    vision: true,
   ),
   CatalogEntry(
     id: 'qwen3.5-9b',
@@ -118,6 +132,7 @@ const modelCatalog = <CatalogEntry>[
     sizeBytes: 6170 * _mb,
     minClass: DeviceClass.l,
     idealClass: DeviceClass.l,
+    vision: true,
   ),
   CatalogEntry(
     id: 'gemma-4-12b',
@@ -128,6 +143,7 @@ const modelCatalog = <CatalogEntry>[
     fileName: 'gemma-4-12B-it-Q4_K_M.gguf',
     sizeBytes: 7380 * _mb,
     minClass: DeviceClass.l,
+    vision: true,
   ),
   CatalogEntry(
     id: 'gemma-4-26b-a4b',
@@ -140,6 +156,20 @@ const modelCatalog = <CatalogEntry>[
     minClass: DeviceClass.xl,
     idealClass: DeviceClass.xl,
     desktopOnly: true,
+    vision: true,
+  ),
+
+  // ---------------------------------------------------------- Bildgenerierung
+  CatalogEntry(
+    id: 'sd-turbo',
+    kind: ModelKind.image,
+    name: 'SD-Turbo (Stable Diffusion 2.1, q8_0)',
+    description: 'Fotos und Illustrationen in 1–4 Schritten, 512 × 512. Am Mac Sekunden, am Handy 1–3 Minuten.',
+    url: 'https://huggingface.co/Green-Sky/SD-Turbo-GGUF/resolve/main/sd_turbo-f16-q8_0.gguf',
+    fileName: 'sd_turbo-f16-q8_0.gguf',
+    sizeBytes: 2020 * _mb,
+    minClass: DeviceClass.m,
+    idealClass: DeviceClass.m,
   ),
 
   // ------------------------------------------------------- Spracherkennung (Whisper)
@@ -248,7 +278,9 @@ List<Recommendation> recommendFor(ModelKind kind, DeviceProfile device,
   // Arbeitsspeicher: gleiche Rechnung wie beim Laden, damit nichts empfohlen wird,
   // das danach abgelehnt wird. Stimmen (Piper) sind klein und laufen immer.
   final budget = kind == ModelKind.tts ? 1 << 62 : device.memoryBudget(availableMemory);
-  bool memOk(CatalogEntry e) => DeviceProfile.estimateRuntimeBytes(e.sizeBytes) <= budget;
+  // Bildmodelle: Rechenpuffer kommen dazu (ca. 1 GB bei 512 × 512)
+  bool memOk(CatalogEntry e) =>
+      DeviceProfile.estimateRuntimeBytes(e.sizeBytes) + (e.kind == ModelKind.image ? 700 * _mb : 0) <= budget;
   bool runs(CatalogEntry e) =>
       e.minClass.index <= device.deviceClass.index && !(e.desktopOnly && device.isMobile) && memOk(e);
 

@@ -82,6 +82,17 @@ weiterhin importieren.
 - **Lautsprecher-Taste** unter jeder Antwort liest sie mit Piper vor. In der Sidebar unter „Sprache“
   lässt sich automatisches Vorlesen einschalten.
 
+## Dateien, Bilder, Präsentationen
+
+- **Anhängen** (Büroklammer): PDF, Bilder (JPG/PNG), TXT, MD, CSV, JSON. Text aus PDFs wird lokal ausgelesen.
+- **Bilder verstehen:** Mit Qwen 3.5 oder Gemma 4 im Systemcheck beim Modell „Bilder verstehen“ laden
+  (Zusatzdatei). Dann beschreibt der Agent Fotos, liest Text aus Screenshots und Scans.
+- **Erstellen lassen:** „Mach eine Präsentation über …“, „Schreib einen Bericht als PDF …“,
+  „Zeichne ein Balkendiagramm …“. Der Agent erzeugt PowerPoint (.pptx) + PDF, PDF-Dokumente und Diagramme.
+  Die Dateien erscheinen im Chat: antippen öffnet sie, das Menü bietet Teilen und Speichern.
+- **Bilder malen:** Im Systemcheck unter „Bilder erzeugen“ SD-Turbo laden (ca. 2 GB). Am Mac dauert ein Bild
+  Sekunden, am Handy 1–3 Minuten.
+
 ## Internet mit Freigabe
 
 Websuche und Webseiten-Abruf sind eigene Tools. Bevor der Agent sie nutzt, fragt die App:

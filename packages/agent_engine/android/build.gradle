@@ -44,8 +44,8 @@ android {
     defaultConfig {
         minSdk = 24
         ndk {
-            // arm64 für echte Geräte, x86_64 für den Emulator
-            abiFilters "arm64-v8a", "x86_64"
+            // nur echte Geräte (arm64); x86_64-Emulator bei Bedarf hier ergänzen
+            abiFilters "arm64-v8a"
         }
         externalNativeBuild {
             cmake {

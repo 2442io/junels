@@ -541,6 +541,57 @@ Future<void> main() async {
     check(!started, 'erhöhte Schwelle (Agent spricht) ignoriert leises Echo');
   });
 
+  await group('Dokumente: Markdown, PDF, PPTX, PNG', () async {
+    final blocks = parseMarkdown('# T\nText **fett**\n\n- a\n  - b\n1. c\n\n| x | y |\n|---|---|\n| 1 | 2 |\n\n![Bild](a.png)');
+    check(blocks.whereType<MdHeading>().length == 1 && blocks.whereType<MdListItem>().length == 3 &&
+        blocks.whereType<MdTable>().single.rows.length == 2 && blocks.whereType<MdImage>().single.src == 'a.png', 'Markdown-Blöcke erkannt');
+    check(parseInline('a **b** *c*').where((r) => r.bold).single.text == 'b', 'fett/kursiv inline');
+    final rgba = Uint8List(4 * 3 * 2)..fillRange(0, 24, 200);
+    final png = encodePngRgba(3, 2, rgba);
+    final back = decodePng(png);
+    check(back.width == 3 && back.height == 2 && back.rgb[0] == 200 && back.alpha != null, 'PNG schreiben und lesen');
+    final tmp = Directory.systemTemp.createTempSync('ae_docs');
+    File('${tmp.path}/a.png').writeAsBytesSync(png);
+    final out = OutputSpace(tmp);
+    final pdf = buildPdfDocument(title: 'Test äöü', markdown: '# H\nText\n\n![x](a.png)\n\n${'Absatz mit viel Text. ' * 400}', resolveImage: out.resolveImage);
+    final head = String.fromCharCodes(pdf.sublist(0, 8));
+    final pages = RegExp(r'/Type /Page ').allMatches(String.fromCharCodes(pdf)).length;
+    check(head.startsWith('%PDF-1.4') && pages >= 2 && String.fromCharCodes(pdf).contains('/XObject'), 'PDF mit $pages Seiten und Bild');
+    final s2 = splitSlides('Untertitel\n# A\n- x\n# B\n![](a.png)');
+    check(s2.slides.length == 2 && s2.subtitle == 'Untertitel', 'Folien aufgeteilt');
+    final pptx = buildPptx(title: 'P', slides: s2.slides, resolveImage: out.resolveImage);
+    check(pptx[0] == 0x50 && pptx[1] == 0x4B && String.fromCharCodes(pptx).contains('ppt/slides/slide3.xml'), 'PPTX-Paket mit 3 Folien');
+    final arts = <Artifact>[];
+    final ctx = ToolContext(onArtifact: arts.add);
+    final r1 = await CreateDocumentTool(out).run({'title': 'Bericht', 'content': '# Hallo\nWelt\n![](fehlt.png)'}, ctx);
+    check(File('${tmp.path}/Bericht.pdf').existsSync() && r1.contains('fehlt.png'), 'create_document schreibt PDF, meldet fehlendes Bild');
+    await CreatePresentationTool(out).run({'title': 'Vortrag', 'content': '# Eins\n- a\n# Zwei\n- b'}, ctx);
+    check(File('${tmp.path}/Vortrag.pptx').existsSync() && File('${tmp.path}/Vortrag.pdf').existsSync(), 'create_presentation: PPTX + PDF');
+    ChartSpec? spec;
+    final r3 = await CreateChartTool(out, (s) async {
+      spec = s;
+      return png;
+    }).run({'kind': 'bar', 'title': 'Umsatz', 'labels': 'Jan, Feb', 'values': '10, 20.5; 3, 4', 'series': '2025; 2026'}, ctx);
+    check(spec!.series.length == 2 && spec!.series[0].values[1] == 20.5 && spec!.series[1].name == '2026' && r3.contains('Umsatz.png'),
+        'create_chart: Reihen und Werte gelesen');
+    check(arts.map((a) => a.kind).toList().join(',') == 'pdf,pptx,pdf,image', 'Artefakte für erzeugte Dateien');
+    final r4 = await CreateDocumentTool(out).run({'title': 'Bericht', 'content': 'x'}, ctx);
+    check(r4.contains('Bericht (2).pdf'), 'gleicher Titel → neuer Dateiname');
+    tmp.deleteSync(recursive: true);
+  });
+
+  await group('Katalog: Bildmodelle und Bildverständnis', () async {
+    const gb = 1 << 30;
+    final mac = DeviceProfile.detect(totalMemoryOverride: 32 * gb, cpuOverride: 10, mobileOverride: false);
+    final img = recommendFor(ModelKind.image, mac, freeDiskBytes: 100 * gb, availableMemory: 0);
+    check(img.first.entry.id == 'sd-turbo' && img.first.suitability == Suitability.recommended, 'SD-Turbo empfohlen');
+    final tiny = DeviceProfile.detect(totalMemoryOverride: 4 * gb, cpuOverride: 4, mobileOverride: true);
+    final img2 = recommendFor(ModelKind.image, tiny, freeDiskBytes: 100 * gb, availableMemory: gb);
+    check(img2.every((r) => r.suitability != Suitability.recommended), 'kleines Handy: Bildmodell nicht empfohlen');
+    final q = modelCatalog.firstWhere((e) => e.id == 'qwen3.5-4b');
+    check(q.vision && q.hfRepo == 'unsloth/Qwen3.5-4B-GGUF', 'Vision-Flag und HF-Repo');
+  });
+
   if (modelPath == null) {
     print('\nAE_TEST_MODEL nicht gesetzt: Engine-Tests übersprungen.');
     _summary();

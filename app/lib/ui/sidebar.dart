@@ -337,6 +337,11 @@ class _ToolSection extends StatelessWidget {
     'web_search': Icons.travel_explore,
     'web_fetch': Icons.public,
     'remember': Icons.bookmark_add_outlined,
+    'create_document': Icons.picture_as_pdf_outlined,
+    'create_presentation': Icons.slideshow_outlined,
+    'create_chart': Icons.bar_chart,
+    'generate_image': Icons.brush_outlined,
+    'look_at_image': Icons.visibility_outlined,
     'search_history': Icons.history,
     'knowledge_search': Icons.local_library_outlined,
   };

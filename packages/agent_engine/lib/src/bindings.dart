@@ -37,6 +37,19 @@ typedef _SttTransN = Int32 Function(Pointer<Void>, Pointer<Float>, Int32, Pointe
 typedef _SttTransD = int Function(Pointer<Void>, Pointer<Float>, int, Pointer<Uint8>, int, Pointer<Uint8>, int);
 typedef _DiskN = Int64 Function(Pointer<Uint8>);
 typedef _DiskD = int Function(Pointer<Uint8>);
+typedef _MarkerN = Pointer<Uint8> Function();
+typedef _VisionLoadN = Int32 Function(Pointer<Void>, Pointer<Uint8>, Int32, Int32);
+typedef _VisionLoadD = int Function(Pointer<Void>, Pointer<Uint8>, int, int);
+typedef _VisionBeginN = Int32 Function(Pointer<Void>, Pointer<Uint8>, Pointer<Pointer<Uint8>>, Int32, Float, Int32);
+typedef _VisionBeginD = int Function(Pointer<Void>, Pointer<Uint8>, Pointer<Pointer<Uint8>>, int, double, int);
+typedef _ImgCreateN = Pointer<Void> Function(Pointer<Uint8>, Int32, Int32, Pointer<Uint8>, Int32);
+typedef _ImgCreateD = Pointer<Void> Function(Pointer<Uint8>, int, int, Pointer<Uint8>, int);
+typedef _ImgGenN = Int32 Function(Pointer<Void>, Pointer<Uint8>, Pointer<Uint8>, Int32, Int32, Int32, Float, Int64,
+    Pointer<Uint8>, Int32, Pointer<Pointer<Uint8>>, Pointer<Int32>, Pointer<Int32>);
+typedef _ImgGenD = int Function(Pointer<Void>, Pointer<Uint8>, Pointer<Uint8>, int, int, int, double, int,
+    Pointer<Uint8>, int, Pointer<Pointer<Uint8>>, Pointer<Int32>, Pointer<Int32>);
+typedef _ImgProgN = Void Function(Pointer<Int32>, Pointer<Int32>);
+typedef _ImgProgD = void Function(Pointer<Int32>, Pointer<Int32>);
 typedef _MallocN = Pointer<Void> Function(IntPtr);
 typedef _MallocD = Pointer<Void> Function(int);
 typedef _FreeN = Void Function(Pointer<Void>);
@@ -88,7 +101,23 @@ class NativeEngine {
         sttLanguage = lib.lookupFunction<_ErrN, _ErrN>('ae_stt_language'),
         sttStop = lib.lookupFunction<_VoidPtrN, _VoidPtrD>('ae_stt_stop'),
         sttLastError = lib.lookupFunction<_ErrN, _ErrN>('ae_stt_last_error'),
-        freeDisk = lib.lookupFunction<_DiskN, _DiskD>('ae_free_disk');
+        freeDisk = lib.lookupFunction<_DiskN, _DiskD>('ae_free_disk'),
+        visionMarker = lib.lookupFunction<_MarkerN, _MarkerN>('ae_vision_marker'),
+        visionLoad = lib.lookupFunction<_VisionLoadN, _VisionLoadD>('ae_vision_load'),
+        visionBegin = lib.lookupFunction<_VisionBeginN, _VisionBeginD>('ae_vision_begin'),
+        _lib = lib;
+
+  final DynamicLibrary _lib;
+
+  /// Bildgenerierung ist optional (nicht jede Bibliothek enthält sie).
+  bool get hasImageGen => _lib.providesSymbol('ae_img_create');
+  late final imgCreate = _lib.lookupFunction<_ImgCreateN, _ImgCreateD>('ae_img_create');
+  late final imgDestroy = _lib.lookupFunction<_VoidPtrN, _VoidPtrD>('ae_img_destroy');
+  late final imgGenerate = _lib.lookupFunction<_ImgGenN, _ImgGenD>('ae_img_generate');
+  late final imgCancel = _lib.lookupFunction<_VoidPtrN, _VoidPtrD>('ae_img_cancel');
+  late final imgProgress = _lib.lookupFunction<_ImgProgN, _ImgProgD>('ae_img_progress');
+  late final imgLastError = _lib.lookupFunction<_ErrN, _ErrN>('ae_img_last_error');
+  late final freeBuffer = _lib.lookupFunction<_VoidPtrN, _VoidPtrD>('ae_free');
 
   static NativeEngine? _instance;
 
@@ -118,6 +147,9 @@ class NativeEngine {
   final _VoidPtrD sttStop;
   final _ErrN sttLastError;
   final _DiskD freeDisk;
+  final _MarkerN visionMarker;
+  final _VisionLoadD visionLoad;
+  final _VisionBeginD visionBegin;
 }
 
 // ---------------------------------------------------------------------------

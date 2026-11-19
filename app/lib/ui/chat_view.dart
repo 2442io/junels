@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:agent_engine/agent_engine.dart' show modelCatalog;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import '../state/voice_service.dart';
 import 'conversation_page.dart';
+import 'file_views.dart';
 import 'markdown_lite.dart';
 import 'system_check.dart';
 
@@ -164,13 +166,20 @@ class _UserBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            if (entry.attachments.isNotEmpty)
+            if (entry.files.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.end, children: [
+                  for (final p in entry.files) ImagePreview(p, size: 120),
+                ]),
+              ),
+            if (entry.attachments.any((a) => !isImageFile(a)))
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Wrap(
                   spacing: 6,
                   children: [
-                    for (final a in entry.attachments)
+                    for (final a in entry.attachments.where((a) => !isImageFile(a)))
                       Chip(
                         visualDensity: VisualDensity.compact,
                         avatar: const Icon(Icons.attach_file, size: 16),
@@ -248,6 +257,7 @@ class _AssistantMessage extends StatelessWidget {
                 Expanded(child: Text(entry.error!, style: TextStyle(color: scheme.onErrorContainer))),
               ]),
             ),
+          if (entry.files.isNotEmpty) FileGallery(entry.files),
           if (!live && entry.sources.isNotEmpty) _Sources(entry.sources),
           if (!live && (entry.text.isNotEmpty || entry.tokensPerSecond != null))
             Padding(
@@ -629,10 +639,24 @@ class _InputBarState extends State<_InputBar> {
     final messenger = ScaffoldMessenger.of(context);
     final res = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any);
     if (res == null) return;
+    var image = false;
     for (final f in res.files) {
       if (f.path == null) continue;
       final err = await app.addAttachment(f.path!, f.name);
-      if (err != null) messenger.showSnackBar(SnackBar(content: Text(err)));
+      if (err != null) messenger.showSnackBar(SnackBar(content: Text(err), duration: const Duration(seconds: 6)));
+      if (err == null && isImageFile(f.name)) image = true;
+    }
+    if (image && !app.canSeeImages) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(app.visionHint),
+        duration: const Duration(seconds: 8),
+        action: app.engine != null && app.modelSupportsVision
+            ? SnackBarAction(label: 'Laden', onPressed: () {
+                final c = modelCatalog.where((e) => e.id == app.loadedModel?.catalogId).firstOrNull;
+                if (c != null) app.downloadVision(c);
+              })
+            : null,
+      ));
     }
   }
 
@@ -654,6 +678,19 @@ class _InputBarState extends State<_InputBar> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (app.imageProgress != null)
+                    Card(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                        child: Row(children: [
+                          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(app.imageProgress!)),
+                          TextButton(onPressed: app.cancelImage, child: const Text('Abbrechen')),
+                        ]),
+                      ),
+                    ),
                   if (app.attachments.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
@@ -663,8 +700,13 @@ class _InputBarState extends State<_InputBar> {
                         children: [
                           for (final a in app.attachments)
                             InputChip(
-                              avatar: const Icon(Icons.description_outlined, size: 16),
-                              label: Text('${a.name} (${(a.content.length / 1000).toStringAsFixed(1)}k)'),
+                              avatar: a.path != null && isImageFile(a.name)
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Image.file(File(a.path!), width: 24, height: 24, fit: BoxFit.cover, cacheWidth: 64),
+                                    )
+                                  : Icon(a.name.toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.description_outlined, size: 16),
+                              label: Text(isImageFile(a.name) ? a.name : '${a.name} (${(a.content.length / 1000).toStringAsFixed(1)}k)'),
                               onDeleted: app.running ? null : () => app.removeAttachment(a),
                             ),
                         ],
@@ -673,7 +715,7 @@ class _InputBarState extends State<_InputBar> {
                   LayoutBuilder(builder: (context, box) {
                     final tools = <Widget>[
                       IconButton(
-                        tooltip: 'Datei anhängen (TXT, MD, CSV, JSON)',
+                        tooltip: 'Datei anhängen (PDF, Bilder, TXT, MD, CSV, JSON)',
                         icon: const Icon(Icons.attach_file),
                         onPressed: app.running ? null : _attach,
                       ),

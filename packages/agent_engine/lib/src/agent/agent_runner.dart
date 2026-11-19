@@ -96,6 +96,9 @@ class AgentRunner {
 
   bool _stopped = false;
 
+  /// true nach [stop].
+  bool get isStopped => _stopped;
+
   void stop() {
     _stopped = true;
     engine.stop();
@@ -300,7 +303,17 @@ class AgentRunner {
       final toolName = (obj['action'] ?? '').toString();
       final args = (obj['args'] is Map) ? Map<String, dynamic>.from(obj['args'] as Map) : <String, dynamic>{};
       emit(ToolCalled(step, toolName, args, thought));
-      scratch.add(ChatMessage('assistant', jsonEncode(obj)));
+      // Lange Argumente (z. B. ganzer Dokumentinhalt) nicht im Verlauf mitschleppen
+      final compact = Map<String, dynamic>.from(obj);
+      if (args.values.any((v) => v is String && v.length > 600)) {
+        compact['args'] = {
+          for (final e in args.entries)
+            e.key: e.value is String && (e.value as String).length > 600
+                ? '${(e.value as String).substring(0, 200)} … [${(e.value as String).length} Zeichen]'
+                : e.value,
+        };
+      }
+      scratch.add(ChatMessage('assistant', jsonEncode(compact)));
 
       final callKey = '$toolName ${jsonEncode(args)}';
       String observation;

@@ -7,6 +7,7 @@ import 'dart:isolate';
 
 import 'package:agent_engine/agent_engine.dart';
 import 'package:archive/archive_io.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -15,10 +16,17 @@ import '../data/models.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
 import 'conversation_mode.dart';
+import '../tools/chart_render.dart';
 import 'memory_store.dart';
+import 'native_files.dart';
 import 'voice_service.dart';
 
 enum EngineStatus { none, loading, ready, error }
+
+const _imageExts = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'heic'};
+
+/// Bilddatei anhand der Endung.
+bool isImageFile(String name) => _imageExts.contains(name.split('.').last.toLowerCase());
 
 /// Antwort auf die Frage nach Internetzugriff.
 enum NetworkChoice { once, chat, deny }
@@ -78,6 +86,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   double? lastTokensPerSecond;
   bool inspectorAttention = false;
 
+  // Erzeugte Dateien, Bilder, Bildverständnis
+  late final Directory outputsDir;
+  late final Directory attachmentsDir;
+  ImageEngine? _imageEngine;
+  Timer? _imageIdle;
+  /// Fortschritt der Bildgenerierung, z. B. "Bild wird erzeugt … 2/4"
+  String? imageProgress;
+  /// Bildbeschreibungen je Bildpfad (Bildverständnis), damit ein Bild nur einmal angesehen wird
+  final Map<String, String> _imageNotes = {};
+
   // Speicher
   int processMemory = 0;
   int availableMemory = 0;
@@ -103,6 +121,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await memory.load();
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
       await knowledge.load();
+      outputsDir = Directory('${storage.documentsDir.path}/Ausgaben')..createSync(recursive: true);
+      attachmentsDir = Directory('${storage.documentsDir.path}/Anhänge')..createSync(recursive: true);
+      final out = OutputSpace(outputsDir, extraImages: () => {
+            for (final a in attachments)
+              if (a.path != null && isImageFile(a.name)) a.name: a.path!,
+          });
       tools = [
         ...builtinTools(),
         ...networkTools(),
@@ -112,6 +136,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         }),
         HistorySearchTool(_searchHistory),
         KnowledgeSearchTool(knowledge),
+        CreateDocumentTool(out),
+        CreatePresentationTool(out),
+        CreateChartTool(out, renderChart),
+        GenerateImageTool(_generateImage),
+        LookAtImageTool(_askAboutImage),
       ];
       refreshFreeDisk();
       settings = await storage.loadSettings();
@@ -383,7 +412,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         ModelKind.llm => storage.modelsDir.path,
         ModelKind.stt => '${storage.voiceDir.path}/whisper',
         ModelKind.tts => '${storage.voiceDir.path}/piper',
+        ModelKind.image => '${storage.modelsDir.path}/bild',
       };
+      Directory(dir).createSync(recursive: true);
       final existing = File('$dir/${e.fileName}');
       final file = await existing.exists()
           ? existing // vollständig geladen, z. B. wenn danach das Entpacken scheiterte
@@ -410,6 +441,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         case ModelKind.stt:
           settings.installed[e.id] = file.path;
           settings.sttModelId ??= e.id;
+          await storage.saveSettings(settings);
+        case ModelKind.image:
+          settings.installed[e.id] = file.path;
           await storage.saveSettings(settings);
         case ModelKind.tts:
           st.extracting = true;
@@ -759,26 +793,307 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Liest eine Textdatei als Anhang. Gibt eine Fehlermeldung zurück oder null.
   Future<String?> addAttachment(String path, String name) async {
+    final key = current?.id ?? '';
+    final ext = name.split('.').last.toLowerCase();
     try {
-      final bytes = await File(path).readAsBytes();
+      final src = File(path);
+      final size = await src.length();
+      // Bilder und PDFs dauerhaft ablegen (die Auswahl liefert oft nur temporäre Kopien)
+      Future<File> keep() async {
+        var target = File('${attachmentsDir.path}/$name');
+        var i = 2;
+        while (target.existsSync() && target.lengthSync() != size) {
+          final dot = name.lastIndexOf('.');
+          target = File('${attachmentsDir.path}/${dot > 0 ? name.substring(0, dot) : name} ($i)${dot > 0 ? name.substring(dot) : ''}');
+          i++;
+        }
+        if (!target.existsSync()) await src.copy(target.path);
+        return target;
+      }
+
+      if (isImageFile(name)) {
+        if (size > 25 * 1024 * 1024) return '$name ist größer als 25 MB.';
+        if (ext == 'heic' || ext == 'webp') {
+          return '$name: Format ${ext.toUpperCase()} wird nicht unterstützt – bitte als JPG oder PNG anhängen.';
+        }
+        final f = await keep();
+        (_attachments[key] ??= []).add(Attachment(
+          name: f.uri.pathSegments.last,
+          content: 'Bild "${f.uri.pathSegments.last}". Inhalt mit dem Tool look_at_image ansehen. '
+              'In Dokumente/Folien einbinden mit ![](${f.uri.pathSegments.last}).',
+          path: f.path,
+        ));
+        notifyListeners();
+        if (!canSeeImages) {
+          statusMessage = visionHint;
+          notifyListeners();
+        }
+        return null;
+      }
+
+      if (ext == 'pdf') {
+        if (size > 80 * 1024 * 1024) return '$name ist größer als 80 MB.';
+        final f = await keep();
+        final r = await NativeFiles.pdfText(f.path);
+        var text = r.text.trim();
+        if (text.isEmpty) {
+          return '$name enthält keinen auslesbaren Text (eingescanntes PDF?). '
+              'Tipp: Seiten als Bilder anhängen, dann liest der Agent sie mit Bildverständnis.';
+        }
+        if (text.length > maxAttachmentChars) text = '${text.substring(0, maxAttachmentChars)}\n[… gekürzt]';
+        (_attachments[key] ??= []).add(Attachment(name: name, content: '[PDF, ${r.pages} Seiten]\n$text', path: f.path));
+        notifyListeners();
+        return null;
+      }
+
+      final bytes = await src.readAsBytes();
       if (bytes.length > 4 * 1024 * 1024) return '$name ist größer als 4 MB.';
       // einfache Binärprüfung
       final probe = bytes.length > 4096 ? bytes.sublist(0, 4096) : bytes;
       if (probe.where((b) => b == 0).length > 2) {
-        return '$name ist keine Textdatei (unterstützt: TXT, MD, CSV, JSON, Code).';
+        return '$name wird nicht unterstützt (möglich: PDF, Bilder, TXT, MD, CSV, JSON, Code).';
       }
       var text = utf8.decode(bytes, allowMalformed: true);
       if (text.length > maxAttachmentChars) {
         text = '${text.substring(0, maxAttachmentChars)}\n[… gekürzt]';
       }
-      final key = current?.id ?? '';
       (_attachments[key] ??= []).add(Attachment(name: name, content: text, path: path));
       notifyListeners();
       return null;
+    } on PlatformException catch (e) {
+      return '$name konnte nicht gelesen werden: ${e.message ?? e.code}';
     } catch (e) {
       return '$name konnte nicht gelesen werden: $e';
     }
   }
+
+  // ------------------------------------------------------- Bildverständnis
+
+  CatalogEntry? get _loadedCatalog => loadedModel?.catalogId == null
+      ? null
+      : modelCatalog.where((e) => e.id == loadedModel!.catalogId).firstOrNull;
+
+  /// Kann das geladene Modell überhaupt Bilder verstehen?
+  bool get modelSupportsVision => _loadedCatalog?.vision ?? false;
+
+  String? get visionPath {
+    final c = _loadedCatalog;
+    if (c == null) return null;
+    final p = settings.installed['mmproj:${c.id}'];
+    return p != null && File(p).existsSync() ? p : null;
+  }
+
+  bool get canSeeImages => engine != null && modelSupportsVision && visionPath != null;
+
+  String get visionHint {
+    if (engine == null) return 'Bild angehängt. Zum Ansehen zuerst ein Sprachmodell laden.';
+    if (!modelSupportsVision) {
+      return 'Bild angehängt – ${loadedModel?.displayName ?? 'dieses Modell'} kann aber keine Bilder sehen. '
+          'Für Bildverständnis Qwen 3.5 oder Gemma 4 laden (Systemcheck). '
+          'In Dokumente/Folien einbinden geht trotzdem.';
+    }
+    return 'Bild angehängt. Für Bildverständnis die Zusatzdatei laden: Systemcheck → ${loadedModel?.displayName} → „Bilder verstehen“.';
+  }
+
+  /// Lädt die Projektor-Datei (mmproj) für das Katalogmodell aus demselben Hugging-Face-Repo.
+  Future<void> downloadVision(CatalogEntry model) async {
+    final id = 'mmproj:${model.id}';
+    if (downloads[id]?.active ?? false) return;
+    final repo = model.hfRepo;
+    if (repo == null) return;
+    var st = DownloadState(CatalogEntry(
+      id: id,
+      kind: ModelKind.llm,
+      name: 'Bildverständnis für ${model.name}',
+      description: '',
+      url: '',
+      fileName: 'mmproj-${model.id}.gguf',
+      sizeBytes: 0,
+      minClass: DeviceClass.s,
+    ));
+    downloads[id] = st;
+    notifyListeners();
+    unawaited(BackgroundWork.begin('dl-$id', 'Lade Bildverständnis …'));
+    try {
+      final files = await _hfFiles(repo);
+      final mm = files.where((f) => f.path.split('/').last.toLowerCase().startsWith('mmproj')).toList();
+      if (mm.isEmpty) throw Exception('Im Repo $repo gibt es keine Projektor-Datei (mmproj).');
+      int rank(String n) {
+        final l = n.toLowerCase();
+        if (l.contains('q8')) return 0;
+        if (l.contains('f16') && !l.contains('bf16')) return 1;
+        if (l.contains('bf16')) return 2;
+        return 3;
+      }
+      mm.sort((a, b) => rank(a.path).compareTo(rank(b.path)));
+      final pick = mm.first;
+      final entry = CatalogEntry(
+        id: id,
+        kind: ModelKind.llm,
+        name: 'Bildverständnis für ${model.name}',
+        description: pick.path,
+        url: 'https://huggingface.co/$repo/resolve/main/${pick.path}',
+        fileName: 'mmproj-${model.id}.gguf',
+        sizeBytes: pick.size,
+        minClass: DeviceClass.s,
+      );
+      st = DownloadState(entry);
+      downloads[id] = st;
+      notifyListeners();
+      final target = '${storage.modelsDir.path}/${entry.fileName}';
+      final f = await _downloader.download(entry.url, target, cancel: st.cancel, onProgress: (p) {
+        st.progress = p;
+        notifyListeners();
+      });
+      settings.installed[id] = f.path;
+      await storage.saveSettings(settings);
+      downloads.remove(id);
+      if (statusMessage == visionHint) statusMessage = null;
+    } on DownloadCancelled {
+      downloads.remove(id);
+    } catch (e) {
+      st.error = e.toString();
+    } finally {
+      unawaited(BackgroundWork.end('dl-$id'));
+      refreshFreeDisk();
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeVision(CatalogEntry model) async {
+    final p = settings.installed.remove('mmproj:${model.id}');
+    if (p != null) {
+      try {
+        await File(p).delete();
+      } catch (_) {}
+    }
+    await storage.saveSettings(settings);
+    refreshFreeDisk();
+    notifyListeners();
+  }
+
+  Future<List<({String path, int size})>> _hfFiles(String repo) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final req = await client.getUrl(Uri.parse('https://huggingface.co/api/models/$repo/tree/main'));
+      final res = await req.close();
+      if (res.statusCode != 200) throw Exception('Hugging Face antwortet mit ${res.statusCode}');
+      final body = await res.transform(utf8.decoder).join();
+      final list = jsonDecode(body) as List;
+      return [
+        for (final f in list.cast<Map>())
+          if (f['type'] == 'file') (path: f['path'] as String, size: ((f['lfs'] as Map?)?['size'] ?? f['size'] ?? 0) as int),
+      ];
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Fragt das Sprachmodell zu Bildern (lädt bei Bedarf den Projektor).
+  Future<String> _visionQuery(List<String> imagePaths, String question) async {
+    final eng = engine;
+    final mm = visionPath;
+    if (eng == null) throw ToolException('Kein Modell geladen.');
+    if (!modelSupportsVision || mm == null) throw ToolException(visionHint);
+    await eng.loadVision(mm);
+    final marker = LlamaEngine.imageMarker;
+    final prompt = await eng.formatChat([
+      ChatMessage('user', '${List.filled(imagePaths.length, marker).join('\n')}\n$question'),
+    ]);
+    final out = StringBuffer();
+    String? error;
+    await for (final ev in eng.generateWithImages(prompt, imagePaths, maxTokens: 700)) {
+      if (ev is TokenEvent) out.write(ev.text);
+      if (ev is DoneEvent && ev.reason == FinishReason.error) error = ev.error;
+    }
+    if (error != null) throw ToolException('Bild konnte nicht ausgewertet werden: $error');
+    return out.toString().trim();
+  }
+
+  Future<String> _askAboutImage(String name, String question) async {
+    final all = attachments.where((a) => a.path != null && isImageFile(a.name)).toList();
+    final hit = all.where((a) => a.name.toLowerCase() == name.toLowerCase()).firstOrNull ??
+        all.where((a) => a.name.toLowerCase().contains(name.toLowerCase())).firstOrNull ??
+        (all.length == 1 ? all.first : null);
+    String? path = hit?.path;
+    if (path == null) {
+      final f = File('${outputsDir.path}/$name');
+      if (f.existsSync()) path = f.path;
+    }
+    if (path == null) {
+      throw ToolException('Bild "$name" nicht gefunden. Vorhanden: ${all.map((a) => a.name).join(', ')}');
+    }
+    return _visionQuery([path], '$question\nAntworte auf Deutsch.');
+  }
+
+  // ------------------------------------------------------- Bildgenerierung
+
+  CatalogEntry? get imageModel => modelCatalog.where((e) => e.kind == ModelKind.image && installedPath(e) != null).firstOrNull;
+
+  Future<String> _generateImage(String prompt, String format, String negative) async {
+    final m = imageModel;
+    if (m == null) {
+      throw ToolException('Kein Bildmodell installiert. Der Nutzer kann im Systemcheck unter „Bilder erzeugen“ '
+          'SD-Turbo laden (ca. 2 GB). Sag ihm das.');
+    }
+    if (!ImageEngine.available) throw ToolException('Bildgenerierung ist in dieser App-Version nicht enthalten.');
+    _imageIdle?.cancel();
+    imageProgress = 'Bildmodell wird geladen …';
+    notifyListeners();
+    try {
+      final path = installedPath(m)!;
+      if (_imageEngine?.modelPath != path) {
+        await _imageEngine?.dispose();
+        _imageEngine = await ImageEngine.load(path, threads: device.threads);
+      }
+      final (w, h) = switch (format) {
+        'landscape' => (640, 448),
+        'portrait' => (448, 640),
+        _ => (512, 512),
+      };
+      final steps = device.isMobile ? 2 : 4;
+      final started = DateTime.now();
+      imageProgress = 'Bild wird erzeugt …';
+      notifyListeners();
+      final img = await _imageEngine!.generate(
+        ImageRequest(prompt,
+            negative: negative.isEmpty ? 'blurry, low quality, distorted, text, watermark' : negative,
+            width: w,
+            height: h,
+            steps: steps,
+            cfg: 1.0),
+        onProgress: (step, total) {
+          final secs = DateTime.now().difference(started).inSeconds;
+          imageProgress = total > 0 && step > 0 ? 'Bild wird erzeugt … Schritt $step/$total ($secs s)' : 'Bild wird erzeugt … ($secs s)';
+          notifyListeners();
+        },
+      );
+      final rgba = Uint8List(img.width * img.height * 4);
+      for (var i = 0; i < img.width * img.height; i++) {
+        rgba[i * 4] = img.rgb[i * 3];
+        rgba[i * 4 + 1] = img.rgb[i * 3 + 1];
+        rgba[i * 4 + 2] = img.rgb[i * 3 + 2];
+        rgba[i * 4 + 3] = 255;
+      }
+      final words = prompt.replaceAll(RegExp(r'[^\w\s-]'), ' ').trim().split(RegExp(r'\s+')).take(5).join(' ');
+      final f = OutputSpace(outputsDir).fileFor('Bild $words', 'png');
+      await f.writeAsBytes(encodePngRgba(img.width, img.height, rgba));
+      return f.path;
+    } on ImageGenException catch (e) {
+      throw ToolException(e.message);
+    } finally {
+      imageProgress = null;
+      notifyListeners();
+      // Speicher freigeben: am Handy sofort, am Mac nach 5 Minuten Leerlauf
+      _imageIdle = Timer(device.isMobile ? Duration.zero : const Duration(minutes: 5), () async {
+        final e = _imageEngine;
+        _imageEngine = null;
+        await e?.dispose();
+      });
+    }
+  }
+
+  void cancelImage() => _imageEngine?.cancel();
 
   void removeAttachment(Attachment a) {
     _attachments[current?.id ?? '']?.remove(a);
@@ -858,9 +1173,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       for (final e in conv.entries)
         if (e.text.trim().isNotEmpty && e.error == null) ChatMessage(e.role, e.text),
     ];
-    final docs = List<Attachment>.of(attachments);
+    var docs = List<Attachment>.of(attachments);
     final user = ChatEntry(
-        role: 'user', text: input.trim(), attachments: docs.map((d) => d.name).toList(), viaVoice: voice);
+        role: 'user',
+        text: input.trim(),
+        attachments: docs.map((d) => d.name).toList(),
+        viaVoice: voice,
+        files: [for (final d in docs) if (d.path != null && isImageFile(d.name)) d.path!]);
     final answer = ChatEntry(role: 'assistant');
     conv.entries..add(user)..add(answer);
     if (conv.title == 'Neuer Chat') {
@@ -882,6 +1201,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     system.write('\n\nQUELLEN: Stütze dich auf Auszüge aus der Wissensbasis, angehängte Dokumente oder '
         'Webseiten, wenn vorhanden, und nenne sie im Text (Titel oder Adresse). Nutzt du nur dein eigenes '
         'Wissen, sag das nicht extra – die App ergänzt die Quellenangabe automatisch.');
+    if (activeTools.any((t) => t.name.startsWith('create_') || t.name == 'generate_image')) {
+      system.write('\n\nDATEIEN: Wünscht der Nutzer ein Dokument, eine Präsentation, ein Diagramm oder ein Bild, '
+          'erstelle es mit create_document, create_presentation, create_chart bzw. generate_image. '
+          'Bilder und Diagramme zuerst erzeugen, dann im Dokument/den Folien mit ![](dateiname.png) einbinden. '
+          'Schreibe Inhalte vollständig und gut gegliedert. Die Dateien erscheinen automatisch im Chat – '
+          'in der final_answer nur kurz sagen, was erstellt wurde.');
+    }
     if (voice) {
       system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
           'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
@@ -900,7 +1226,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       systemPrompt: system.toString(),
       tools: activeTools,
       maxSteps: profile.maxSteps,
-      maxTokensPerStep: (ctxSize ~/ 4).clamp(256, 1024),
+      // Platz für ganze Dokumente in einem Tool-Aufruf
+      maxTokensPerStep: (ctxSize ~/ 3).clamp(256, 4096),
       observationLimit: device.deviceClass == DeviceClass.s ? 1000 : 2000,
       sampling: SamplingParams(temperature: profile.temperature.clamp(0.0, 0.5), topP: 0.9),
       chatSampling: SamplingParams(temperature: profile.temperature),
@@ -920,13 +1247,62 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       requestNetwork: (purpose) => _requestNetwork(conv, purpose),
       onArtifact: (a) {
         conv.artifacts.add(a.toJson());
-        inspectorAttention = true;
+        if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) {
+          answer.files.add(a.content);
+        } else {
+          inspectorAttention = true;
+        }
         notifyListeners();
       },
     );
 
+    // Angehängte Bilder einmal ansehen (Bildverständnis), die Beschreibung bekommt der Agent als Text
+    final unseen = [for (final d in docs) if (d.path != null && isImageFile(d.name) && !_imageNotes.containsKey(d.path)) d];
+    if (unseen.isNotEmpty && canSeeImages) {
+      final log = StepLog(step: 0)
+        ..tool = 'look_at_image'
+        ..args = {'name': unseen.map((d) => d.name).join(', ')}
+        ..thought = 'Ich sehe mir ${unseen.length == 1 ? 'das Bild' : 'die Bilder'} an.';
+      answer.steps.add(log);
+      notifyListeners();
+      final sw = Stopwatch()..start();
+      for (final d in unseen) {
+        try {
+          final note = await _visionQuery([d.path!],
+              'Der Nutzer schreibt dazu: "${input.trim()}"\n'
+              'Beschreibe das Bild ausführlich auf Deutsch: Was ist zu sehen? Gib alle lesbaren Texte, Zahlen und '
+              'Tabellen wörtlich wieder. Beantworte, soweit möglich, die Frage des Nutzers.');
+          _imageNotes[d.path!] = note;
+        } catch (e) {
+          _imageNotes[d.path!] = 'Bild konnte nicht ausgewertet werden: $e';
+          log.isError = true;
+        }
+        if (runner.isStopped) break;
+      }
+      log
+        ..observation = unseen.map((d) => '${d.name}: ${_imageNotes[d.path!] ?? ''}').join('\n\n')
+        ..durationMs = sw.elapsedMilliseconds;
+      notifyListeners();
+    }
+    docs = [
+      for (final d in docs)
+        if (d.path != null && _imageNotes.containsKey(d.path))
+          Attachment(
+              name: d.name,
+              path: d.path,
+              content: 'Bild "${d.name}" – Inhalt (vom Modell erkannt):\n${_imageNotes[d.path]}\n'
+                  'Einbinden in Dokumente/Folien mit ![](${d.name}).')
+        else
+          d,
+    ];
+    final ctx2 = ToolContext(
+      attachments: docs,
+      requestNetwork: ctx.requestNetwork,
+      onArtifact: ctx.onArtifact,
+    );
+
     try {
-      await for (final ev in runner.run(history: history, userInput: turnInput, context: ctx)) {
+      await for (final ev in runner.run(history: history, userInput: turnInput, context: ctx2)) {
         switch (ev) {
           case StepStarted(step: final n):
             if (runner.agentMode) answer.steps.add(StepLog(step: n));
@@ -1011,6 +1387,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void stop() {
     _runner?.stop();
     engine?.stop();
+    _imageEngine?.cancel();
   }
 }
 

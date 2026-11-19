@@ -73,6 +73,32 @@ AE_API int32_t ae_begin(ae_engine * e,
 AE_API int32_t ae_next(ae_engine * e, char * buf, int32_t buf_len);
 
 // Bricht Prompt-Verarbeitung und Generierung ab (thread-sicher).
+// --- Bildverständnis (libmtmd) ---------------------------------------------
+// Markierung, die im (bereits formatierten) Prompt für jedes Bild steht.
+AE_API const char * ae_vision_marker(void);
+// Projektor-Datei (mmproj-*.gguf) zum geladenen Modell laden. 1 = ok.
+AE_API int32_t ae_vision_load(ae_engine * e, const char * mmproj_path, int32_t n_threads, int32_t use_gpu);
+AE_API int32_t ae_vision_ready(ae_engine * e);
+// Startet eine Antwort zu Bildern; danach wie gewohnt ae_next() aufrufen.
+// Der Text-KV-Cache wird dabei verworfen.
+AE_API int32_t ae_vision_begin(ae_engine * e, const char * prompt, const char ** image_paths, int32_t n_images,
+                               float temperature, int32_t max_tokens);
+
+// --- Bildgenerierung (stable-diffusion.cpp) ---------------------------------
+typedef struct ae_image ae_image;
+AE_API ae_image * ae_img_create(const char * model_path, int32_t n_threads, int32_t vae_tiling,
+                                char * err, int32_t err_len);
+AE_API void ae_img_destroy(ae_image * im);
+// 0 = ok (out_rgb mit ae_free freigeben), 1 = abgebrochen, -1 = Fehler (ae_img_last_error)
+AE_API int32_t ae_img_generate(ae_image * im, const char * prompt, const char * negative,
+                               int32_t width, int32_t height, int32_t steps, float cfg, int64_t seed,
+                               const char * method, int32_t vae_tiling,
+                               uint8_t ** out_rgb, int32_t * out_w, int32_t * out_h);
+AE_API void ae_img_cancel(ae_image * im);
+AE_API void ae_img_progress(int32_t * step, int32_t * steps);
+AE_API const char * ae_img_last_error(ae_image * im);
+AE_API void ae_free(void * p);
+
 AE_API void ae_stop(ae_engine * e);
 
 // Statistik der letzten Generierung, in out[0..7]:

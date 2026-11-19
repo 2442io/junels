@@ -28,7 +28,18 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Quellen holen (llama.cpp, whisper.cpp)
+      - name: Cache Quellen
+        uses: actions/cache@v4
+        with:
+          path: third_party
+          key: src-${{ hashFiles('scripts/fetch_llama.sh', 'scripts/slim_sd_vocab.py') }}
+      - name: Cache native Objektdateien
+        uses: actions/cache@v4
+        with:
+          path: packages/agent_engine/android/.cxx
+          key: cxx-android-${{ hashFiles('scripts/fetch_llama.sh', 'packages/agent_engine/src/**') }}
+          restore-keys: cxx-android-
+      - name: Quellen holen (llama.cpp, whisper.cpp, stable-diffusion.cpp)
         run: bash scripts/fetch_llama.sh
       - name: Plattform anlegen und anpassen
         working-directory: app
@@ -79,9 +90,15 @@ jobs:
         run: |
           brew list cmake >/dev/null 2>&1 || brew install cmake
           flutter config --no-analytics
+      - name: Cache Metal-Framework
+        uses: actions/cache@v4
+        with:
+          path: packages/agent_engine/macos/Frameworks/AgentEngine.xcframework
+          key: xcf-macos-${{ hashFiles('scripts/fetch_llama.sh', 'scripts/slim_sd_vocab.py', 'scripts/build_apple_framework.sh', 'packages/agent_engine/src/**') }}
       - name: Einrichten (inkl. Metal-Framework, nur macOS-Variante)
         env:
           AE_APPLE_TARGETS: macos
+          AE_REUSE_FRAMEWORK: '1'
         run: bash scripts/setup.sh
       - name: DMG bauen
         run: bash scripts/build_macos.sh
@@ -110,3 +127,58 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.dmg
+
+  engine-test:
+    # Prüft Bildverständnis, Bildgenerierung und alle Download-Adressen mit echten Modellen.
+    # Blockiert die App-Builds nicht.
+    name: Engine-Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Cache Quellen
+        uses: actions/cache@v4
+        with:
+          path: third_party
+          key: src-${{ hashFiles('scripts/fetch_llama.sh', 'scripts/slim_sd_vocab.py') }}
+      - name: Cache Build
+        uses: actions/cache@v4
+        with:
+          path: build-linux
+          key: linux-${{ hashFiles('scripts/fetch_llama.sh', 'packages/agent_engine/src/**') }}
+          restore-keys: linux-
+      - name: Cache Testmodelle
+        uses: actions/cache@v4
+        with:
+          path: testmodels
+          key: testmodels-v1
+      - name: Engine bauen
+        run: |
+          bash scripts/fetch_llama.sh
+          cmake -S packages/agent_engine/src -B build-linux -DCMAKE_BUILD_TYPE=Release > /dev/null
+          cmake --build build-linux --target agent_engine -j 4 2>&1 | tail -3
+      - name: Testmodelle laden
+        run: bash scripts/ci_testmodels.sh testmodels
+      - name: Tests
+        working-directory: packages/agent_engine
+        run: |
+          set -o pipefail
+          export AE_LIB_PATH=$GITHUB_WORKSPACE/build-linux/libagent_engine.so
+          dart run test/engine_test.dart
+          AE_TEST_VISION_MODEL=$(ls $GITHUB_WORKSPACE/testmodels/vlm-model.gguf) \
+          AE_TEST_MMPROJ=$GITHUB_WORKSPACE/testmodels/vlm-mmproj.gguf \
+          AE_TEST_IMAGE=$GITHUB_WORKSPACE/third_party/llama.cpp/tools/mtmd/test-1.jpeg \
+          AE_TEST_SD_MODEL=$GITHUB_WORKSPACE/testmodels/sd_turbo.gguf \
+          AE_TEST_OUT=$GITHUB_WORKSPACE/testout \
+          dart run test/media_test.dart
+      - name: Download-Adressen prüfen
+        working-directory: packages/agent_engine
+        run: dart run tool/check_catalog.dart
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Engine-Test-Ausgaben
+          path: testout
+          if-no-files-found: ignore
+          retention-days: 7

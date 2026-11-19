@@ -31,6 +31,9 @@ set(LLAMA_BUILD_IS_DEV    OFF CACHE BOOL "" FORCE)
 set(GGML_NATIVE           OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP           OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE        OFF CACHE BOOL "" FORCE)
+# Bildverständnis: libmtmd (ohne Video/ffmpeg)
+set(LLAMA_BUILD_MTMD      ON  CACHE BOOL "" FORCE)
+set(MTMD_VIDEO            OFF CACHE BOOL "" FORCE)
 
 if(ANDROID)
   # Gradle baut Debug-Varianten sonst ohne Optimierung
@@ -47,6 +50,10 @@ if(APPLE)
   set(GGML_METAL_EMBED_LIBRARY  ON  CACHE BOOL "" FORCE)
   set(GGML_BLAS                 OFF CACHE BOOL "" FORCE)
 endif()
+
+# Stable Diffusion braucht längere Tensor-Namen; gilt für alle ggml-Nutzer gleich,
+# damit die ggml_tensor-Struktur überall identisch ist.
+add_compile_definitions(GGML_MAX_NAME=160)
 
 add_subdirectory("${LLAMA_CPP_DIR}" llama_build EXCLUDE_FROM_ALL)
 
@@ -67,8 +74,32 @@ target_link_libraries(whisper_lib PUBLIC ggml)
 set_target_properties(whisper_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_definitions(whisper_lib PRIVATE WHISPER_VERSION="1.9.5-ae")
 
-add_library(agent_engine SHARED agent_engine.cpp stt_engine.cpp)
-target_link_libraries(agent_engine PRIVATE llama whisper_lib)
+# stable-diffusion.cpp: Bildgenerierung, gegen das ggml von llama.cpp gebaut
+if(NOT DEFINED SD_CPP_DIR)
+  set(SD_CPP_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../third_party/stable-diffusion.cpp")
+endif()
+get_filename_component(SD_CPP_DIR "${SD_CPP_DIR}" ABSOLUTE)
+option(AE_WITH_SD "Bildgenerierung (stable-diffusion.cpp)" ON)
+set(AE_SD_SOURCES "")
+if(AE_WITH_SD AND EXISTS "${SD_CPP_DIR}/CMakeLists.txt")
+  set(SD_USE_SYSTEM_GGML   ON  CACHE BOOL "" FORCE)  # vorhandenes ggml-Target verwenden
+  set(SD_USE_UPSTREAM_GGML ON  CACHE BOOL "" FORCE)
+  set(SD_GGML_SOURCE_DIR "${LLAMA_CPP_DIR}/ggml" CACHE PATH "" FORCE)
+  set(SD_BUILD_EXAMPLES    OFF CACHE BOOL "" FORCE)
+  set(SD_WEBP              OFF CACHE BOOL "" FORCE)
+  set(SD_WEBM              OFF CACHE BOOL "" FORCE)
+  set(SD_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  add_subdirectory("${SD_CPP_DIR}" sd_build EXCLUDE_FROM_ALL)
+  set(AE_SD_SOURCES image_engine.cpp)
+  set(AE_HAVE_SD ON)
+endif()
+
+add_library(agent_engine SHARED agent_engine.cpp stt_engine.cpp ${AE_SD_SOURCES})
+target_link_libraries(agent_engine PRIVATE llama mtmd whisper_lib)
+if(AE_HAVE_SD)
+  target_link_libraries(agent_engine PRIVATE stable-diffusion)
+  target_compile_definitions(agent_engine PRIVATE AE_HAVE_SD=1)
+endif()
 set_target_properties(agent_engine PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN ON)

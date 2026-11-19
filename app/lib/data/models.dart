@@ -205,9 +205,11 @@ class ChatEntry {
     this.tokensPerSecond,
     this.viaVoice = false,
     List<SourceRef>? sources,
+    List<String>? files,
     DateTime? time,
   })  : steps = steps ?? [],
         sources = sources ?? [],
+        files = files ?? [],
         time = time ?? DateTime.now();
 
   final String role; // user | assistant
@@ -219,6 +221,9 @@ class ChatEntry {
   double? tokensPerSecond;
   final bool viaVoice; // im Gesprächsmodus gesprochen
   final List<SourceRef> sources;
+
+  /// Dateipfade: beim Nutzer angehängte Bilder, beim Agenten erzeugte Dateien.
+  final List<String> files;
   final DateTime time;
 
   Map<String, Object?> toJson() => {
@@ -231,6 +236,7 @@ class ChatEntry {
         'tps': tokensPerSecond,
         'voice': viaVoice,
         if (sources.isNotEmpty) 'sources': sources.map((e) => e.toJson()).toList(),
+        if (files.isNotEmpty) 'files': files,
         'time': time.toIso8601String(),
       };
 
@@ -240,6 +246,7 @@ class ChatEntry {
         steps: [for (final s in (j['steps'] as List? ?? const [])) StepLog.fromJson((s as Map).cast())],
         attachments: (j['attachments'] as List? ?? const []).cast<String>(),
         sources: [for (final x in (j['sources'] as List? ?? const [])) SourceRef.fromJson((x as Map).cast())],
+        files: (j['files'] as List? ?? const []).cast<String>(),
         error: j['error'] as String?,
         truncated: j['truncated'] as bool? ?? false,
         tokensPerSecond: (j['tps'] as num?)?.toDouble(),
@@ -308,6 +315,7 @@ class AppSettings {
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
+              'create_document', 'create_presentation', 'create_chart', 'generate_image', 'look_at_image',
             },
         installed = installed ?? {};
 
@@ -367,12 +375,15 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 3;
+  static const toolsVersion = 4;
 
   /// Neue Tools bei älteren Einstellungen einschalten.
   void _migrateTools(int from) {
     if (from < 2) enabledTools.addAll(['web_search', 'web_fetch']);
     if (from < 3) enabledTools.addAll(['remember', 'search_history', 'knowledge_search']);
+    if (from < 4) {
+      enabledTools.addAll(['create_document', 'create_presentation', 'create_chart', 'generate_image', 'look_at_image']);
+    }
   }
 }
 
@@ -381,6 +392,10 @@ const promptPresets = <(String, String)>[
   ('Zusammenfassen', 'Fasse die angehängte Datei in 5 Stichpunkten zusammen.'),
   ('Suchen', 'Suche in den angehängten Dateien nach: '),
   ('Tabelle', 'Erstelle aus den Daten eine Markdown-Tabelle und lege sie als Artefakt ab.'),
+  ('Präsentation', 'Erstelle eine Präsentation mit 6 Folien zum Thema: '),
+  ('PDF-Bericht', 'Schreibe einen kurzen Bericht als PDF über: '),
+  ('Bild', 'Erzeuge ein Bild: '),
+  ('Diagramm', 'Zeichne ein Balkendiagramm mit diesen Werten: '),
   ('Rechnen', 'Berechne: '),
   ('JSON prüfen', 'Lies die JSON-Datei und liste alle Schlüssel der obersten Ebene auf.'),
 ];

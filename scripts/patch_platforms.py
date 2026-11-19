@@ -74,6 +74,14 @@ def patch_android():
         s = re.sub(r'android:label="[^"]*"', f'android:label="{DISPLAY_NAME}"', s, count=1)
         if "android:largeHeap" not in s:
             s = s.replace("<application", '<application\n        android:largeHeap="true"', 1)
+        if "androidx.core.content.FileProvider" not in s:
+            s = s.replace("</application>",
+                          '    <provider android:name="androidx.core.content.FileProvider"\n'
+                          '            android:authorities="${applicationId}.files" android:exported="false"\n'
+                          '            android:grantUriPermissions="true">\n'
+                          '            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"\n'
+                          '                android:resource="@xml/junels_file_paths" />\n'
+                          '        </provider>\n    </application>', 1)
         if ".AgentService" not in s:
             s = s.replace("</application>",
                           '    <service android:name=".AgentService" android:exported="false"\n'
@@ -81,6 +89,14 @@ def patch_android():
         return s
 
     edit(android / "app/src/main/AndroidManifest.xml", manifest)
+
+    res = android / "app/src/main/res/xml"
+    res.mkdir(parents=True, exist_ok=True)
+    (res / "junels_file_paths.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n<paths>\n    <cache-path name="shared" path="shared/" />\n</paths>\n')
+    # optionale JPEG2000-Klassen von PDFBox fehlen absichtlich
+    (android / "app/proguard-rules.pro").write_text(
+        "-dontwarn com.gemalto.jp2.**\n-keep class com.tom_roush.pdfbox.** { *; }\n-keep class com.tom_roush.fontbox.** { *; }\n")
 
     # Hintergrunddienst: MainActivity (MethodChannel) + AgentService ersetzen die Vorlage
     src = ROOT / "scripts/android"
@@ -91,16 +107,25 @@ def patch_android():
         log(f"Hintergrunddienst eingesetzt ({pkg})")
 
     def gradle_kts(s):
+        s = s.replace('abiFilters += listOf("arm64-v8a", "x86_64")', 'abiFilters += listOf("arm64-v8a")')
         if "abiFilters" not in s:
             s = re.sub(r"(defaultConfig\s*\{)",
-                       r'\1\n        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }', s, count=1)
+                       r'\1\n        ndk { abiFilters += listOf("arm64-v8a") }', s, count=1)
+        if "pdfbox-android" not in s:
+            s += '''
+// PDF-Text lesen (Apache PDFBox) und Dateien teilen (FileProvider)
+dependencies {
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("androidx.core:core:1.13.1")
+}
+'''
         return s
 
     edit(android / "app/build.gradle.kts", gradle_kts)
 
     def gradle_groovy(s):
         if "abiFilters" not in s:
-            s = re.sub(r"(defaultConfig\s*\{)", r'\1\n        ndk { abiFilters "arm64-v8a", "x86_64" }', s, count=1)
+            s = re.sub(r"(defaultConfig\s*\{)", r'\1\n        ndk { abiFilters "arm64-v8a" }', s, count=1)
         return s
 
     edit(android / "app/build.gradle", gradle_groovy)
@@ -187,6 +212,16 @@ def patch_macos():
         return s[:i] + hook + s[i:]
 
     edit(mac / "Runner/AppDelegate.swift", app_delegate)
+
+    def main_window(s):
+        if "JunelsFiles" in s:
+            return s
+        s = s.replace("import FlutterMacOS", "import FlutterMacOS\nimport PDFKit", 1)
+        s = re.sub(r"(RegisterGeneratedPlugins\(registry: flutterViewController\))",
+                   r"\1\n    JunelsFiles.register(flutterViewController)", s, count=1)
+        return s + (ROOT / "scripts/macos/JunelsFiles.swift").read_text()
+
+    edit(mac / "Runner/MainFlutterWindow.swift", main_window)
     def common(d):
         d["com.apple.security.app-sandbox"] = True
         d["com.apple.security.files.user-selected.read-write"] = True

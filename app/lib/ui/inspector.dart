@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'file_views.dart';
 import 'markdown_lite.dart';
 
 class InspectorPanel extends StatelessWidget {
@@ -68,7 +69,14 @@ class _ArtifactList extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, i) => _ArtifactCard(artifact: items[i]),
+      itemBuilder: (context, i) {
+        final a = items[i];
+        if (a.kind == 'image') {
+          return Padding(padding: const EdgeInsets.only(bottom: 8), child: ImagePreview(a.content, size: 260));
+        }
+        if (a.kind == 'pdf' || a.kind == 'pptx') return FileCard(a.content);
+        return _ArtifactCard(artifact: a);
+      },
     );
   }
 }

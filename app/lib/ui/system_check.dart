@@ -44,6 +44,15 @@ class SystemCheckPage extends StatelessWidget {
               const SizedBox(height: 20),
               _KindSection(
                 app: app,
+                kind: ModelKind.image,
+                title: 'Bilder erzeugen – Stable Diffusion (optional)',
+                subtitle: 'Damit der Agent Bilder malen kann (Fotos, Illustrationen für Präsentationen). '
+                    'Diagramme und Dokumente gehen auch ohne.',
+                icon: Icons.brush_outlined,
+              ),
+              const SizedBox(height: 20),
+              _KindSection(
+                app: app,
                 kind: ModelKind.stt,
                 title: 'Spracherkennung – Whisper (optional)',
                 subtitle: 'Für die Mikrofon-Eingabe. large-v3-turbo ist die beste Wahl, wenn das Gerät es schafft.',
@@ -380,6 +389,7 @@ class _EntryTile extends StatelessWidget {
                 action,
               ],
             ),
+            if (e.kind == ModelKind.llm && e.vision && installed) _VisionRow(app: app, model: e),
             if (dl?.error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -406,6 +416,8 @@ class _EntryTile extends StatelessWidget {
           icon: Icon(loaded ? Icons.check : Icons.play_arrow, size: 18),
           label: Text(loaded ? 'Geladen' : 'Laden'),
         );
+      case ModelKind.image:
+        return const Chip(label: Text('Bereit'), visualDensity: VisualDensity.compact);
       case ModelKind.stt:
       case ModelKind.tts:
         final active = e.kind == ModelKind.stt ? app.settings.sttModelId == e.id : app.settings.ttsVoiceId == e.id;
@@ -460,5 +472,55 @@ class _EntryTile extends StatelessWidget {
     if (d == null) return '';
     if (d.inMinutes >= 1) return ' · ${d.inMinutes} min';
     return ' · ${d.inSeconds} s';
+  }
+}
+
+/// Zusatzdatei für Bildverständnis (mmproj) zu einem Sprachmodell.
+class _VisionRow extends StatelessWidget {
+  const _VisionRow({required this.app, required this.model});
+  final AppController app;
+  final CatalogEntry model;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final id = 'mmproj:${model.id}';
+    final path = app.settings.installed[id];
+    final has = path != null && File(path).existsSync();
+    final dl = app.downloads[id];
+    Widget trailing;
+    if (dl != null && dl.active) {
+      final p = dl.progress;
+      trailing = Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 90, child: LinearProgressIndicator(value: p?.fraction)),
+        IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => dl.cancel.cancel()),
+      ]);
+    } else if (has) {
+      trailing = TextButton(onPressed: () => app.removeVision(model), child: const Text('Entfernen'));
+    } else {
+      trailing = TextButton.icon(
+        onPressed: () => app.downloadVision(model),
+        icon: const Icon(Icons.download, size: 16),
+        label: Text(dl?.error != null ? 'Erneut versuchen' : 'Laden'),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(has ? Icons.visibility : Icons.visibility_outlined, size: 18, color: has ? Colors.green : scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              has ? 'Bilder verstehen: bereit' : 'Bilder verstehen (Fotos, Screenshots, Scans) – Zusatzdatei',
+              style: t.bodySmall,
+            ),
+          ),
+          trailing,
+        ]),
+        if (dl?.error != null) Text(dl!.error!, style: t.bodySmall?.copyWith(color: scheme.error)),
+      ]),
+    );
   }
 }
