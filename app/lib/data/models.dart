@@ -182,6 +182,18 @@ class StepLog {
       );
 }
 
+/// Quelle einer Antwort: Modell, Dokument oder Webseite.
+class SourceRef {
+  const SourceRef(this.kind, this.label, [this.url]);
+  final String kind; // model | doc | web
+  final String label;
+  final String? url;
+
+  Map<String, Object?> toJson() => {'kind': kind, 'label': label, if (url != null) 'url': url};
+  factory SourceRef.fromJson(Map<String, dynamic> j) =>
+      SourceRef(j['kind'] as String? ?? 'model', j['label'] as String? ?? '', j['url'] as String?);
+}
+
 class ChatEntry {
   ChatEntry({
     required this.role,
@@ -192,8 +204,10 @@ class ChatEntry {
     this.truncated = false,
     this.tokensPerSecond,
     this.viaVoice = false,
+    List<SourceRef>? sources,
     DateTime? time,
   })  : steps = steps ?? [],
+        sources = sources ?? [],
         time = time ?? DateTime.now();
 
   final String role; // user | assistant
@@ -204,6 +218,7 @@ class ChatEntry {
   bool truncated;
   double? tokensPerSecond;
   final bool viaVoice; // im Gesprächsmodus gesprochen
+  final List<SourceRef> sources;
   final DateTime time;
 
   Map<String, Object?> toJson() => {
@@ -215,6 +230,7 @@ class ChatEntry {
         'truncated': truncated,
         'tps': tokensPerSecond,
         'voice': viaVoice,
+        if (sources.isNotEmpty) 'sources': sources.map((e) => e.toJson()).toList(),
         'time': time.toIso8601String(),
       };
 
@@ -223,6 +239,7 @@ class ChatEntry {
         text: j['text'] as String? ?? '',
         steps: [for (final s in (j['steps'] as List? ?? const [])) StepLog.fromJson((s as Map).cast())],
         attachments: (j['attachments'] as List? ?? const []).cast<String>(),
+        sources: [for (final x in (j['sources'] as List? ?? const [])) SourceRef.fromJson((x as Map).cast())],
         error: j['error'] as String?,
         truncated: j['truncated'] as bool? ?? false,
         tokensPerSecond: (j['tps'] as num?)?.toDouble(),

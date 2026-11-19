@@ -788,6 +788,54 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Schickt eine Nachricht an den Agenten.
   /// [voice]: Gesprächsmodus (kurze, gesprochene Antworten).
   /// [onAnswer]: bekommt den wachsenden Antworttext (für Vorlesen während des Schreibens).
+  /// Welche Quellen eine Antwort hatte: Wissensbasis, Anhänge, Web-Tools – sonst das Modell.
+  List<SourceRef> _collectSources(ChatEntry answer, List<Attachment> docs, List<KnowledgeHit> ragHits) {
+    final out = <SourceRef>[];
+    final seen = <String>{};
+    void add(SourceRef r) {
+      final key = '${r.kind}|${r.url ?? r.label}';
+      if (seen.add(key)) out.add(r);
+    }
+
+    final urlRe = RegExp(r'https?://[^\s)\]>"]+');
+    void addKb(String title, String url) =>
+        url.startsWith('http') ? add(SourceRef('web', title.isEmpty ? url : title, url)) : add(SourceRef('doc', title.isEmpty ? url : title));
+
+    for (final h in ragHits) {
+      addKb(h.chunk.title, h.chunk.url);
+    }
+    for (final d in docs) {
+      add(SourceRef('doc', d.name));
+    }
+    for (final st in answer.steps) {
+      if (st.isError == true) continue;
+      final obs = st.observation ?? '';
+      switch (st.tool) {
+        case 'web_fetch':
+          final u = st.args?['url']?.toString();
+          if (u != null && u.isNotEmpty) add(SourceRef('web', u, u));
+        case 'web_search':
+          // nur Treffer, die die Antwort auch nennt; sonst die ersten drei
+          final urls = urlRe.allMatches(obs).map((m) => m.group(0)!).toList();
+          final cited = urls.where((u) => answer.text.contains(Uri.tryParse(u)?.host ?? '\u0000')).toList();
+          for (final u in (cited.isNotEmpty ? cited : urls.take(3))) {
+            add(SourceRef('web', u, u));
+          }
+        case 'knowledge_search':
+          for (final m in RegExp(r'\[\d+\] (.+?) – (\S+)').allMatches(obs)) {
+            addKb(m.group(1)!, m.group(2)!);
+          }
+        case 'read_file' || 'text_search' || 'json_query':
+          final n = st.args?['name']?.toString() ?? st.args?['file']?.toString();
+          if (n != null && n.isNotEmpty) add(SourceRef('doc', n));
+      }
+    }
+    if (out.isEmpty) {
+      add(SourceRef('model', loadedModel?.displayName ?? 'Sprachmodell'));
+    }
+    return out;
+  }
+
   Future<void> send(String input, {bool voice = false, void Function(String text, bool done)? onAnswer}) async {
     final eng = engine;
     if (eng == null || running || input.trim().isEmpty) {
@@ -822,6 +870,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       system.write('\nWenn der Nutzer etwas Wichtiges über sich erzählt oder dich bittet, '
           'dir etwas zu merken, nutze das Tool remember.');
     }
+    system.write('\n\nQUELLEN: Stütze dich auf Auszüge aus der Wissensbasis, angehängte Dokumente oder '
+        'Webseiten, wenn vorhanden, und nenne sie im Text (Titel oder Adresse). Nutzt du nur dein eigenes '
+        'Wissen, sag das nicht extra – die App ergänzt die Quellenangabe automatisch.');
     if (voice) {
       system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
           'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
@@ -830,6 +881,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     var turnInput = input.trim();
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
+    final ragHits = rag.isEmpty
+        ? const <KnowledgeHit>[]
+        : knowledge.search(turnInput).where((h) => rag.contains(h.chunk.url)).toList();
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
     final runner = AgentRunner(
@@ -921,6 +975,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       answer.error = e.toString();
     } finally {
+      answer.sources
+        ..clear()
+        ..addAll(_collectSources(answer, docs, ragHits));
       onAnswer?.call(answer.text, true);
       running = false;
       _runner = null;

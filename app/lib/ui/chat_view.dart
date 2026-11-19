@@ -248,6 +248,7 @@ class _AssistantMessage extends StatelessWidget {
                 Expanded(child: Text(entry.error!, style: TextStyle(color: scheme.onErrorContainer))),
               ]),
             ),
+          if (!live && entry.sources.isNotEmpty) _Sources(entry.sources),
           if (!live && (entry.text.isNotEmpty || entry.tokensPerSecond != null))
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -273,6 +274,58 @@ class _AssistantMessage extends StatelessWidget {
                       },
                     ),
                 ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Sources extends StatelessWidget {
+  const _Sources(this.sources);
+  final List<SourceRef> sources;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    IconData icon(String k) => switch (k) {
+          'web' => Icons.public,
+          'doc' => Icons.description_outlined,
+          _ => Icons.memory,
+        };
+    String label(SourceRef r) => switch (r.kind) {
+          'model' => 'Modell: ${r.label}',
+          'web' => r.label == r.url ? (Uri.tryParse(r.url!)?.host ?? r.label) : r.label,
+          _ => r.label,
+        };
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('Quellen:', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+          for (final r in sources)
+            Tooltip(
+              message: r.url ?? r.label,
+              child: ActionChip(
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                avatar: Icon(icon(r.kind), size: 14),
+                label: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(label(r), overflow: TextOverflow.ellipsis, style: t.labelSmall),
+                ),
+                onPressed: r.url == null
+                    ? null
+                    : () {
+                        Clipboard.setData(ClipboardData(text: r.url!));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Adresse kopiert: ${r.url}'), duration: const Duration(seconds: 2)));
+                      },
               ),
             ),
         ],

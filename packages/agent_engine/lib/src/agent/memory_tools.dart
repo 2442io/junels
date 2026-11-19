@@ -72,8 +72,8 @@ class KnowledgeSearchTool extends AgentTool {
     final hits = kb.search(q, k: 5, minScore: 0.2);
     if (hits.isEmpty) return 'Keine passenden Abschnitte zu "$q".';
     return [
-      for (final h in hits)
-        '${h.chunk.title} – ${h.chunk.url}\n${h.chunk.text.length > 900 ? '${h.chunk.text.substring(0, 900)} …' : h.chunk.text}'
+      for (final (i, h) in hits.indexed)
+        '[${i + 1}] ${h.chunk.title} – ${h.chunk.url}\n${h.chunk.text.length > 900 ? '${h.chunk.text.substring(0, 900)} …' : h.chunk.text}'
     ].join('\n---\n');
   }
 }
