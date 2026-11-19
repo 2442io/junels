@@ -1,6 +1,6 @@
 name: offline_agent
 description: Native Offline Agent App – lokale KI-Agenten ohne Cloud und ohne App Store.
-version: 1.3.1+5
+version: 1.3.2+6
 publish_to: none
 
 environment:
@@ -17,7 +17,8 @@ dependencies:
   wakelock_plus: ^1.3.0
   # Sprache: Aufnahme, Piper-TTS (sherpa-onnx), Wiedergabe, Entpacken der Stimmen
   record: ^7.0.0
-  sherpa_onnx: ^2.0.1
+  # 1.13.8 fest: ab 2.0 liest sherpa-onnx keine espeak-Daten mehr, Piper bliebe stumm
+  sherpa_onnx: 1.13.8
   audioplayers: ^6.5.0
   archive: ^4.0.7
   # Systemstimme als Rückfallebene für das Vorlesen (offline, vom Betriebssystem)

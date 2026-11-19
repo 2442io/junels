@@ -589,6 +589,17 @@ void _ttsMain(SendPort out) {
               numThreads: 2,
             ),
           ));
+          if (tts!.ptr.address == 0) {
+            tts = null;
+            out.send({'id': id, 'ok': false, 'error': 'sherpa-onnx konnte die Stimme nicht anlegen (Konfiguration abgelehnt)'});
+            return;
+          }
+          // Probelauf: liefert die Stimme überhaupt Audio?
+          final probe = tts!.generate(text: 'Test.', speed: 1.0);
+          if (probe.samples.isEmpty) {
+            out.send({'id': id, 'ok': false, 'error': 'Stimme geladen, erzeugt aber kein Audio (Phonemisierung fehlgeschlagen)'});
+            return;
+          }
           out.send({'id': id, 'ok': true});
         case 'synth':
           final audio = tts!.generate(text: m['text'] as String, speed: (m['speed'] as num).toDouble());
