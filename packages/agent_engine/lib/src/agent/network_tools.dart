@@ -152,7 +152,8 @@ class WebFetchTool extends AgentTool {
         if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
         if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
       }
-      b.writeln('\nBilder in der Antwort als Markdown einbinden: ![Titel](Bild-URL)');
+      b.writeln('\nIn der Antwort je Eintrag: "### Titel", darunter "![Titel](Bild-URL)" in eigener Zeile, dann "[Zum Artikel](Link)". '
+          'Die Überschrift EINTRÄGE nicht übernehmen.');
     }
     var text = htmlToText(html);
     final room = maxChars - b.length;

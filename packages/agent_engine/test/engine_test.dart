@@ -539,6 +539,40 @@ Future<void> main() async {
       if (vad3.add(chunk) == VadEvent.speechStart) started = true;
     }
     check(!started, 'erhöhte Schwelle (Agent spricht) ignoriert leises Echo');
+    Float32List toneA(int ms, double amp) =>
+        Float32List.fromList(List.generate(16 * ms, (i) => amp * math.sin(i * 2 * math.pi * 220 / 16000)));
+    List<VadEvent> feed(VoiceActivityDetector v, List<Float32List> chunks) {
+      final ev = <VadEvent>[];
+      for (final c in chunks) {
+        for (var i = 0; i < c.length; i += 480) {
+          final e = v.add(Float32List.sublistView(c, i, math.min(c.length, i + 480)));
+          if (e != VadEvent.none) ev.add(e);
+        }
+      }
+      return ev;
+    }
+
+    // Klassifikator: lauter Lärm ohne Sprache startet nichts
+    final vad4 = VoiceActivityDetector(classifier: (_) => false);
+    check(feed(vad4, [noise(500, 0.002), noise(1500, 0.3)]).isEmpty, 'Lärm ohne Sprache (Klassifikator) ignoriert');
+    // Nahfeld: nach eigener lauter Äußerung lösen leisere Stimmen (-26 dB) nichts aus
+    final vad5 = VoiceActivityDetector(nearFieldDb: 15);
+    final e5 = feed(vad5, [noise(500, 0.002), toneA(1200, 0.4), noise(1200, 0.002)]);
+    vad5.takeUtterance();
+    final e5b = feed(vad5, [toneA(1500, 0.02), noise(1200, 0.002)]);
+    check(e5.length == 2 && e5b.isEmpty, 'leise Hintergrundstimme ignoriert ($e5 / $e5b)');
+    // Nahfeld: Stimme im Hintergrund während man selbst spricht verlängert nicht
+    final vad6 = VoiceActivityDetector(nearFieldDb: 15);
+    final e6 = feed(vad6, [noise(400, 0.002), toneA(1500, 0.4), toneA(3000, 0.02)]);
+    check(e6.contains(VadEvent.speechEnd), 'Ende trotz leiser Stimmen im Hintergrund');
+    // Absender-Modus: Pausen beenden nicht, erst finish()
+    final vad7 = VoiceActivityDetector()..manual = true;
+    final e7 = feed(vad7, [noise(400, 0.002), toneA(800, 0.3), noise(3000, 0.002), toneA(800, 0.3), noise(2000, 0.002)]);
+    check(e7.length == 1 && e7.single == VadEvent.speechStart, 'Absender-Modus: Pause beendet nicht ($e7)');
+    check(vad7.finish(), 'finish() schließt ab');
+    final u7 = vad7.takeUtterance();
+    check(u7.length > 16000 * 6, 'ganze Äußerung mit Pausen (${(u7.length / 16000).toStringAsFixed(1)} s)');
+    check(!vad7.finish(), 'finish() ohne Sprache → false');
   });
 
   await group('Dokumente: Markdown, PDF, PPTX, PNG', () async {

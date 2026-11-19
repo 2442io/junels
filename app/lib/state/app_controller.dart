@@ -454,6 +454,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (notify) notifyListeners();
   }
 
+  /// Einstellungen des Gesprächsmodus ändern und speichern.
+  Future<void> setVoiceOptions({bool? manualEnd, int? pauseMs, bool? nearField}) async {
+    if (manualEnd != null) settings.voiceManualEnd = manualEnd;
+    if (pauseMs != null) settings.voicePauseMs = pauseMs;
+    if (nearField != null) settings.voiceNearField = nearField;
+    await storage.saveSettings(settings);
+    conversation.applySettings();
+    notifyListeners();
+  }
+
   /// [size] <= 0 = automatisch.
   Future<void> setContextSize(int size) async {
     settings.contextAuto = size <= 0;

@@ -66,6 +66,17 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 val path = call.argument<String>("path") ?: ""
                 when (call.method) {
+                    "openUrl" -> {
+                        try {
+                            val u = call.argument<String>("url") ?: ""
+                            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(u))
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Throwable) {
+                            result.error("url", e.message ?: e.toString(), null)
+                        }
+                    }
                     "pdfText" -> Thread {
                         try {
                             PDFBoxResourceLoader.init(applicationContext)

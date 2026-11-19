@@ -8,6 +8,12 @@ enum JunelsFiles {
       let path = args["path"] as? String ?? ""
       let url = URL(fileURLWithPath: path)
       switch call.method {
+      case "openUrl":
+        if let s = args["url"] as? String, let u = URL(string: s), u.scheme == "http" || u.scheme == "https" {
+          result(NSWorkspace.shared.open(u))
+        } else {
+          result(false)
+        }
       case "pdfText":
         DispatchQueue.global(qos: .userInitiated).async {
           guard let doc = PDFDocument(url: url) else {

@@ -309,6 +309,9 @@ class AppSettings {
     this.sttLanguage = 'auto',
     this.autoSpeak = false,
     this.sendAfterVoice = true,
+    this.voiceManualEnd = false,
+    this.voicePauseMs = 1200,
+    this.voiceNearField = true,
     this.systemCheckSeen = false,
     Map<String, String>? installed,
   })  : enabledTools = enabledTools ??
@@ -337,6 +340,9 @@ class AppSettings {
   String sttLanguage; // auto | de | en
   bool autoSpeak; // Antworten automatisch vorlesen
   bool sendAfterVoice; // nach Spracheingabe sofort senden
+  bool voiceManualEnd; // Gesprächsmodus: Ende per "Fertig"-Taste statt Sprechpause
+  int voicePauseMs; // Gesprächsmodus: so lange Pause beendet die Äußerung
+  bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
   bool systemCheckSeen;
 
   /// Installierte Sprach-Modelle: Katalog-ID → Pfad (Datei oder Ordner)
@@ -355,6 +361,9 @@ class AppSettings {
         'sttLanguage': sttLanguage,
         'autoSpeak': autoSpeak,
         'sendAfterVoice': sendAfterVoice,
+        'voiceManualEnd': voiceManualEnd,
+        'voicePauseMs': voicePauseMs,
+        'voiceNearField': voiceNearField,
         'systemCheckSeen': systemCheckSeen,
         'installed': installed,
         'toolsVersion': toolsVersion,
@@ -373,6 +382,9 @@ class AppSettings {
         sttLanguage: j['sttLanguage'] as String? ?? 'auto',
         autoSpeak: j['autoSpeak'] as bool? ?? false,
         sendAfterVoice: j['sendAfterVoice'] as bool? ?? true,
+        voiceManualEnd: j['voiceManualEnd'] as bool? ?? false,
+        voicePauseMs: (j['voicePauseMs'] as num?)?.toInt() ?? 1200,
+        voiceNearField: j['voiceNearField'] as bool? ?? true,
         systemCheckSeen: j['systemCheckSeen'] as bool? ?? false,
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);

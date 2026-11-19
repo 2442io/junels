@@ -3,10 +3,55 @@
 
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-final _imageLine = RegExp(r'^\s*!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)\s*$');
+import '../state/native_files.dart';
+
+final _imageInLine = RegExp(r'!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)');
+
+/// Externen Link öffnen – erst nach Hinweis, dass man Junels verlässt.
+Future<void> openExternalLink(BuildContext context, String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) return;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.open_in_new),
+      title: const Text('Externe Seite öffnen?'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Du verlässt Junels und öffnest im Browser:', style: Theme.of(ctx).textTheme.bodyMedium),
+        const SizedBox(height: 8),
+        Text(uri.host, style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(url, style: Theme.of(ctx).textTheme.bodySmall, maxLines: 4, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 8),
+        Text('Die Seite liegt außerhalb der App; dort gelten deren Datenschutzregeln.',
+            style: Theme.of(ctx).textTheme.bodySmall),
+      ]),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: url));
+            Navigator.pop(ctx, false);
+          },
+          child: const Text('Kopieren'),
+        ),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Öffnen')),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  try {
+    await NativeFiles.openUrl(url);
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Link konnte nicht geöffnet werden: $e')));
+    }
+  }
+}
 final _bareImage = RegExp(r'^\s*(?:[-*]\s+)?(?:Bild:\s*)?(https?://\S+\.(?:png|jpe?g|gif|webp)(?:\?\S*)?)\s*$', caseSensitive: false);
 
 class MarkdownLite extends StatelessWidget {
@@ -33,11 +78,23 @@ class MarkdownLite extends StatelessWidget {
 
     for (final line in text.split('\n')) {
       if (line.trimLeft().startsWith('```')) inCode = !inCode;
-      final m = inCode ? null : _imageLine.firstMatch(line);
-      final bare = inCode || m != null ? null : _bareImage.firstMatch(line);
-      if (m != null || bare != null) {
+      if (!inCode && _imageInLine.hasMatch(line)) {
+        // Bild irgendwo in der Zeile (z. B. "Bild: ![](url)") → Text davor, Bild, Text danach
+        var rest = line;
+        for (var m = _imageInLine.firstMatch(rest); m != null; m = _imageInLine.firstMatch(rest)) {
+          final pre = rest.substring(0, m.start).replaceFirst(RegExp(r'(Bild|Image|Foto)\s*:\s*$', caseSensitive: false), '');
+          if (pre.trim().isNotEmpty && !RegExp(r'^\s*[-*]?\s*$').hasMatch(pre)) buf.add(pre);
+          flush();
+          parts.add(_MdImage(src: m.group(2)!, alt: m.group(1) ?? '', autoLoad: networkImages));
+          rest = rest.substring(m.end);
+        }
+        if (rest.trim().isNotEmpty) buf.add(rest);
+        continue;
+      }
+      final bare = inCode ? null : _bareImage.firstMatch(line);
+      if (bare != null) {
         flush();
-        parts.add(_MdImage(src: m?.group(2) ?? bare!.group(1)!, alt: m?.group(1) ?? '', autoLoad: networkImages));
+        parts.add(_MdImage(src: bare.group(1)!, alt: '', autoLoad: networkImages));
       } else {
         buf.add(line);
       }
@@ -100,12 +157,22 @@ class MarkdownLite extends StatelessWidget {
   static List<InlineSpan> inlineSpans(BuildContext context, String s) {
     final scheme = Theme.of(context).colorScheme;
     final spans = <InlineSpan>[];
-    final re = RegExp(r'(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*|_[^_\s][^_]*_)');
+    final re = RegExp(r'(\[[^\]]+\]\(https?://[^)\s]+\)|https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\x27"]|\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*|(?<![\w/])_[^_\s][^_]*_(?!\w))');
+    final linkStyle = TextStyle(color: scheme.primary, decoration: TextDecoration.underline, decorationColor: scheme.primary);
     var pos = 0;
     for (final m in re.allMatches(s)) {
       if (m.start > pos) spans.add(TextSpan(text: s.substring(pos, m.start)));
       final tok = m.group(0)!;
-      if (tok.startsWith('**')) {
+      if (tok.startsWith('[') || tok.startsWith('http')) {
+        final md = RegExp(r'^\[([^\]]+)\]\((\S+)\)$').firstMatch(tok);
+        final url = md?.group(2) ?? tok;
+        spans.add(TextSpan(
+          text: md?.group(1) ?? tok,
+          style: linkStyle,
+          recognizer: TapGestureRecognizer()..onTap = () => openExternalLink(context, url),
+        ));
+        spans.add(TextSpan(text: ' ↗', style: TextStyle(color: scheme.primary, fontSize: 11)));
+      } else if (tok.startsWith('**')) {
         spans.add(TextSpan(text: tok.substring(2, tok.length - 2), style: const TextStyle(fontWeight: FontWeight.w700)));
       } else if (tok.startsWith('`')) {
         spans.add(TextSpan(

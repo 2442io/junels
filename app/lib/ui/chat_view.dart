@@ -450,9 +450,9 @@ class _ThoughtLog extends StatelessWidget {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          // während des Laufs offen, danach eingeklappt
-          key: ValueKey('log-$live'),
-          initiallyExpanded: live,
+          // immer eingeklappt; bei Bedarf aufklappen
+          initiallyExpanded: false,
+          maintainState: true,
           dense: true,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),

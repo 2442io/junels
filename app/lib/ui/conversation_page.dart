@@ -64,6 +64,11 @@ class _ConversationPageState extends State<ConversationPage> {
         backgroundColor: Colors.transparent,
         title: const Text('Gespräch'),
         actions: [
+          IconButton(
+            tooltip: 'Einstellungen',
+            icon: const Icon(Icons.tune),
+            onPressed: () => _showVoiceSettings(context),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
@@ -103,7 +108,7 @@ class _ConversationPageState extends State<ConversationPage> {
                     Expanded(
                       child: Center(
                         child: GestureDetector(
-                          onTap: conv.interrupt,
+                          onTap: () => st == ConvState.hearing && conv.manualEnd.value ? conv.finishSpeaking() : conv.interrupt(),
                           child: ValueListenableBuilder<double>(
                             valueListenable: conv.level,
                             builder: (context, lvl, _) => _Orb(state: st, level: lvl),
@@ -112,7 +117,42 @@ class _ConversationPageState extends State<ConversationPage> {
                       ),
                     ),
                     Text(st.label, style: t.titleMedium),
-                    const SizedBox(height: 8),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: conv.manualEnd,
+                      builder: (context, manual, _) {
+                        if (!manual) return const SizedBox(height: 8);
+                        if (st == ConvState.hearing) {
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: conv.discardSpeaking,
+                                  icon: const Icon(Icons.delete_outline),
+                                  label: const Text('Verwerfen'),
+                                ),
+                                const SizedBox(width: 12),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18)),
+                                  onPressed: conv.finishSpeaking,
+                                  icon: const Icon(Icons.send),
+                                  label: const Text('Fertig – antworten'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6, bottom: 8),
+                          child: Text(
+                            st == ConvState.listening ? 'Absender-Modus: sprich, dann auf „Fertig“ tippen' : '',
+                            style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        );
+                      },
+                    ),
                     // Antwort des Agenten (live)
                     SizedBox(
                       height: 140,
@@ -172,6 +212,85 @@ class _ConversationPageState extends State<ConversationPage> {
       ),
     );
   }
+}
+
+void _showVoiceSettings(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) {
+      final app = AppScope.of(ctx);
+      final st = app.settings;
+      final t = Theme.of(ctx).textTheme;
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Wann bin ich fertig?', style: t.titleMedium),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, icon: Icon(Icons.hourglass_bottom), label: Text('Sprechpause')),
+                  ButtonSegment(value: true, icon: Icon(Icons.send), label: Text('Fertig-Taste')),
+                ],
+                selected: {st.voiceManualEnd},
+                onSelectionChanged: (v) => app.setVoiceOptions(manualEnd: v.first),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                st.voiceManualEnd
+                    ? 'Absender-Modus: Pausen beenden nichts. Du tippst auf „Fertig – antworten“ (oder den Kreis).'
+                    : 'Die Antwort startet nach einer Sprechpause.',
+                style: t.bodySmall,
+              ),
+              if (!st.voiceManualEnd) ...[
+                const SizedBox(height: 16),
+                Text('Sprechpause: ${(st.voicePauseMs / 1000).toStringAsFixed(1)} s', style: t.titleSmall),
+                Slider(
+                  value: st.voicePauseMs.toDouble().clamp(600, 3000),
+                  min: 600,
+                  max: 3000,
+                  divisions: 12,
+                  label: '${(st.voicePauseMs / 1000).toStringAsFixed(1)} s',
+                  onChanged: (v) => app.setVoiceOptions(pauseMs: v.round()),
+                ),
+                Text('Länger = mehr Zeit zum Überlegen, ohne dass der Agent dazwischenredet.', style: t.bodySmall),
+              ],
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Nur meine Stimme'),
+                subtitle: const Text('Leisere Stimmen im Hintergrund (andere Personen, Durchsagen) ignorieren'),
+                value: st.voiceNearField,
+                onChanged: (v) => app.setVoiceOptions(nearField: v),
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: app.conversation.smartVad,
+                builder: (context, smart, _) => Row(
+                  children: [
+                    Icon(smart ? Icons.check_circle : Icons.info_outline, size: 16,
+                        color: smart ? Colors.green : Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        smart
+                            ? 'Spracherkennung per KI (Silero) aktiv – Lärm wie in der U-Bahn wird ignoriert.'
+                            : 'Einfache Lautstärke-Erkennung aktiv (Silero nicht verfügbar).',
+                        style: t.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _Orb extends StatelessWidget {

@@ -7,11 +7,13 @@
 // weil die bereits gesprochenen Sätze im Verlauf stehen.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
 
 import 'app_controller.dart';
+import 'voice_service.dart';
 
 enum ConvState { off, listening, hearing, transcribing, thinking, speaking }
 
@@ -38,7 +40,42 @@ class ConversationMode {
 
   ValueNotifier<double> get level => app.voice.mic.level;
 
-  final _vad = VoiceActivityDetector(endSilenceMs: 700);
+  final _vad = VoiceActivityDetector(endSilenceMs: 1200);
+  SileroClassifier? _silero;
+
+  /// Absender-Modus: Äußerung endet erst mit „Fertig“.
+  final manualEnd = ValueNotifier<bool>(false);
+
+  /// true, wenn der Silero-Sprachklassifikator aktiv ist.
+  final smartVad = ValueNotifier<bool>(false);
+
+  /// Einstellungen (Sprechpause, Absender-Modus, Nahfeld) übernehmen.
+  void applySettings() {
+    final st = app.settings;
+    _vad
+      ..endSilenceMs = st.voicePauseMs
+      ..nearFieldDb = st.voiceNearField ? 15 : 0
+      ..manual = st.voiceManualEnd;
+    manualEnd.value = st.voiceManualEnd;
+  }
+
+  /// Absender-Modus: „Ich bin fertig, antworte jetzt.“
+  void finishSpeaking() {
+    if (state.value != ConvState.hearing) return;
+    if (_vad.finish()) {
+      unawaited(_handleUtterance(_vad.takeUtterance()));
+    } else {
+      state.value = ConvState.listening;
+    }
+  }
+
+  /// Aktuelle Aufnahme verwerfen (Absender-Modus).
+  void discardSpeaking() {
+    if (state.value != ConvState.hearing) return;
+    _vad.reset();
+    _silero?.reset();
+    state.value = ConvState.listening;
+  }
   final _streamer = SentenceStreamer();
   int _turn = 0; // erhöht sich bei jeder neuen Runde/Unterbrechung
   bool _speakingStarted = false;
@@ -55,7 +92,12 @@ class ConversationMode {
     await app.voice.stopSpeaking();
     // Whisper vorab laden, damit die erste Antwort schnell kommt
     await app.voice.stt(stt);
+    _silero = await app.voice.speechClassifier(Directory('${app.storage.root.path}/vad'));
+    _vad.classifier = _silero?.call;
+    smartVad.value = _silero != null;
+    applySettings();
     _vad.reset();
+    _silero?.reset();
     state.value = ConvState.listening;
     await app.voice.mic.start(_onFrame, echoCancel: true);
   }

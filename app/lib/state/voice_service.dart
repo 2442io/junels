@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import 'package:agent_engine/agent_engine.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:record/record.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
@@ -373,6 +374,18 @@ class VoiceService {
   SttEngine? _stt;
   String? _sttPath;
 
+  SileroClassifier? _silero;
+  bool _sileroTried = false;
+
+  /// Silero-Sprachklassifikator (erkennt menschliche Sprache, ignoriert Lärm).
+  /// null, wenn er auf diesem Gerät nicht geladen werden kann.
+  Future<SileroClassifier?> speechClassifier(Directory dir) async {
+    if (_sileroTried) return _silero;
+    _sileroTried = true;
+    _silero = await SileroClassifier.create(dir);
+    return _silero;
+  }
+
   Future<SttEngine> stt(String modelPath) async {
     if (_stt != null && _sttPath == modelPath) return _stt!;
     await _stt?.dispose();
@@ -507,8 +520,74 @@ class _TtsWorker {
   }
 }
 
+/// Silero-VAD über sherpa-onnx: entscheidet pro Frame, ob Sprache vorliegt.
+class SileroClassifier {
+  SileroClassifier._(this._vad);
+  final sherpa.VoiceActivityDetector _vad;
+  bool _last = false;
+
+  static Future<SileroClassifier?> create(Directory dir) async {
+    try {
+      _initSherpa();
+      final f = File('${dir.path}/silero_vad.onnx');
+      final data = await rootBundle.load('assets/vad/silero_vad.onnx');
+      if (!f.existsSync() || f.lengthSync() != data.lengthInBytes) {
+        await f.parent.create(recursive: true);
+        await f.writeAsBytes(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes), flush: true);
+      }
+      final vad = sherpa.VoiceActivityDetector(
+        config: sherpa.VadModelConfig(
+          sileroVad: sherpa.SileroVadModelConfig(
+            model: f.path,
+            threshold: 0.5,
+            minSilenceDuration: 0.15,
+            minSpeechDuration: 0.1,
+            windowSize: 512,
+            maxSpeechDuration: 60,
+          ),
+          sampleRate: 16000,
+          numThreads: 1,
+          debug: false,
+        ),
+        bufferSizeInSeconds: 10,
+      );
+      voiceLog('Silero-VAD geladen');
+      return SileroClassifier._(vad);
+    } catch (e) {
+      voiceLog('Silero-VAD nicht verfügbar, nutze Energie-Erkennung: $e');
+      return null;
+    }
+  }
+
+  bool call(Float32List frame) {
+    try {
+      _vad.acceptWaveform(frame);
+      _last = _vad.isDetected();
+      while (!_vad.isEmpty()) {
+        _vad.pop();
+      }
+    } catch (_) {}
+    return _last;
+  }
+
+  void reset() {
+    try {
+      _vad.reset();
+    } catch (_) {}
+    _last = false;
+  }
+}
+
+bool _sherpaReady = false;
+
 /// Lädt die sherpa-onnx-Bibliothek; probiert mehrere Orte (macOS-App-Bundle).
 void _initSherpa() {
+  if (_sherpaReady) return;
+  _initSherpaOnce();
+  _sherpaReady = true;
+}
+
+void _initSherpaOnce() {
   final errors = <String>[];
   try {
     sherpa.initBindings();

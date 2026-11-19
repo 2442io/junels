@@ -31,6 +31,9 @@ class NativeFiles {
 
   static Future<void> open(String path) => _ch.invokeMethod('open', {'path': path, 'mime': mimeFor(path)});
 
+  /// Webseite im Standardbrowser öffnen.
+  static Future<void> openUrl(String url) => _ch.invokeMethod('openUrl', {'url': url});
+
   static Future<void> share(String path) => _ch.invokeMethod('share', {'path': path, 'mime': mimeFor(path)});
 
   /// Nur macOS: Datei im Finder markieren.
