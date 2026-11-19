@@ -13,11 +13,12 @@ Internet nur, wenn du es erlaubst: für Modell-Downloads oder wenn der Agent im 
    „Add file → Upload files“, alle Dateien und Ordner hineinziehen, „Commit changes“.
    Wichtig: Der versteckte Ordner `.github` muss mit hoch. Ihn zeigt der Finder erst nach `⌘ ⇧ .` an.
 3. Reiter **Actions** öffnen. Der Lauf „Build“ startet automatisch und dauert etwa 30–60 Minuten.
-4. Wenn er grün ist, den Lauf anklicken und unten unter **Artifacts** herunterladen:
-   - `OfflineAgent-android` → enthält die `.apk`
-   - `OfflineAgent-macos` → enthält die `.dmg`
+4. Wenn er grün ist, liegen die Dateien direkt im Release **„aktuell“** – auch vom Handy aus
+   (im Browser bei github.com angemeldet): `https://github.com/<konto>/<repo>/releases/tag/aktuell`
+   - `Junels.apk` antippen → installieren (Android)
+   - `Junels.dmg` (Mac)
 
-Bei jeder Änderung baut GitHub neu. Mit einem Tag (`v1.1.0`) landen die Dateien zusätzlich als Release auf der
+Bei jeder Änderung baut GitHub neu und ersetzt die Dateien in „aktuell“. Mit einem Tag (`v1.1.0`) landen die Dateien zusätzlich als Release auf der
 Repo-Seite.
 
 ## Weg B – Lokal auf dem Mac bauen
