@@ -55,16 +55,25 @@ jobs:
       - name: Signatur-Schlüssel
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > "$RUNNER_TEMP/junels.jks"
-            echo "JUNELS_KEYSTORE=$RUNNER_TEMP/junels.jks" >> "$GITHUB_ENV"
-          else
+          if [ -z "$KS" ]; then
             echo "::warning::Kein fester Schlüssel (Secret ANDROID_KEYSTORE_B64) – Updates erfordern Neuinstallation"
+            exit 0
           fi
+          # Leerzeichen/Zeilenumbrüche vom Kopieren entfernen
+          printf %s "$KS" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/junels.jks"
+          PW="$(printf %s "$PW" | tr -d ' \r\n\t')"
+          echo "Keystore: $(wc -c < "$RUNNER_TEMP/junels.jks") Bytes, Passwort: ${#PW} Zeichen"
+          if ! keytool -list -keystore "$RUNNER_TEMP/junels.jks" -storepass "$PW" -alias junels > /dev/null 2>&1; then
+            echo "::error::Keystore oder Passwort passen nicht zusammen. Bitte die Secrets ANDROID_KEYSTORE_B64 und ANDROID_KEY_PASSWORD prüfen (Wert vollständig kopiert?)."
+            keytool -list -keystore "$RUNNER_TEMP/junels.jks" -storepass "$PW" 2>&1 | tail -3
+            exit 1
+          fi
+          echo "JUNELS_KEYSTORE=$RUNNER_TEMP/junels.jks" >> "$GITHUB_ENV"
+          echo "::add-mask::$PW"
+          echo "JUNELS_KEY_PASSWORD=$PW" >> "$GITHUB_ENV"
       - name: APK bauen
-        env:
-          JUNELS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: bash scripts/build_android.sh
       - uses: actions/upload-artifact@v4
         with:
