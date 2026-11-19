@@ -274,6 +274,20 @@ class LlamaEngine implements AgentBackend {
     return controller.stream;
   }
 
+  /// Rechnet [prompt] in den KV-Cache vor (ohne Ausgabe). Spätere Anfragen mit
+  /// gleichem Anfang starten dadurch sofort. Liefert die Dauer in ms.
+  Future<int> prefill(String prompt) async {
+    final r = await _call({'cmd': 'prefill', 'prompt': prompt});
+    if (r['ok'] != true) throw EngineException(r['error'] as String? ?? 'Vorberechnung fehlgeschlagen');
+    return r['ms'] as int;
+  }
+
+  /// KV-Cache als Datei sichern (Anzahl Tokens, 0 = nicht möglich).
+  Future<int> saveState(String path) async => (await _call({'cmd': 'ssave', 'path': path}))['n'] as int;
+
+  /// KV-Cache aus Datei laden (Anzahl Tokens, 0 = nicht möglich).
+  Future<int> loadState(String path) async => (await _call({'cmd': 'sload', 'path': path}))['n'] as int;
+
   /// Markierung, die im formatierten Prompt für jedes Bild stehen muss.
   static String get imageMarker => fromNativeUtf8(NativeEngine.instance.visionMarker());
 
@@ -477,6 +491,32 @@ void _engineMain(SendPort out) {
         } finally {
           nativeFree(prompt);
           nativeFree(grammar);
+        }
+
+      case 'prefill':
+        final prompt = toNativeUtf8(m['prompt'] as String);
+        final sw = Stopwatch()..start();
+        try {
+          final rc = n.begin(engine, prompt, nullptr, 0.0, 1.0, 0.0, 0, 1);
+          out.send({'id': id, 'ok': rc == 0, 'ms': sw.elapsedMilliseconds, 'error': rc == 0 ? null : err()});
+        } finally {
+          nativeFree(prompt);
+        }
+
+      case 'ssave':
+        final path = toNativeUtf8(m['path'] as String);
+        try {
+          out.send({'id': id, 'n': n.stateSave(engine, path)});
+        } finally {
+          nativeFree(path);
+        }
+
+      case 'sload':
+        final path = toNativeUtf8(m['path'] as String);
+        try {
+          out.send({'id': id, 'n': n.stateLoad(engine, path)});
+        } finally {
+          nativeFree(path);
         }
 
       case 'vload':

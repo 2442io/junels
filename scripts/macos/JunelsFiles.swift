@@ -33,7 +33,12 @@ enum JunelsFiles {
           content.title = args["title"] as? String ?? "Junels"
           content.body = args["body"] as? String ?? ""
           content.sound = .default
-          center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+          var trigger: UNNotificationTrigger? = nil
+          if let at = args["at"] as? NSNumber {
+            let secs = at.doubleValue / 1000 - Date().timeIntervalSince1970
+            if secs > 1 { trigger = UNTimeIntervalNotificationTrigger(timeInterval: secs, repeats: false) }
+          }
+          center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger))
         }
         result(true)
       case "open":

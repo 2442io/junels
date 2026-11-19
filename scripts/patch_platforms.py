@@ -74,6 +74,9 @@ def patch_android():
                 s = re.sub(r"(<manifest[^>]*>)",
                            rf'\1\n    <!-- {why} -->\n    <uses-permission android:name="{name}" />', s, count=1)
         s = re.sub(r'android:label="[^"]*"', f'android:label="{DISPLAY_NAME}"', s, count=1)
+        if "usesCleartextTraffic" not in s:
+            # MCP-Server im eigenen Netz laufen oft über http://
+            s = s.replace("<application", '<application\n        android:usesCleartextTraffic="true"', 1)
         if "android:largeHeap" not in s:
             s = s.replace("<application", '<application\n        android:largeHeap="true"', 1)
         if "androidx.core.content.FileProvider" not in s:

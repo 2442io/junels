@@ -1,6 +1,7 @@
 // Agenten-Schleife Thought → Action → Observation (SRS Abschnitt 5).
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:convert';
 
 import '../llama_engine.dart';
@@ -106,6 +107,40 @@ class AgentRunner {
 
   bool get agentMode => tools.isNotEmpty;
 
+  /// Tools dieses Laufs (bei knappem Context ggf. weniger als [tools]).
+  List<AgentTool>? _active;
+  List<AgentTool> get activeTools => _active ?? tools;
+
+  /// Bei kleinem Context: unpassende Tools weglassen, bis System-Prompt + Eingabe
+  /// höchstens ~60 % des Budgets belegen. Tools, die zur Eingabe passen, bleiben.
+  Future<void> _selectTools(String input, ToolContext ctx) async {
+    _active = null;
+    final budget = engine.contextSize - _reserve - 16;
+    final words = input.toLowerCase().split(RegExp(r'[^a-zäöüß0-9]+')).where((w) => w.length > 3).toSet();
+    int relevance(AgentTool t) {
+      final hay = '${t.name} ${t.title} ${t.description}'.toLowerCase();
+      return words.where(hay.contains).length;
+    }
+
+    var list = List<AgentTool>.of(tools);
+    while (list.length > 1) {
+      _active = list;
+      final n = await engine.countTokens(await engine.formatChat(
+          [ChatMessage('system', buildSystemPrompt(ctx)), ChatMessage('user', input)]));
+      if (n <= budget * 0.6) return;
+      // am wenigsten passendes Tool (bei Gleichstand das hinterste) entfernen
+      var drop = list.length - 1;
+      for (var i = list.length - 1; i >= 0; i--) {
+        if (relevance(list[i]) < relevance(list[drop])) drop = i;
+      }
+      list = [...list]..removeAt(drop);
+    }
+    _active = list;
+  }
+
+  /// Platz für die Antwort eines Schritts – bei kleinem Context begrenzt.
+  int get _reserve => math.min(maxTokensPerStep, (engine.contextSize * 0.35).round());
+
   /// Systemprompt inkl. Tool-Beschreibungen und Antwortformat.
   String buildSystemPrompt(ToolContext ctx) {
     final b = StringBuffer(systemPrompt.trim());
@@ -118,7 +153,7 @@ class AgentRunner {
       b.writeln('Tool aufrufen: {"thought": "kurzer Gedanke", "action": "<tool>", "args": {...}}');
       b.writeln('Fertig: {"thought": "kurzer Gedanke", "final_answer": "Antwort an den Nutzer"}');
       b.writeln('\nVerfügbare Tools:');
-      for (final t in tools) {
+      for (final t in activeTools) {
         b.writeln(t.describeForPrompt());
       }
       b.writeln('\nRegeln:');
@@ -126,7 +161,7 @@ class AgentRunner {
       b.writeln('- Nach jedem Tool-Aufruf erhältst du eine Beobachtung. Erfinde keine Ergebnisse.');
       b.writeln('- Rechne nie im Kopf, wenn calculator verfügbar ist.');
       b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt.');
-      if (tools.any((t) => t.requiresNetwork)) {
+      if (activeTools.any((t) => t.requiresNetwork)) {
         b.writeln('- Internet-Tools nur nutzen, wenn aktuelle oder externe Informationen nötig sind. '
             'Der Nutzer muss den Zugriff bestätigen. Nenne in der final_answer die genutzten Quellen (URL).');
       }
@@ -175,7 +210,7 @@ class AgentRunner {
       history: history,
       input: input,
       scratch: const [],
-      reserve: maxTokensPerStep * 2,
+      reserve: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()),
     );
     final raw = StringBuffer();
     GenerationStats? stats;
@@ -184,7 +219,7 @@ class AgentRunner {
     await for (final ev in engine.generate(prompt,
         grammar: blockCjk ? AgentGrammar.plainTextNoCjk() : null,
         sampling: chatSampling,
-        maxTokens: maxTokensPerStep * 2)) {
+        maxTokens: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()))) {
       switch (ev) {
         case TokenEvent(:final text):
           raw.write(text);
@@ -209,10 +244,11 @@ class AgentRunner {
 
   Future<void> _runAgent(List<ChatMessage> history, String input, ToolContext ctx,
       void Function(AgentEvent) emit) async {
+    await _selectTools(input, ctx);
     final system = buildSystemPrompt(ctx);
     final scratch = <ChatMessage>[];
-    final grammar = AgentGrammar.build(tools, blockCjk: blockCjk);
-    final finalOnly = AgentGrammar.build(tools, allowTools: false, blockCjk: blockCjk);
+    final grammar = AgentGrammar.build(activeTools, blockCjk: blockCjk);
+    final finalOnly = AgentGrammar.build(activeTools, allowTools: false, blockCjk: blockCjk);
     String? lastCall;
 
     String? hint; // einmaliger Hinweis an das Modell (nicht Teil des Verlaufs)
@@ -233,7 +269,7 @@ class AgentRunner {
         history: history,
         input: input,
         scratch: [...scratch, if (hint != null) ChatMessage('user', hint)],
-        reserve: maxTokensPerStep,
+        reserve: _reserve,
       );
       hint = null;
 
@@ -242,7 +278,7 @@ class AgentRunner {
       var reason = FinishReason.done;
       String? error;
       await for (final ev in engine.generate(prompt,
-          grammar: forceFinal ? finalOnly : grammar, sampling: sampling, maxTokens: maxTokensPerStep)) {
+          grammar: forceFinal ? finalOnly : grammar, sampling: sampling, maxTokens: _reserve)) {
         switch (ev) {
           case TokenEvent(:final text):
             raw.write(text);
@@ -324,7 +360,7 @@ class AgentRunner {
             'Nutze das bisherige Ergebnis und gib die final_answer.';
         isError = true;
       } else {
-        final tool = tools.where((t) => t.name == toolName).firstOrNull;
+        final tool = activeTools.where((t) => t.name == toolName).firstOrNull;
         if (tool == null) {
           observation = 'Unbekanntes Tool "$toolName".';
           isError = true;

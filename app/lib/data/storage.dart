@@ -5,6 +5,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'package:agent_engine/agent_engine.dart' show McpServerConfig;
+
 import 'models.dart';
 
 class Storage {
@@ -23,6 +25,15 @@ class Storage {
   File get _profiles => File('${root.path}/profiles.json');
   File get _models => File('${root.path}/models.json');
   File get _prompts => File('${root.path}/prompts.json');
+  File get _mcp => File('${root.path}/mcp.json');
+
+  Future<List<McpServerConfig>> loadMcpServers() async {
+    final j = await _readJson(_mcp);
+    if (j is! List) return [];
+    return [for (final x in j) if (x is Map) McpServerConfig.fromJson(x.cast())];
+  }
+
+  Future<void> saveMcpServers(List<McpServerConfig> s) => _writeJson(_mcp, s.map((e) => e.toJson()).toList());
 
   Future<List<SavedPrompt>> loadPrompts() async {
     final j = await _readJson(_prompts);

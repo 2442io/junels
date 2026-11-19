@@ -39,8 +39,20 @@ object JunelsNative {
                 result.success(true)
             }
             "notify" -> {
-                notify(ctx, call.argument<String>("title") ?: "Junels", call.argument<String>("body") ?: "",
-                    call.argument<String>("conversation"), (call.argument<Int>("id") ?: 7))
+                val title = call.argument<String>("title") ?: "Junels"
+                val body = call.argument<String>("body") ?: ""
+                val id = call.argument<Int>("id") ?: 7
+                val at = (call.argument<Any>("at") as? Number)?.toLong() ?: 0L
+                if (at > System.currentTimeMillis() + 1000) {
+                    // Erinnerung: Wecker stellen, bleibt auch nach Neustart erhalten
+                    val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    val arr = JSONArray(prefs.getString("notes", "[]"))
+                    arr.put(JSONObject().put("id", id).put("title", title).put("body", body).put("at", at))
+                    prefs.edit().putString("notes", arr.toString()).apply()
+                    setNoteAlarm(ctx, id, title, body, at)
+                } else {
+                    notify(ctx, title, body, call.argument<String>("conversation"), id)
+                }
                 result.success(true)
             }
             else -> return false
@@ -72,6 +84,36 @@ object JunelsNative {
             ids.add(id)
         }
         old.edit().putStringSet("ids", ids).apply()
+        // geplante Erinnerungen wiederherstellen
+        val notes = JSONArray(old.getString("notes", "[]"))
+        val keep = JSONArray()
+        for (k in 0 until notes.length()) {
+            val o = notes.getJSONObject(k)
+            val at = o.getLong("at")
+            if (at < now - 24 * 3600_000L) continue
+            keep.put(o)
+            setNoteAlarm(ctx, o.getInt("id"), o.getString("title"), o.getString("body"), maxOf(at, now + 5_000))
+        }
+        old.edit().putString("notes", keep.toString()).apply()
+    }
+
+    fun setNoteAlarm(ctx: Context, id: Int, title: String, body: String, at: Long) {
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val i = Intent(ctx, AlarmReceiver::class.java).setAction("junels.NOTIFY")
+            .putExtra("nid", id).putExtra("title", title).putExtra("body", body)
+        val pi = PendingIntent.getBroadcast(ctx, id, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        var exact = true
+        if (Build.VERSION.SDK_INT >= 31) exact = am.canScheduleExactAlarms()
+        if (exact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+    }
+
+    fun noteFired(ctx: Context, id: Int) {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val notes = JSONArray(prefs.getString("notes", "[]"))
+        val keep = JSONArray()
+        for (k in 0 until notes.length()) if (notes.getJSONObject(k).getInt("id") != id) keep.put(notes.getJSONObject(k))
+        prefs.edit().putString("notes", keep.toString()).apply()
     }
 
     private fun pending(ctx: Context, id: String, title: String): PendingIntent {

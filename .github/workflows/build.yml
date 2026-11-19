@@ -211,6 +211,7 @@ jobs:
           set -o pipefail
           export AE_LIB_PATH=$GITHUB_WORKSPACE/build-linux/libagent_engine.so
           dart run test/engine_test.dart
+          dart run test/mcp_test.dart
           AE_TEST_VISION_MODEL=$(ls $GITHUB_WORKSPACE/testmodels/vlm-model.gguf) \
           AE_TEST_MMPROJ=$GITHUB_WORKSPACE/testmodels/vlm-mmproj.gguf \
           AE_TEST_IMAGE=$GITHUB_WORKSPACE/third_party/llama.cpp/tools/mtmd/test-1.jpeg \

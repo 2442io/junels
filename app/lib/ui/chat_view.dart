@@ -75,8 +75,8 @@ class _ChatViewState extends State<ChatView> {
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 820),
                           child: e.role == 'user'
-                              ? _UserBubble(entry: e)
-                              : _AssistantMessage(entry: e, live: live),
+                              ? _UserBubble(entry: e, index: i)
+                              : _AssistantMessage(entry: e, live: live, index: i),
                         ),
                       );
                     },
@@ -154,12 +154,58 @@ class _EmptyState extends StatelessWidget {
 // ------------------------------------------------------------------ Nachrichten
 
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({required this.entry});
+  const _UserBubble({required this.entry, required this.index});
   final ChatEntry entry;
+  final int index;
+
+  Future<void> _edit(BuildContext context) async {
+    final app = AppScope.read(context);
+    final ctrl = TextEditingController(text: entry.text);
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nachricht bearbeiten'),
+        content: SizedBox(
+          width: 560,
+          child: TextField(controller: ctrl, autofocus: true, minLines: 3, maxLines: 12),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Senden')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (text != null && text.trim().isNotEmpty) await app.resendFrom(index, newText: text);
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final app = AppScope.of(context);
+    final actions = Row(mainAxisSize: MainAxisSize.min, children: [
+      IconButton(
+        tooltip: 'Bearbeiten und neu senden',
+        visualDensity: VisualDensity.compact,
+        iconSize: 16,
+        icon: const Icon(Icons.edit_outlined),
+        onPressed: app.running ? null : () => _edit(context),
+      ),
+      IconButton(
+        tooltip: 'Wiederholen',
+        visualDensity: VisualDensity.compact,
+        iconSize: 16,
+        icon: const Icon(Icons.replay),
+        onPressed: app.running ? null : () => app.resendFrom(index),
+      ),
+      IconButton(
+        tooltip: 'Kopieren',
+        visualDensity: VisualDensity.compact,
+        iconSize: 16,
+        icon: const Icon(Icons.copy),
+        onPressed: () => Clipboard.setData(ClipboardData(text: entry.text)),
+      ),
+    ]);
     return Align(
       alignment: Alignment.centerRight,
       child: Padding(
@@ -207,6 +253,7 @@ class _UserBubble extends StatelessWidget {
                 TextSpan(text: entry.text),
               ]), style: TextStyle(color: scheme.onPrimaryContainer)),
             ),
+            actions,
           ],
         ),
       ),
@@ -215,7 +262,8 @@ class _UserBubble extends StatelessWidget {
 }
 
 class _AssistantMessage extends StatelessWidget {
-  const _AssistantMessage({required this.entry, required this.live});
+  const _AssistantMessage({required this.entry, required this.live, required this.index});
+  final int index;
   final ChatEntry entry;
   final bool live;
 
@@ -260,7 +308,7 @@ class _AssistantMessage extends StatelessWidget {
             ),
           if (entry.files.isNotEmpty) FileGallery(entry.files),
           if (!live && entry.sources.isNotEmpty) _Sources(entry.sources),
-          if (!live && (entry.text.isNotEmpty || entry.tokensPerSecond != null))
+          if (!live && (entry.text.isNotEmpty || entry.tokensPerSecond != null || entry.error != null))
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(
@@ -271,6 +319,13 @@ class _AssistantMessage extends StatelessWidget {
                     Text('${entry.tokensPerSecond!.toStringAsFixed(1)} Tokens/s',
                         style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
                   const Spacer(),
+                  IconButton(
+                    tooltip: 'Neu generieren',
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 16,
+                    icon: const Icon(Icons.refresh),
+                    onPressed: AppScope.of(context).running ? null : () => AppScope.read(context).regenerate(index),
+                  ),
                   if (entry.text.isNotEmpty) _SpeakButton(entry: entry),
                   if (entry.text.isNotEmpty)
                     IconButton(
@@ -774,7 +829,9 @@ class _InputBarState extends State<_InputBar> {
                       enabled: ready,
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
-                        hintText: ready ? 'Nachricht an den Agenten …' : 'Zuerst ein Modell laden',
+                        hintText: !ready
+                            ? 'Zuerst ein Modell laden'
+                            : (app.warming ? 'Modell wird vorbereitet … (du kannst schon schreiben)' : 'Nachricht an den Agenten …'),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       ),
                     );

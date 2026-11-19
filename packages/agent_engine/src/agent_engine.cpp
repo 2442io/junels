@@ -648,6 +648,34 @@ int32_t ae_vision_begin(ae_engine * e, const char * prompt, const char ** image_
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// KV-Zustand speichern/laden (schneller Start: vorgerechneter System-Prompt)
+// ---------------------------------------------------------------------------
+
+int32_t ae_state_save(ae_engine * e, const char * path) {
+    if (!e || !path || e->cached.empty()) return 0;
+    for (auto t : e->cached) if (t < 0) return 0;  // Bild-Zustand nicht speicherbar
+    size_t n = llama_state_seq_save_file(e->ctx, path, 0, e->cached.data(), e->cached.size());
+    return n > 0 ? (int32_t) e->cached.size() : 0;
+}
+
+int32_t ae_state_load(ae_engine * e, const char * path) {
+    if (!e || !path) return 0;
+    take_llama_error();
+    std::vector<llama_token> toks((size_t) e->n_ctx);
+    size_t n = 0;
+    llama_memory_clear(llama_get_memory(e->ctx), true);
+    e->cached.clear();
+    size_t r = llama_state_seq_load_file(e->ctx, path, 0, toks.data(), toks.size(), &n);
+    if (r == 0 || n == 0) {
+        llama_memory_clear(llama_get_memory(e->ctx), true);
+        return 0;
+    }
+    toks.resize(n);
+    e->cached = toks;
+    return (int32_t) n;
+}
+
 void ae_stop(ae_engine * e) {
     if (e) e->stop.store(true);
 }

@@ -50,6 +50,8 @@ typedef _ImgGenD = int Function(Pointer<Void>, Pointer<Uint8>, Pointer<Uint8>, i
     Pointer<Uint8>, int, Pointer<Pointer<Uint8>>, Pointer<Int32>, Pointer<Int32>);
 typedef _ImgProgN = Void Function(Pointer<Int32>, Pointer<Int32>);
 typedef _ImgProgD = void Function(Pointer<Int32>, Pointer<Int32>);
+typedef _StateN = Int32 Function(Pointer<Void>, Pointer<Uint8>);
+typedef _StateD = int Function(Pointer<Void>, Pointer<Uint8>);
 typedef _MallocN = Pointer<Void> Function(IntPtr);
 typedef _MallocD = Pointer<Void> Function(int);
 typedef _FreeN = Void Function(Pointer<Void>);
@@ -118,6 +120,8 @@ class NativeEngine {
   late final imgProgress = _lib.lookupFunction<_ImgProgN, _ImgProgD>('ae_img_progress');
   late final imgLastError = _lib.lookupFunction<_ErrN, _ErrN>('ae_img_last_error');
   late final freeBuffer = _lib.lookupFunction<_VoidPtrN, _VoidPtrD>('ae_free');
+  late final stateSave = _lib.lookupFunction<_StateN, _StateD>('ae_state_save');
+  late final stateLoad = _lib.lookupFunction<_StateN, _StateD>('ae_state_load');
 
   static NativeEngine? _instance;
 

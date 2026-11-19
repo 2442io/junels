@@ -50,6 +50,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   List<Conversation> conversations = [];
   Conversation? current;
   List<SavedPrompt> prompts = [];
+  List<McpServerConfig> mcpServers = [];
+  final Map<String, McpClient> _mcpClients = {};
   Timer? _scheduleTimer;
   final List<String> _promptQueue = [];
   /// Läuft ohne Oberfläche (Android-Hintergrund-Engine für geplante Prompts)
@@ -146,6 +148,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
+        NotifyTool((title, text, at) async {
+          await BackgroundWork.requestNotifyPermission();
+          await BackgroundWork.notify(title, text, conversationId: current?.id, at: at);
+        }),
       ];
       refreshFreeDisk();
       settings = await storage.loadSettings();
@@ -157,6 +163,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
       models = await storage.loadModels();
       prompts = await storage.loadPrompts();
+      mcpServers = await storage.loadMcpServers();
       conversations = await storage.loadConversations();
       current = conversations.isNotEmpty ? conversations.first : null;
       _pollMemory();
@@ -239,11 +246,68 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Tools des Profils; Internet-Tools nur, wenn der Nutzer sie eingeschaltet hat.
   List<AgentTool> get activeTools => activeProfile.useTools
-      ? tools
-          .where((t) => settings.enabledTools.contains(t.name))
-          .where((t) => t.name != 'knowledge_search' || !knowledge.isEmpty)
-          .toList()
+      ? [
+          ...tools
+              .where((t) => settings.enabledTools.contains(t.name))
+              .where((t) => t.name != 'knowledge_search' || !knowledge.isEmpty),
+          ...mcpTools,
+        ]
       : const [];
+
+  /// Tools aller aktiven MCP-Server (aus dem Zwischenspeicher, offline verfügbar).
+  List<AgentTool> get mcpTools => [
+        for (final srv in mcpServers)
+          if (srv.enabled)
+            for (final t in srv.tools)
+              if (t.enabled) McpTool(srv, t, _mcpClients),
+      ];
+
+  // ------------------------------------------------------------- MCP-Server
+
+  Future<void> saveMcpServer(McpServerConfig srv) async {
+    final i = mcpServers.indexWhere((x) => x.id == srv.id);
+    if (i >= 0) {
+      mcpServers[i] = srv;
+    } else {
+      mcpServers.add(srv);
+    }
+    await _mcpClients.remove(srv.id)?.close();
+    await storage.saveMcpServers(mcpServers);
+    notifyListeners();
+  }
+
+  Future<void> removeMcpServer(McpServerConfig srv) async {
+    mcpServers.removeWhere((x) => x.id == srv.id);
+    await _mcpClients.remove(srv.id)?.close();
+    await storage.saveMcpServers(mcpServers);
+    notifyListeners();
+  }
+
+  /// Verbindet sich mit dem Server und lädt die Tool-Liste (vom Nutzer ausgelöst).
+  Future<String?> syncMcpServer(McpServerConfig srv) async {
+    await _mcpClients.remove(srv.id)?.close();
+    final c = McpClient(srv, timeout: const Duration(seconds: 30));
+    try {
+      final info = await c.initialize();
+      final list = await c.listTools();
+      final previous = {for (final t in srv.tools) t.name: t.enabled};
+      for (final t in list) {
+        // bekannte Auswahl behalten; neue Tools bei großen Servern erst einmal aus
+        t.enabled = previous[t.name] ?? list.length <= 10;
+      }
+      srv.tools = list;
+      srv.lastSync = DateTime.now();
+      final si = info['serverInfo'];
+      if (srv.name.trim().isEmpty && si is Map && si['name'] is String) srv.name = si['name'] as String;
+      _mcpClients[srv.id] = c;
+      await saveMcpServer(srv);
+      _mcpClients[srv.id] = c;
+      return null;
+    } catch (e) {
+      await c.close();
+      return e.toString();
+    }
+  }
 
   List<Attachment> get attachments => _attachments[current?.id ?? ''] ?? const [];
 
@@ -350,8 +414,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final ctx = device.clampContext(contextTarget, info);
       final fit = device.checkFit(info, ctx);
       if (fit.level == FitLevel.refuse) throw EngineException(fit.message);
-      // bei knappem Speicher Context zusätzlich begrenzen
-      final effectiveCtx = fit.level == FitLevel.warn && ctx > 2048 ? 2048 : ctx;
+      // bei knappem Speicher den größten Context wählen, der noch passt (mind. 2K)
+      var effectiveCtx = ctx;
+      if (fit.level == FitLevel.warn) {
+        for (final c in [8192, 6144, 4096, 3072, 2048]) {
+          if (c > ctx) continue;
+          effectiveCtx = c;
+          if (device.checkFit(info, c).level == FitLevel.ok) break;
+        }
+      }
       final sw = Stopwatch()..start();
       engine = await LlamaEngine.load(device.engineConfig(m.path, effectiveCtx));
       sw.stop();
@@ -361,6 +432,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           '${fit.level == FitLevel.warn ? ' – ${fit.message}' : ''}';
       settings.lastModelId = m.id;
       await storage.saveSettings(settings);
+      if (!headless) unawaited(warmUp());
     } catch (e) {
       engine = null;
       loadedModel = null;
@@ -1130,6 +1202,123 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// System-Prompt: Profil + Gedächtnis (+ Gesprächsmodus). Bleibt zwischen Turns gleich,
+  /// damit der Präfix-Cache greift; die Wissensbasis-Auszüge kommen in die Nutzernachricht.
+  String _systemText({bool voice = false}) {
+    final profile = activeProfile;
+    final system = StringBuffer(profile.systemPrompt.trim());
+    final mem = memory.promptBlock();
+    if (mem.isNotEmpty) system.write('\n\n$mem');
+    if (activeTools.any((t) => t.name == 'remember')) {
+      system.write('\nWenn der Nutzer etwas Wichtiges über sich erzählt oder dich bittet, '
+          'dir etwas zu merken, nutze das Tool remember.');
+    }
+    system.write('\n\nQUELLEN: Stütze dich auf Auszüge aus der Wissensbasis, angehängte Dokumente oder '
+        'Webseiten, wenn vorhanden, und nenne sie im Text (Titel oder Adresse). Nutzt du nur dein eigenes '
+        'Wissen, sag das nicht extra – die App ergänzt die Quellenangabe automatisch.');
+    if (activeTools.any((t) => t.name.startsWith('create_') || t.name == 'generate_image')) {
+      system.write('\n\nDATEIEN: Wünscht der Nutzer ein Dokument, eine Präsentation, ein Diagramm oder ein Bild, '
+          'erstelle es mit create_document, create_presentation, create_chart bzw. generate_image. '
+          'Bilder und Diagramme zuerst erzeugen, dann im Dokument/den Folien mit ![](dateiname.png) einbinden. '
+          'Schreibe Inhalte vollständig und gut gegliedert. Die Dateien erscheinen automatisch im Chat – '
+          'in der final_answer nur kurz sagen, was erstellt wurde.');
+    }
+    if (voice) {
+      system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
+          'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
+          'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
+          'wo sie unterbrochen wurde.');
+    }
+    return system.toString();
+  }
+
+  AgentRunner _makeRunner(LlamaEngine eng, String system) {
+    final profile = activeProfile;
+    return AgentRunner(
+      engine: eng,
+      systemPrompt: system,
+      tools: activeTools,
+      maxSteps: profile.maxSteps,
+      // Platz für ganze Dokumente in einem Tool-Aufruf
+      maxTokensPerStep: (eng.contextSize ~/ 3).clamp(256, 4096),
+      observationLimit: device.deviceClass == DeviceClass.s ? 1000 : 2000,
+      sampling: SamplingParams(temperature: profile.temperature.clamp(0.0, 0.5), topP: 0.9),
+      chatSampling: SamplingParams(temperature: profile.temperature),
+    );
+  }
+
+  /// true, solange der System-Prompt nach dem Laden vorgerechnet wird
+  bool warming = false;
+
+  /// Rechnet nach dem Laden den System-Prompt vor (oder lädt ihn von der Platte),
+  /// damit die erste Antwort sofort beginnt.
+  Future<void> warmUp() async {
+    final eng = engine;
+    final m = loadedModel;
+    if (eng == null || m == null || running || warming) return;
+    warming = true;
+    notifyListeners();
+    try {
+      final r = _makeRunner(eng, _systemText());
+      final prompt = await eng.formatChat([ChatMessage('system', r.buildSystemPrompt(ToolContext()))]);
+      var h = 0xcbf29ce484222325;
+      for (final c in '${m.path}|${m.sizeBytes}|${eng.contextSize}|${device.quantizeKv}|$prompt'.codeUnits) {
+        h = ((h ^ c) * 0x100000001b3) & 0x7FFFFFFFFFFFFFFF;
+      }
+      final dir = Directory('${storage.root.path}/kvcache')..createSync(recursive: true);
+      final f = File('${dir.path}/${h.toRadixString(16)}.bin');
+      var ok = false;
+      if (f.existsSync()) {
+        ok = await eng.loadState(f.path) > 0;
+        if (ok) f.setLastModifiedSync(DateTime.now());
+      }
+      if (!ok && engine == eng) {
+        await eng.prefill(prompt);
+        if (engine == eng && await eng.saveState(f.path) > 0) {
+          // höchstens 4 Zustände behalten
+          final all = dir.listSync().whereType<File>().toList()
+            ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+          for (final old in all.skip(4)) {
+            try {
+              old.deleteSync();
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Vorberechnung: $e');
+    } finally {
+      warming = false;
+      notifyListeners();
+    }
+  }
+
+  // ------------------------------------------------- Bearbeiten / Wiederholen
+
+  /// Sendet die Nutzernachricht an [index] erneut (optional mit neuem Text);
+  /// alles danach im Chat wird verworfen.
+  Future<void> resendFrom(int index, {String? newText}) async {
+    final conv = current;
+    if (conv == null || running || index < 0 || index >= conv.entries.length) return;
+    final entry = conv.entries[index];
+    if (entry.role != 'user') return;
+    final text = (newText ?? entry.text).trim();
+    if (text.isEmpty) return;
+    conv.entries.removeRange(index, conv.entries.length);
+    await storage.saveConversation(conv);
+    notifyListeners();
+    await send(text, voice: entry.viaVoice);
+  }
+
+  /// Erzeugt die Antwort an [index] neu.
+  Future<void> regenerate(int index) async {
+    final conv = current;
+    if (conv == null) return;
+    for (var i = index - 1; i >= 0; i--) {
+      if (conv.entries[i].role == 'user') return resendFrom(i);
+    }
+  }
+
   // ------------------------------------------------- Gespeicherte Prompts
 
   Future<void> savePrompt(SavedPrompt p) async {
@@ -1299,7 +1488,6 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final conv = _ensureConversation();
-    final profile = activeProfile;
 
     final history = <ChatMessage>[
       for (final e in conv.entries)
@@ -1321,31 +1509,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     conv.updated = DateTime.now();
 
     final ctxSize = eng.contextSize;
-    // System-Prompt: Profil + Gedächtnis (+ Gesprächsmodus). Bleibt zwischen Turns gleich,
-    // damit der Präfix-Cache greift; die Wissensbasis-Auszüge kommen in die Nutzernachricht.
-    final system = StringBuffer(profile.systemPrompt.trim());
-    final mem = memory.promptBlock();
-    if (mem.isNotEmpty) system.write('\n\n$mem');
-    if (activeTools.any((t) => t.name == 'remember')) {
-      system.write('\nWenn der Nutzer etwas Wichtiges über sich erzählt oder dich bittet, '
-          'dir etwas zu merken, nutze das Tool remember.');
-    }
-    system.write('\n\nQUELLEN: Stütze dich auf Auszüge aus der Wissensbasis, angehängte Dokumente oder '
-        'Webseiten, wenn vorhanden, und nenne sie im Text (Titel oder Adresse). Nutzt du nur dein eigenes '
-        'Wissen, sag das nicht extra – die App ergänzt die Quellenangabe automatisch.');
-    if (activeTools.any((t) => t.name.startsWith('create_') || t.name == 'generate_image')) {
-      system.write('\n\nDATEIEN: Wünscht der Nutzer ein Dokument, eine Präsentation, ein Diagramm oder ein Bild, '
-          'erstelle es mit create_document, create_presentation, create_chart bzw. generate_image. '
-          'Bilder und Diagramme zuerst erzeugen, dann im Dokument/den Folien mit ![](dateiname.png) einbinden. '
-          'Schreibe Inhalte vollständig und gut gegliedert. Die Dateien erscheinen automatisch im Chat – '
-          'in der final_answer nur kurz sagen, was erstellt wurde.');
-    }
-    if (voice) {
-      system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
-          'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
-          'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
-          'wo sie unterbrochen wurde.');
-    }
+    final system = _systemText(voice: voice);
     var turnInput = input.trim();
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
     final ragHits = rag.isEmpty
@@ -1353,17 +1517,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         : knowledge.search(turnInput).where((h) => rag.contains(h.chunk.url)).toList();
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
-    final runner = AgentRunner(
-      engine: eng,
-      systemPrompt: system.toString(),
-      tools: activeTools,
-      maxSteps: profile.maxSteps,
-      // Platz für ganze Dokumente in einem Tool-Aufruf
-      maxTokensPerStep: (ctxSize ~/ 3).clamp(256, 4096),
-      observationLimit: device.deviceClass == DeviceClass.s ? 1000 : 2000,
-      sampling: SamplingParams(temperature: profile.temperature.clamp(0.0, 0.5), topP: 0.9),
-      chatSampling: SamplingParams(temperature: profile.temperature),
-    );
+    final runner = _makeRunner(eng, system);
     _runner = runner;
     running = true;
     unawaited(BackgroundWork.begin('agent', 'Agent schreibt eine Antwort …'));

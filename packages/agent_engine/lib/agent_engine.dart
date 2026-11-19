@@ -5,6 +5,8 @@ library;
 export 'src/agent/agent_runner.dart';
 export 'src/agent/builtin_tools.dart';
 export 'src/agent/document_tools.dart';
+export 'src/agent/notify_tool.dart';
+export 'src/agent/mcp.dart';
 export 'src/agent/grammar.dart';
 export 'src/agent/memory_tools.dart';
 export 'src/agent/network_tools.dart';

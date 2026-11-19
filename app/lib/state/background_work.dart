@@ -62,17 +62,20 @@ class BackgroundWork {
     } catch (_) {}
   }
 
-  static Future<void> notify(String title, String body, {String? conversationId}) async {
+  /// Benachrichtigung sofort oder zum Zeitpunkt [at] (bleibt auch bei geschlossener App).
+  static Future<void> notify(String title, String body, {String? conversationId, DateTime? at}) async {
     try {
+      final args = {
+        'title': title,
+        'body': body,
+        'conversation': conversationId,
+        'id': ('${conversationId ?? title}${at?.millisecondsSinceEpoch ?? ''}').hashCode & 0x7FFFFFFF,
+        if (at != null) 'at': at.millisecondsSinceEpoch,
+      };
       if (Platform.isAndroid) {
-        await _channel.invokeMethod('notify', {
-          'title': title,
-          'body': body,
-          'conversation': conversationId,
-          'id': (conversationId ?? title).hashCode & 0x7FFFFFFF,
-        });
+        await _channel.invokeMethod('notify', args);
       } else if (Platform.isMacOS) {
-        await _files.invokeMethod('notify', {'title': title, 'body': body});
+        await _files.invokeMethod('notify', args);
       }
     } catch (_) {}
   }

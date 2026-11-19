@@ -99,6 +99,10 @@ AE_API void ae_img_progress(int32_t * step, int32_t * steps);
 AE_API const char * ae_img_last_error(ae_image * im);
 AE_API void ae_free(void * p);
 
+// KV-Cache auf Platte sichern / laden. Rückgabe: Anzahl Tokens (0 = nicht möglich).
+AE_API int32_t ae_state_save(ae_engine * e, const char * path);
+AE_API int32_t ae_state_load(ae_engine * e, const char * path);
+
 AE_API void ae_stop(ae_engine * e);
 
 // Statistik der letzten Generierung, in out[0..7]:

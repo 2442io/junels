@@ -9,6 +9,7 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'knowledge_page.dart';
+import 'mcp_page.dart';
 import 'prompt_editor.dart';
 import 'model_import.dart';
 import 'profile_editor.dart';
@@ -43,6 +44,17 @@ class Sidebar extends StatelessWidget {
             subtitle: Text('${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => openKnowledge(context),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('MCP-Server'),
+            subtitle: Text(app.mcpServers.isEmpty
+                ? 'Weitere Tools anbinden'
+                : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Tools'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => openMcp(context),
           ),
         ),
         const SizedBox(height: 20),
@@ -385,6 +397,7 @@ class _ToolSection extends StatelessWidget {
     'create_chart': Icons.bar_chart,
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,
+    'send_notification': Icons.notifications_active_outlined,
     'search_history': Icons.history,
     'knowledge_search': Icons.local_library_outlined,
   };

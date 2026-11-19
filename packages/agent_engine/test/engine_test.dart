@@ -580,6 +580,31 @@ Future<void> main() async {
     tmp.deleteSync(recursive: true);
   });
 
+  await group('Push-Nachrichten: Zeitangaben', () async {
+    final now = DateTime(2026, 11, 19, 14, 0);
+    check(parseWhen('', now) == null && parseWhen('jetzt', now) == null, 'leer/jetzt = sofort');
+    check(parseWhen('in 30 Minuten', now) == DateTime(2026, 11, 19, 14, 30), 'in 30 Minuten');
+    check(parseWhen('in 2 h', now) == DateTime(2026, 11, 19, 16, 0), 'in 2 h');
+    check(parseWhen('15:00', now) == DateTime(2026, 11, 19, 15, 0), '15:00 heute');
+    check(parseWhen('9:00 Uhr', now) == DateTime(2026, 11, 20, 9, 0), '9:00 schon vorbei → morgen');
+    check(parseWhen('morgen 8:30', now) == DateTime(2026, 11, 20, 8, 30), 'morgen 8:30');
+    check(parseWhen('24.12. 18:00', now) == DateTime(2026, 12, 24, 18, 0), '24.12. 18:00');
+    check(parseWhen('2026-12-01 07:15', now) == DateTime(2026, 12, 1, 7, 15), 'ISO-Datum');
+    var bad = false;
+    try {
+      parseWhen('irgendwann', now);
+    } on FormatException {
+      bad = true;
+    }
+    check(bad, 'Unsinn → Fehler');
+    final sent = <(String, DateTime?)>[];
+    final tool = NotifyTool((t, x, at) async => sent.add((t, at)), clock: () => now);
+    final r1 = await tool.run({'title': 'A', 'text': 'b', 'when': ''}, ToolContext());
+    final r2 = await tool.run({'title': 'B', 'text': 'c', 'when': 'in 10 min'}, ToolContext());
+    check(sent.length == 2 && sent[0].$2 == null && sent[1].$2 == DateTime(2026, 11, 19, 14, 10) &&
+        r1.contains('gesendet') && r2.contains('14:10'), 'Tool sendet sofort und plant');
+  });
+
   await group('Katalog: Bildmodelle und Bildverständnis', () async {
     const gb = 1 << 30;
     final mac = DeviceProfile.detect(totalMemoryOverride: 32 * gb, cpuOverride: 10, mobileOverride: false);
@@ -746,6 +771,27 @@ Future<void> main() async {
       await e2.dispose();
     });
   }
+
+  await group('Schnellstart: Vorberechnung und KV-Zustand auf Platte', () async {
+    final sys = 'Du bist ein Testassistent. ' * 40;
+    final p1 = await engine.formatChat([ChatMessage('system', sys), const ChatMessage('user', 'Hallo')]);
+    final ms = await engine.prefill(await engine.formatChat([ChatMessage('system', sys)]));
+    check(ms >= 0, 'Vorberechnung ($ms ms)');
+    final tmp = File('${Directory.systemTemp.path}/ae_state_test.bin');
+    final saved = await engine.saveState(tmp.path);
+    check(saved > 50 && tmp.existsSync(), 'Zustand gespeichert ($saved Tokens, ${tmp.lengthSync() ~/ 1024} KB)');
+    final e2 = await LlamaEngine.load(EngineConfig(modelPath: modelPath, contextSize: 2048, threads: 2));
+    final loaded = await e2.loadState(tmp.path);
+    check(loaded == saved, 'Zustand in neue Engine geladen');
+    GenerationStats? st;
+    await for (final ev in e2.generate(p1, maxTokens: 4)) {
+      if (ev is DoneEvent) st = ev.stats;
+    }
+    check(st != null && st.reusedTokens >= saved - 8, 'Prompt nutzt geladenen Zustand (${st?.reusedTokens} wiederverwendet)');
+    check(await e2.loadState('/gibt/es/nicht.bin') == 0, 'fehlende Datei → 0');
+    await e2.dispose();
+    tmp.deleteSync();
+  });
 
   await engine.dispose();
   _summary();

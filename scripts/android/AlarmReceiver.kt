@@ -10,6 +10,11 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED, "android.intent.action.MY_PACKAGE_REPLACED" -> JunelsNative.applySchedule(ctx)
+            "junels.NOTIFY" -> {
+                val id = intent.getIntExtra("nid", 7)
+                JunelsNative.notify(ctx, intent.getStringExtra("title") ?: "Junels", intent.getStringExtra("body") ?: "", null, id)
+                JunelsNative.noteFired(ctx, id)
+            }
             "junels.RUN_PROMPT" -> {
                 val i = Intent(ctx, AgentService::class.java)
                     .setAction(AgentService.ACTION_RUN)
