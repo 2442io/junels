@@ -66,6 +66,8 @@ def patch_android():
             ("android.permission.FOREGROUND_SERVICE_DATA_SYNC", "Agent/Downloads im Hintergrund"),
             ("android.permission.WAKE_LOCK", "CPU wach halten, solange der Agent rechnet"),
             ("android.permission.POST_NOTIFICATIONS", "Hinweis, dass der Agent im Hintergrund arbeitet"),
+            ("android.permission.USE_EXACT_ALARM", "Geplante Prompts pünktlich starten"),
+            ("android.permission.RECEIVE_BOOT_COMPLETED", "Geplante Prompts nach Neustart wieder einplanen"),
         ]
         for name, why in perms:
             if f'android:name="{name}"' not in s:
@@ -82,6 +84,16 @@ def patch_android():
                           '            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"\n'
                           '                android:resource="@xml/junels_file_paths" />\n'
                           '        </provider>\n    </application>', 1)
+        if "SCHEDULE_EXACT_ALARM" not in s:
+            s = re.sub(r"(<manifest[^>]*>)", r'\1\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />', s, count=1)
+        if ".AlarmReceiver" not in s:
+            s = s.replace("</application>",
+                          '    <receiver android:name=".AlarmReceiver" android:exported="true">\n'
+                          '            <intent-filter>\n'
+                          '                <action android:name="android.intent.action.BOOT_COMPLETED" />\n'
+                          '                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n'
+                          '            </intent-filter>\n'
+                          '        </receiver>\n    </application>', 1)
         if ".AgentService" not in s:
             s = s.replace("</application>",
                           '    <service android:name=".AgentService" android:exported="false"\n'
@@ -102,7 +114,7 @@ def patch_android():
     src = ROOT / "scripts/android"
     for kt in sorted(android.glob("app/src/main/kotlin/**/MainActivity.kt")):
         pkg = re.search(r"^package\s+([\w.]+)", kt.read_text(), re.M).group(1)
-        for name in ("MainActivity.kt", "AgentService.kt"):
+        for name in ("MainActivity.kt", "AgentService.kt", "JunelsNative.kt", "AlarmReceiver.kt"):
             (kt.parent / name).write_text((src / name).read_text().replace("__PACKAGE__", pkg))
         log(f"Hintergrunddienst eingesetzt ({pkg})")
 
@@ -213,6 +225,18 @@ def patch_macos():
     print("macOS")
 
     def app_delegate(s):
+        # Fenster schließen beendet die App nicht (geplante Prompts laufen weiter);
+        # Klick aufs Dock-Symbol öffnet das Fenster wieder
+        if "applicationShouldHandleReopen" not in s:
+            s = re.sub(r"(applicationShouldTerminateAfterLastWindowClosed\(_ sender: NSApplication\) -> Bool \{\s*return )true",
+                       r"\1false", s, count=1)
+            i = s.rfind("}")
+            s = s[:i] + '''
+  override func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag { mainFlutterWindow?.makeKeyAndOrderFront(nil) }
+    return true
+  }
+''' + s[i:]
         if "_exit(0)" in s:
             return s
         hook = '''
@@ -236,7 +260,8 @@ def patch_macos():
             return s
         s = s.replace("import FlutterMacOS", "import FlutterMacOS\nimport PDFKit", 1)
         s = re.sub(r"(RegisterGeneratedPlugins\(registry: flutterViewController\))",
-                   r"\1\n    JunelsFiles.register(flutterViewController)", s, count=1)
+                   r"\1\n    JunelsFiles.register(flutterViewController)\n    self.isReleasedWhenClosed = false", s, count=1)
+        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications", 1)
         return s + (ROOT / "scripts/macos/JunelsFiles.swift").read_text()
 
     edit(mac / "Runner/MainFlutterWindow.swift", main_window)

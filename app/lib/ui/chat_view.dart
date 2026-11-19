@@ -15,6 +15,7 @@ import '../state/voice_service.dart';
 import 'conversation_page.dart';
 import 'file_views.dart';
 import 'markdown_lite.dart';
+import 'prompt_editor.dart';
 import 'system_check.dart';
 
 class ChatView extends StatefulWidget {
@@ -720,17 +721,42 @@ class _InputBarState extends State<_InputBar> {
                         onPressed: app.running ? null : _attach,
                       ),
                       PopupMenuButton<String>(
-                        tooltip: 'Prompt-Vorlagen',
+                        tooltip: 'Prompts & Vorlagen',
                         icon: const Icon(Icons.bolt_outlined),
                         enabled: !app.running,
                         onSelected: (v) {
+                          if (v == '__save__') {
+                            editPrompt(context, initialText: _ctrl.text);
+                            return;
+                          }
+                          if (v.startsWith('__run__')) {
+                            final p = app.prompts.where((x) => x.id == v.substring(7)).firstOrNull;
+                            if (p != null) runSavedPrompt(context, app, p);
+                            return;
+                          }
                           _ctrl.text = v;
                           _ctrl.selection = TextSelection.collapsed(offset: v.length);
                           _focus.requestFocus();
                         },
                         itemBuilder: (_) => [
+                          for (final p in app.prompts)
+                            PopupMenuItem(
+                              value: '__run__${p.id}',
+                              child: ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.play_arrow, size: 20),
+                                title: Text(p.title),
+                                subtitle: p.schedule == ScheduleKind.off ? null : Text(p.scheduleLabel),
+                              ),
+                            ),
+                          if (app.prompts.isNotEmpty) const PopupMenuDivider(),
                           for (final (label, text) in promptPresets)
                             PopupMenuItem(value: text, child: Text(label)),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: '__save__',
+                            child: ListTile(dense: true, leading: Icon(Icons.bookmark_add_outlined, size: 20), title: Text('Eingabe als Prompt speichern …')),
+                          ),
                         ],
                       ),
                       _MicButton(onTap: app.running ? null : _toggleVoice),

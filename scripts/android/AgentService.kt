@@ -8,13 +8,26 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
+import io.flutter.FlutterInjector
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.dart.DartExecutor
+import io.flutter.plugin.common.MethodChannel
 
 // Vordergrunddienst mit dezenter Benachrichtigung und Wake-Lock: hält den Prozess
 // am Leben und die CPU wach, solange der Agent antwortet oder ein Download läuft.
 class AgentService : Service() {
+    companion object {
+        const val ACTION_RUN = "junels.SERVICE_RUN_PROMPT"
+        /** true, solange eine Hintergrund-Engine einen geplanten Prompt ausführt */
+        @Volatile var headlessActive = false
+    }
+
     private var wakeLock: PowerManager.WakeLock? = null
+    private var headless: FlutterEngine? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -49,10 +62,53 @@ class AgentService : Service() {
                 acquire(2 * 60 * 60 * 1000L)
             }
         }
+        if (intent?.action == ACTION_RUN) runPrompt(intent.getStringExtra("id") ?: "")
         return START_NOT_STICKY
     }
 
+    /** Geplanten Prompt ausführen: in der laufenden App oder in einer eigenen Hintergrund-Engine. */
+    private fun runPrompt(id: String) {
+        val main = Handler(Looper.getMainLooper())
+        main.post {
+            val ui = MainActivity.channel
+            if (ui != null) {
+                ui.invokeMethod("runPrompt", mapOf("id" to id))
+                return@post
+            }
+            if (headless != null) return@post
+            headlessActive = true
+            val engine = FlutterEngine(applicationContext)
+            headless = engine
+            val ch = MethodChannel(engine.dartExecutor.binaryMessenger, "junels/background")
+            ch.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getTask" -> result.success(id)
+                    "finished" -> {
+                        result.success(true)
+                        main.postDelayed({ stopHeadless() }, 500)
+                    }
+                    else -> if (!JunelsNative.handle(applicationContext, call, result)) result.notImplemented()
+                }
+            }
+            val loader = FlutterInjector.instance().flutterLoader()
+            engine.dartExecutor.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint(loader.findAppBundlePath(), "backgroundMain"))
+            // Sicherheitsnetz: nach 45 Minuten beenden
+            main.postDelayed({ if (headless === engine) stopHeadless() }, 45 * 60 * 1000L)
+        }
+    }
+
+    private fun stopHeadless() {
+        headless?.destroy()
+        headless = null
+        headlessActive = false
+        stopSelf()
+    }
+
     override fun onDestroy() {
+        headless?.destroy()
+        headless = null
+        headlessActive = false
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()

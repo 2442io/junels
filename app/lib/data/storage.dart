@@ -22,6 +22,15 @@ class Storage {
   File get _settings => File('${root.path}/settings.json');
   File get _profiles => File('${root.path}/profiles.json');
   File get _models => File('${root.path}/models.json');
+  File get _prompts => File('${root.path}/prompts.json');
+
+  Future<List<SavedPrompt>> loadPrompts() async {
+    final j = await _readJson(_prompts);
+    if (j is! List) return [];
+    return [for (final x in j) if (x is Map) SavedPrompt.fromJson(x.cast())];
+  }
+
+  Future<void> savePrompts(List<SavedPrompt> p) => _writeJson(_prompts, p.map((e) => e.toJson()).toList());
 
   static Future<Storage> open() async {
     // Application Support: nicht für den Nutzer sichtbar, auf iOS/macOS im Sandbox-Container

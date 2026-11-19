@@ -399,3 +399,110 @@ const promptPresets = <(String, String)>[
   ('Rechnen', 'Berechne: '),
   ('JSON prüfen', 'Lies die JSON-Datei und liste alle Schlüssel der obersten Ebene auf.'),
 ];
+
+// ------------------------------------------------------------ Gespeicherte Prompts
+
+enum ScheduleKind { off, daily, weekdays, weekly }
+
+/// Gespeicherter Prompt, per Klick oder nach Zeitplan ausführbar.
+class SavedPrompt {
+  SavedPrompt({
+    String? id,
+    required this.title,
+    required this.text,
+    this.profileId,
+    this.schedule = ScheduleKind.off,
+    this.hour = 8,
+    this.minute = 30,
+    this.weekday = DateTime.monday,
+    this.allowInternet = false,
+    this.notify = true,
+    this.lastRun,
+  }) : id = id ?? newId();
+
+  final String id;
+  String title;
+  String text;
+  String? profileId; // null = aktives Profil
+  ScheduleKind schedule;
+  int hour;
+  int minute;
+  int weekday; // 1 = Montag … 7 = Sonntag (nur wöchentlich)
+  bool allowInternet; // automatisch ohne Nachfrage (für Läufe ohne Nutzer)
+  bool notify;
+  DateTime? lastRun;
+
+  static const weekdayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+  String get timeLabel => '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  String get scheduleLabel => switch (schedule) {
+        ScheduleKind.off => 'Nur per Klick',
+        ScheduleKind.daily => 'Täglich $timeLabel',
+        ScheduleKind.weekdays => 'Mo–Fr $timeLabel',
+        ScheduleKind.weekly => 'Jeden ${weekdayNames[weekday - 1]} $timeLabel',
+      };
+
+  bool _dayMatches(DateTime d) => switch (schedule) {
+        ScheduleKind.off => false,
+        ScheduleKind.daily => true,
+        ScheduleKind.weekdays => d.weekday <= DateTime.friday,
+        ScheduleKind.weekly => d.weekday == weekday,
+      };
+
+  /// Nächster geplanter Zeitpunkt nach [from] (null = kein Zeitplan).
+  DateTime? nextAfter(DateTime from) {
+    if (schedule == ScheduleKind.off) return null;
+    for (var i = 0; i < 8; i++) {
+      final d = DateTime(from.year, from.month, from.day + i, hour, minute);
+      if (d.isAfter(from) && _dayMatches(d)) return d;
+    }
+    return null;
+  }
+
+  /// Letzter geplanter Zeitpunkt bis einschließlich [now].
+  DateTime? lastDueBefore(DateTime now) {
+    if (schedule == ScheduleKind.off) return null;
+    for (var i = 0; i < 8; i++) {
+      final d = DateTime(now.year, now.month, now.day - i, hour, minute);
+      if (!d.isAfter(now) && _dayMatches(d)) return d;
+    }
+    return null;
+  }
+
+  /// Fällig? Verpasste Läufe werden nachgeholt, aber nur am selben Tag.
+  bool isDue(DateTime now) {
+    final due = lastDueBefore(now);
+    if (due == null) return false;
+    if (lastRun != null && !lastRun!.isBefore(due)) return false;
+    return due.year == now.year && due.month == now.month && due.day == now.day;
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'title': title,
+        'text': text,
+        'profileId': profileId,
+        'schedule': schedule.name,
+        'hour': hour,
+        'minute': minute,
+        'weekday': weekday,
+        'allowInternet': allowInternet,
+        'notify': notify,
+        'lastRun': lastRun?.toIso8601String(),
+      };
+
+  factory SavedPrompt.fromJson(Map<String, dynamic> j) => SavedPrompt(
+        id: j['id'] as String?,
+        title: j['title'] as String? ?? '',
+        text: j['text'] as String? ?? '',
+        profileId: j['profileId'] as String?,
+        schedule: ScheduleKind.values.asNameMap()[j['schedule']] ?? ScheduleKind.off,
+        hour: (j['hour'] as num?)?.toInt() ?? 8,
+        minute: (j['minute'] as num?)?.toInt() ?? 30,
+        weekday: (j['weekday'] as num?)?.toInt() ?? 1,
+        allowInternet: j['allowInternet'] as bool? ?? false,
+        notify: j['notify'] as bool? ?? true,
+        lastRun: DateTime.tryParse(j['lastRun'] as String? ?? ''),
+      );
+}

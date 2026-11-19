@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'state/app_controller.dart';
 import 'state/app_scope.dart';
+import 'state/background_work.dart';
 import 'ui/home_shell.dart';
 
 void main() {
@@ -9,6 +10,24 @@ void main() {
   final controller = AppController();
   controller.init();
   runApp(OfflineAgentApp(controller: controller));
+}
+
+/// Einstieg der Android-Hintergrund-Engine: führt einen geplanten Prompt ohne Oberfläche aus.
+@pragma('vm:entry-point')
+Future<void> backgroundMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    final id = await BackgroundWork.headlessTask();
+    final app = AppController()..headless = true;
+    await app.init();
+    final p = app.prompts.where((x) => x.id == id).firstOrNull;
+    if (p != null) await app.runPrompt(p, automated: true);
+    await app.unloadModel();
+  } catch (e) {
+    await BackgroundWork.notify('Geplanter Prompt', 'Fehler: $e');
+  } finally {
+    await BackgroundWork.headlessFinished();
+  }
 }
 
 class OfflineAgentApp extends StatelessWidget {

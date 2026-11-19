@@ -14,20 +14,44 @@ import io.flutter.plugin.common.MethodChannel
 // Kanal "junels/background": startet/stoppt den Vordergrunddienst, damit der Agent
 // weiterrechnet, wenn die App in den Hintergrund geht.
 class MainActivity : FlutterActivity() {
+    companion object {
+        /** Kanal der sichtbaren App (null, wenn sie nicht läuft) */
+        @Volatile var channel: MethodChannel? = null
+    }
+
+    private var launchConversation: String? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        launchConversation = intent?.getStringExtra("conversation")
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra("conversation")?.let { channel?.invokeMethod("openConversation", mapOf("id" to it)) }
+    }
+
+    override fun onDestroy() {
+        channel = null
+        super.onDestroy()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "junels/background")
-            .setMethodCallHandler { call, result ->
+        val bg = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "junels/background")
+        channel = bg
+        bg.setMethodCallHandler { call, result ->
                 try {
+                    if (JunelsNative.handle(this, call, result)) return@setMethodCallHandler
                     when (call.method) {
-                        "start" -> {
-                            val i = Intent(this, AgentService::class.java)
-                                .putExtra("text", call.argument<String>("text") ?: "Agent arbeitet …")
-                            if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
-                            result.success(true)
+                        "takeLaunchConversation" -> {
+                            result.success(launchConversation)
+                            launchConversation = null
                         }
-                        "stop" -> {
-                            stopService(Intent(this, AgentService::class.java))
+                        "requestNotifyPermission" -> {
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 42)
+                            }
                             result.success(true)
                         }
                         else -> result.notImplemented()

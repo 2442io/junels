@@ -49,6 +49,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   List<StoredModel> models = [];
   List<Conversation> conversations = [];
   Conversation? current;
+  List<SavedPrompt> prompts = [];
+  Timer? _scheduleTimer;
+  final List<String> _promptQueue = [];
+  /// Läuft ohne Oberfläche (Android-Hintergrund-Engine für geplante Prompts)
+  bool headless = false;
 
   late final List<AgentTool> tools;
 
@@ -151,6 +156,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         settings.activeProfileId = profiles.first.id;
       }
       models = await storage.loadModels();
+      prompts = await storage.loadPrompts();
       conversations = await storage.loadConversations();
       current = conversations.isNotEmpty ? conversations.first : null;
       _pollMemory();
@@ -158,7 +164,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       initialized = true;
       notifyListeners();
 
-      if (settings.autoLoadLastModel && settings.lastModelId != null) {
+      if (!headless) {
+        BackgroundWork.listen(
+          onRunPrompt: (id) async {
+            final p = prompts.where((x) => x.id == id).firstOrNull;
+            if (p != null) await runPrompt(p, automated: true);
+          },
+          onOpenConversation: openConversationById,
+        );
+        _scheduleTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkSchedule());
+        unawaited(BackgroundWork.takeLaunchConversation().then((id) {
+          if (id != null) openConversationById(id);
+        }));
+        unawaited(_syncAlarms());
+        Future<void>.delayed(const Duration(seconds: 5), _checkSchedule);
+      }
+
+      if (!headless && settings.autoLoadLastModel && settings.lastModelId != null) {
         final m = models.where((x) => x.id == settings.lastModelId).firstOrNull;
         if (m != null) unawaited(loadModel(m));
       }
@@ -173,6 +195,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _memTimer?.cancel();
+    _scheduleTimer?.cancel();
     engine?.dispose();
     if (initialized && initError == null) voice.dispose();
     super.dispose();
@@ -1103,6 +1126,115 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void clearInspectorAttention() {
     if (inspectorAttention) {
       inspectorAttention = false;
+      notifyListeners();
+    }
+  }
+
+  // ------------------------------------------------- Gespeicherte Prompts
+
+  Future<void> savePrompt(SavedPrompt p) async {
+    final i = prompts.indexWhere((x) => x.id == p.id);
+    final old = i >= 0 ? prompts[i] : null;
+    // Neuer oder geänderter Zeitplan: erst ab jetzt zählen (nichts sofort "nachholen")
+    if (old == null || old.scheduleLabel != p.scheduleLabel) p.lastRun = DateTime.now();
+    if (i >= 0) {
+      prompts[i] = p;
+    } else {
+      prompts.add(p);
+    }
+    await storage.savePrompts(prompts);
+    if (p.schedule != ScheduleKind.off && p.notify) unawaited(BackgroundWork.requestNotifyPermission());
+    unawaited(_syncAlarms());
+    notifyListeners();
+  }
+
+  Future<void> deletePrompt(SavedPrompt p) async {
+    prompts.removeWhere((x) => x.id == p.id);
+    await storage.savePrompts(prompts);
+    unawaited(_syncAlarms());
+    notifyListeners();
+  }
+
+  /// Android: Wecker für die nächsten Termine (auch bei geschlossener App).
+  Future<void> _syncAlarms() async {
+    final now = DateTime.now();
+    await BackgroundWork.schedule([
+      for (final p in prompts)
+        if (p.nextAfter(now) case final at?) (id: p.id, title: p.title, at: at),
+    ]);
+  }
+
+  void _checkSchedule() {
+    if (!initialized || running || status == EngineStatus.loading) return;
+    final now = DateTime.now();
+    for (final p in prompts) {
+      if (p.isDue(now)) {
+        unawaited(runPrompt(p, automated: true));
+        return; // einer nach dem anderen
+      }
+    }
+    if (_promptQueue.isNotEmpty) {
+      final p = prompts.where((x) => x.id == _promptQueue.removeAt(0)).firstOrNull;
+      if (p != null) unawaited(runPrompt(p, automated: true));
+    }
+  }
+
+  /// Wartet auf ein geladenes Modell (lädt bei Bedarf das zuletzt genutzte).
+  Future<bool> _ensureEngine() async {
+    for (var i = 0; i < 600 && status == EngineStatus.loading; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    if (engine != null) return true;
+    final m = models.where((x) => x.id == settings.lastModelId).firstOrNull ?? models.firstOrNull;
+    if (m == null) return false;
+    await loadModel(m);
+    return engine != null;
+  }
+
+  /// Führt einen gespeicherten Prompt in einem neuen Chat aus.
+  Future<Conversation?> runPrompt(SavedPrompt p, {bool automated = false}) async {
+    if (running) {
+      if (automated && !_promptQueue.contains(p.id)) _promptQueue.add(p.id);
+      return null;
+    }
+    p.lastRun = DateTime.now();
+    await storage.savePrompts(prompts);
+    unawaited(_syncAlarms());
+    if (!await _ensureEngine()) {
+      if (automated && p.notify) {
+        await BackgroundWork.notify(p.title, 'Konnte nicht starten: kein Sprachmodell geladen.');
+      }
+      statusMessage = 'Kein Sprachmodell für „${p.title}“.';
+      notifyListeners();
+      return null;
+    }
+    final previousProfile = settings.activeProfileId;
+    if (p.profileId != null && profiles.any((x) => x.id == p.profileId)) settings.activeProfileId = p.profileId!;
+    current = null;
+    final conv = _ensureConversation();
+    final now = DateTime.now();
+    conv.title = '${p.title} · ${now.day}.${now.month}. ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    if (p.allowInternet) conv.internetAllowed = true;
+    try {
+      await send(p.text);
+    } finally {
+      settings.activeProfileId = previousProfile;
+    }
+    if (automated && p.notify) {
+      final answer = conv.entries.lastOrNull;
+      final text = answer?.error ?? answer?.text ?? '';
+      final short = text.replaceAll(RegExp(r'[#*_`>|]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+      await BackgroundWork.notify(p.title, short.length > 240 ? '${short.substring(0, 240)}…' : short,
+          conversationId: conv.id);
+    }
+    notifyListeners();
+    return conv;
+  }
+
+  void openConversationById(String id) {
+    final c = conversations.where((x) => x.id == id).firstOrNull;
+    if (c != null && !running) {
+      current = c;
       notifyListeners();
     }
   }

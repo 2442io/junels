@@ -25,6 +25,17 @@ enum JunelsFiles {
           }
           DispatchQueue.main.async { result(["text": text, "pages": doc.pageCount]) }
         }
+      case "notify":
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+          guard granted else { return }
+          let content = UNMutableNotificationContent()
+          content.title = args["title"] as? String ?? "Junels"
+          content.body = args["body"] as? String ?? ""
+          content.sound = .default
+          center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        }
+        result(true)
       case "open":
         result(NSWorkspace.shared.open(url))
       case "reveal":

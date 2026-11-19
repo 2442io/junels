@@ -9,6 +9,7 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'knowledge_page.dart';
+import 'prompt_editor.dart';
 import 'model_import.dart';
 import 'profile_editor.dart';
 import 'system_check.dart';
@@ -28,6 +29,8 @@ class Sidebar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
         _ModelSection(app: app),
+        const SizedBox(height: 20),
+        _PromptSection(app: app),
         const SizedBox(height: 20),
         _ProfileSection(app: app),
         const SizedBox(height: 20),
@@ -50,6 +53,46 @@ class Sidebar extends StatelessWidget {
         _SettingsSection(app: app),
       ],
     );
+  }
+}
+
+class _PromptSection extends StatelessWidget {
+  const _PromptSection({required this.app});
+  final AppController app;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _SectionTitle('Meine Prompts',
+          trailing: IconButton(
+            tooltip: 'Neuer Prompt',
+            icon: const Icon(Icons.add, size: 20),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => editPrompt(context),
+          )),
+      if (app.prompts.isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+          child: Text('Prompts speichern, per Klick starten oder täglich automatisch ausführen lassen.',
+              style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+        ),
+      for (final p in app.prompts)
+        ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.only(left: 4),
+          leading: Icon(p.schedule == ScheduleKind.off ? Icons.bolt_outlined : Icons.alarm, size: 20),
+          title: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(p.scheduleLabel, style: t.labelSmall),
+          onTap: () => editPrompt(context, prompt: p),
+          trailing: IconButton(
+            tooltip: 'Jetzt ausführen',
+            icon: const Icon(Icons.play_circle_outline),
+            onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
+          ),
+        ),
+    ]);
   }
 }
 
