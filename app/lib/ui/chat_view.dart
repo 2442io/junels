@@ -98,31 +98,70 @@ class _ChatViewState extends State<ChatView> {
 
 // ------------------------------------------------------ Ergebnis-Karussell
 
-/// Produkte/Meldungen als horizontal wischbare Karten: Bild, Titel, Preis, externer Link.
-class ResultCarousel extends StatelessWidget {
-  const ResultCarousel({super.key, required this.cards, this.loadImages = true});
+/// Web-Inhalte (Produkte, Meldungen, Treffer) als horizontal wischbare Karten:
+/// Bild, Titel, Text, Preis, externer Link – mit „Weitere laden“.
+class ResultCarousel extends StatefulWidget {
+  const ResultCarousel({super.key, required this.cards, this.loadImages = true, this.onMore});
   final List<Map<String, String>> cards;
   final bool loadImages;
+  final VoidCallback? onMore;
+
+  @override
+  State<ResultCarousel> createState() => _ResultCarouselState();
+}
+
+class _ResultCarouselState extends State<ResultCarousel> {
+  static const _page = 10;
+  int _shown = _page;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
+    final cards = widget.cards;
+    final visible = cards.take(_shown).toList();
+    final rest = cards.length - visible.length;
+    final extra = rest > 0 || widget.onMore != null ? 1 : 0;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: SizedBox(
-        height: 268,
+        height: 300,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          itemCount: cards.length,
+          itemCount: visible.length + extra,
           separatorBuilder: (_, __) => const SizedBox(width: 10),
           itemBuilder: (context, i) {
-            final c = cards[i];
+            if (i == visible.length) {
+              // Ende: weitere Karten zeigen bzw. neu suchen lassen
+              return SizedBox(
+                width: 140,
+                child: Card(
+                  margin: EdgeInsets.zero,
+                  child: InkWell(
+                    onTap: rest > 0 ? () => setState(() => _shown += _page) : widget.onMore,
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(rest > 0 ? Icons.arrow_forward : Icons.search, color: scheme.primary, size: 32),
+                      const SizedBox(height: 8),
+                      Text(rest > 0 ? 'Weitere laden\n($rest)' : 'Mehr suchen', textAlign: TextAlign.center,
+                          style: t.labelLarge?.copyWith(color: scheme.primary)),
+                    ]),
+                  ),
+                ),
+              );
+            }
+            final c = visible[i];
             final link = c['link'] ?? '';
             final img = c['image'] ?? '';
             final host = Uri.tryParse(link)?.host.replaceFirst('www.', '') ?? '';
+            final note = c['note'] ?? '';
+            Widget placeholder() => host.isEmpty || !widget.loadImages
+                ? Icon(Icons.public, size: 40, color: scheme.outline)
+                : Image.network('https://$host/favicon.ico',
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (_, __, ___) => Icon(Icons.public, size: 40, color: scheme.outline));
             return SizedBox(
-              width: 176,
+              width: 190,
               child: Card(
                 margin: EdgeInsets.zero,
                 clipBehavior: Clip.antiAlias,
@@ -130,18 +169,18 @@ class ResultCarousel extends StatelessWidget {
                   onTap: link.isEmpty ? null : () => openExternalLink(context, link),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Container(
-                      height: 120,
-                      color: Colors.white,
+                      height: 112,
+                      color: img.isEmpty ? scheme.surfaceContainerHighest : Colors.white,
                       alignment: Alignment.center,
-                      child: img.isEmpty || !loadImages
-                          ? Icon(Icons.image_outlined, size: 40, color: scheme.outline)
+                      child: img.isEmpty || !widget.loadImages
+                          ? placeholder()
                           : Image.network(
                               img,
-                              fit: BoxFit.contain,
-                              height: 120,
-                              width: 176,
-                              cacheWidth: 400,
-                              errorBuilder: (_, __, ___) => Icon(Icons.broken_image_outlined, size: 40, color: scheme.outline),
+                              fit: BoxFit.cover,
+                              height: 112,
+                              width: 190,
+                              cacheWidth: 420,
+                              errorBuilder: (_, __, ___) => placeholder(),
                               loadingBuilder: (_, child, p) => p == null
                                   ? child
                                   : const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
@@ -151,8 +190,16 @@ class ResultCarousel extends StatelessWidget {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(c['title'] ?? '', maxLines: 3, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
-                          const Spacer(),
+                          Text(c['title'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                          if (note.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Expanded(
+                              child: Text(note, maxLines: 4, overflow: TextOverflow.ellipsis,
+                                  style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            ),
+                          ] else
+                            const Spacer(),
                           if ((c['price'] ?? '').isNotEmpty)
                             Text(c['price']!, style: t.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
                         ]),
@@ -453,7 +500,11 @@ class _AssistantMessage extends StatelessWidget {
                   selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
             ),
           if (entry.cards.isNotEmpty)
-            ResultCarousel(cards: entry.cards, loadImages: !(AppScope.of(context).current?.internetOff ?? false)),
+            ResultCarousel(
+              cards: entry.cards,
+              loadImages: !(AppScope.of(context).current?.internetOff ?? false),
+              onMore: () => AppScope.read(context).pendingInput.value = 'Such bitte weitere Ergebnisse dazu.',
+            ),
           if (entry.error != null)
             Container(
               margin: const EdgeInsets.only(top: 8),

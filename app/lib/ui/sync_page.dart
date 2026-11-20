@@ -200,7 +200,7 @@ class _SyncPageState extends State<SyncPage> {
 
           section('3a. Über deinen Server', icon: Icons.cloud_sync_outlined, [
             const Text('Lade die Datei junels-sync.php (liegt beim App-Download auf GitHub) auf deinen Webspace, '
-                'z. B. nach https://t24.2442.io/junels/ – und trage die Adresse hier ein. '
+                'z. B. nach https://deine-domain.at/junels/ – und trage die Adresse hier ein. '
                 'Funktioniert überall, auch unterwegs.'),
             const SizedBox(height: 10),
             TextField(
@@ -208,7 +208,7 @@ class _SyncPageState extends State<SyncPage> {
               keyboardType: TextInputType.url,
               decoration: const InputDecoration(
                 labelText: 'Server-Adresse',
-                hintText: 'https://t24.2442.io/junels/junels-sync.php',
+                hintText: 'https://deine-domain.at/junels/junels-sync.php',
               ),
               onChanged: (v) => cfg.serverUrl = v.trim(),
               onSubmitted: (_) => sync.saveConfig(),

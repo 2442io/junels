@@ -64,9 +64,13 @@ class WebSearchTool extends AgentTool {
       return 'Websuche ohne Ergebnis (${errors.join('; ')}). '
           'Sag dem Nutzer den Grund. Für Produkte/Preise kann site_search (z. B. geizhals) helfen.';
     }
+    String fmt(SearchHit h) => '- ${h.title}\n${h.snippet.isEmpty ? '' : '  ${h.snippet}\n'}  Link: ${h.url}';
     return [
-      'Treffer ($used) – lies die passendsten mit web_fetch, bevor du antwortest:',
-      for (final (i, h) in hits.take(6).indexed) '${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet}',
+      'Treffer ($used) – lies die passendsten mit web_fetch, bevor du antwortest. '
+          'Der Nutzer sieht die Treffer als Karten.',
+      for (final h in hits.take(6)) fmt(h),
+      if (hits.length > 6) moreCardsMarker.trim(),
+      for (final h in hits.skip(6).take(30)) fmt(h),
     ].join('\n');
   }
 
@@ -193,14 +197,23 @@ class WebFetchTool extends AgentTool {
     final b = StringBuffer('$title$url\n');
     if (items.isNotEmpty) {
       b.writeln('\nEINTRÄGE (${items.length}${source != uri ? ', aus Feed $source' : ''}) – Titel / Bild / Link:');
-      for (final i in items.take(20)) {
-        b.writeln('- ${i.title}${i.date.isEmpty ? '' : ' (${i.date})'}');
-        if (i.image.isNotEmpty) b.writeln('  Bild: ${i.image}');
-        if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
-        if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
-      }
+      b.write(formatCardItems(items.take(12)));
       b.writeln('\nDie Einträge sieht der Nutzer bereits als Karten mit Bild, Titel und Link. '
           'Fasse zusammen bzw. beantworte die Frage, keine Bilder einbinden, die Überschrift EINTRÄGE nicht übernehmen.');
+    }
+    if (items.isEmpty) {
+      // einzelne Seite als Karte (Titel, Vorschaubild, Beschreibung)
+      String? meta(String prop) => RegExp('<meta[^>]+(?:property|name)=["\x27]$prop["\x27][^>]*content=["\x27]([^"\x27]+)',
+              caseSensitive: false)
+          .firstMatch(html)
+          ?.group(1);
+      final img = _abs(uri, meta('og:image') ?? meta('twitter:image'));
+      final desc = htmlDecode(meta('og:description') ?? meta('description') ?? '');
+      final t = htmlDecode(meta('og:title') ?? (titleM == null ? '' : htmlToText(titleM.group(1)!)));
+      if (t.trim().isNotEmpty) {
+        b.writeln('\nSEITE:');
+        b.write(formatCardItems([PageItem(t.trim(), uri.toString(), img, summary: desc.length > 200 ? '${desc.substring(0, 197)}…' : desc)]));
+      }
     }
     var text = htmlToText(html);
     final room = maxChars - b.length;
@@ -209,6 +222,11 @@ class WebFetchTool extends AgentTool {
       b.writeln('\nTEXT:\n$text');
     } else if (text.trim().isEmpty && items.isEmpty) {
       b.writeln('\n(Die Seite enthält keinen lesbaren Text – sie wird vermutlich per JavaScript aufgebaut.)');
+    }
+    if (items.length > 12) {
+      b
+        ..write(moreCardsMarker)
+        ..write(formatCardItems(items.skip(12).take(30)));
     }
     return b.toString();
   }
@@ -436,6 +454,21 @@ List<PageItem> extractPageItems(String html, Uri base) {
     if (out.length >= 30) break;
   }
   return out;
+}
+
+/// Ab hier folgen weitere Einträge nur für die Karten-Anzeige (nicht fürs Modell).
+const moreCardsMarker = '\n<<<WEITERE-KARTEN>>>\n';
+
+/// Einträge im einheitlichen Karten-Format ("- Titel", eingerückt Preis/Bild/Link/Text).
+String formatCardItems(Iterable<PageItem> items, {String source = ''}) {
+  final b = StringBuffer();
+  for (final i in items) {
+    b.writeln('- ${i.title}${i.date.isEmpty ? '' : ' (${source.isEmpty ? '' : '$source, '}${i.date})'}');
+    if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
+    if (i.image.isNotEmpty) b.writeln('  Bild: ${i.image}');
+    if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
+  }
+  return b.toString();
 }
 
 /// Ergebnis-Karte (für die Darstellung als Karussell im Chat).

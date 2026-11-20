@@ -7,7 +7,7 @@ Pod::Spec.new do |s|
   s.version          = '1.0.0'
   s.summary          = 'Lokale LLM-Engine (llama.cpp) für die Offline Agent App.'
   s.description      = 'llama.cpp mit Metal-Beschleunigung als dynamisches Framework.'
-  s.homepage         = 'https://t24.2442.io'
+  s.homepage         = 'https://github.com/2442io/junels'
   s.license          = { :type => 'MIT' }
   s.author           = { 'Offline Agent' => 'offline@localhost' }
   s.source           = { :path => '.' }

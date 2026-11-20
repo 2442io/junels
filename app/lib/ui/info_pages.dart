@@ -10,6 +10,12 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.18.0', [
+    'Alle Web-Inhalte als Karussell: Websuche, Webseiten, Shop-Suche und Nachrichten – mit Bild, Titel, Text und Link',
+    '„Weitere laden“ am Ende des Karussells (bis zu 60 Treffer) und „Mehr suchen“ für eine neue Suche',
+    'Das Sprachmodell bekommt nur die besten Treffer – schneller, der Rest steht in den Karten',
+    'Updates funktionieren ohne GitHub-Token, wenn das Repository öffentlich ist',
+  ]),
   ('1.17.0', [
     'MCP-Store: empfohlene Server von GitHub, Notion, Atlassian, Microsoft, Stripe … und Suche im offiziellen MCP Registry – mit einem Tipp hinzufügen',
     'Anmeldung im Browser (OAuth) für MCP-Server, Token werden automatisch erneuert',

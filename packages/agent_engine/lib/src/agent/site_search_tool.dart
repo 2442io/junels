@@ -130,15 +130,15 @@ class SiteSearchTool extends AgentTool {
     final items = extractPageItems(html, url).where((i) => i.title.length > 8).toList();
     if (items.isEmpty) return null;
     final b = StringBuffer('Suchergebnisse auf $site für „$q“ ($url):\n');
-    for (final i in items.take(10)) {
-      b.writeln('- ${i.title}');
-      if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
-      if (i.image.isNotEmpty) b.writeln('  Bild: ${i.image}');
-      if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
-    }
+    b.write(formatCardItems(items.take(8)));
     b.writeln('\nDie Treffer sieht der Nutzer bereits als Karten mit Bild, Titel, Preis und Link. '
         'Fasse in 2–3 Sätzen zusammen und empfiehl die 2–3 passendsten (mit Preis). Keine vollständige Liste, '
         'keine Bilder einbinden. Preise können sich ändern.');
+    if (items.length > 8) {
+      b
+        ..write(moreCardsMarker)
+        ..write(formatCardItems(items.skip(8).take(32)));
+    }
     return b.toString().trim();
   }
 }

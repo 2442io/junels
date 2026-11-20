@@ -1,6 +1,6 @@
 name: offline_agent
 description: Native Offline Agent App – lokale KI-Agenten ohne Cloud und ohne App Store.
-version: 1.17.0+22
+version: 1.18.0+23
 publish_to: none
 
 environment:

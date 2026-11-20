@@ -584,6 +584,21 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
     final c = parseResultCards(obs);
     check(c.length == 2 && c[0].title == 'Wesco Brotkasten Grandy' && c[0].price == 'ab € 59,90' && c[0].image.endsWith('1.jpg') &&
         c[0].note == 'Edelstahl, 3 Farben' && c[1].link.endsWith('a3.html'), 'Karten aus Werkzeug-Ausgabe (${c.map((x) => x.toJson())})');
+    final hits = List.generate(14, (i) => '<div class="result__body"><a class="result__a" href="https://s$i.example/x">Treffer $i</a>'
+        '<a class="result__snippet">Text $i</a></div>').join();
+    final ws = await WebSearchTool(fetcher: (u) async => hits).run({'query': 'q'}, ToolContext(requestNetwork: (_) async => true));
+    final cut = ws.indexOf(moreCardsMarker);
+    check(cut > 0 && !ws.substring(0, cut).contains('Treffer 6') && ws.substring(cut).contains('Treffer 13'),
+        'Websuche: 6 Treffer fürs Modell, Rest nur als Karten');
+    final wc = parseResultCards(ws);
+    check(wc.length == 14 && wc.first.note == 'Text 0' && wc.first.link == 'https://s0.example/x', 'alle Treffer als Karten (${wc.length})');
+    final page = await WebFetchTool(fetcher: (u) async => '<html><head><title>Wiener Linien</title>'
+            '<meta property="og:image" content="/og.png"><meta name="description" content="Fahrplan und Störungen"></head>'
+            '<body><p>Inhalt</p></body></html>')
+        .run({'url': 'https://www.wienerlinien.at/'}, ToolContext(requestNetwork: (_) async => true));
+    final pc = parseResultCards(page);
+    check(pc.length == 1 && pc.first.image == 'https://www.wienerlinien.at/og.png' && pc.first.note == 'Fahrplan und Störungen',
+        'einzelne Seite als Karte');
   });
 
   await group('Wetter und Nachrichten', () async {

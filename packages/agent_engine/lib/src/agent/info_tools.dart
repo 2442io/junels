@@ -191,11 +191,13 @@ class NewsTool extends AgentTool {
       (bySource[h.$1.id] ??= []).add(h);
     }
     final picked = <(NewsSource, PageItem)>[];
-    for (var i = 0; picked.length < count && bySource.values.any((l) => l.length > i); i++) {
+    for (var i = 0; picked.length < 40 && bySource.values.any((l) => l.length > i); i++) {
       for (final l in bySource.values) {
-        if (l.length > i && picked.length < count) picked.add(l[i]);
+        if (l.length > i && picked.length < 40) picked.add(l[i]);
       }
     }
+    final more = picked.skip(count).toList();
+    picked.removeRange(count.clamp(0, picked.length), picked.length);
     final b = StringBuffer(note);
     b.writeln('Nachrichten${topic.isEmpty ? '' : ' zu „$topic“'} (Quellen: ${sources.map((s) => s.name).join(', ')}):');
     for (final (s, i) in picked) {
@@ -206,6 +208,12 @@ class NewsTool extends AgentTool {
     }
     b.writeln('\nDie Meldungen sieht der Nutzer bereits als Karten mit Bild, Titel und Link. '
         'Fasse die wichtigsten in wenigen Sätzen zusammen, keine Bilder einbinden.');
+    if (more.isNotEmpty) {
+      b.write(moreCardsMarker);
+      for (final (s, i) in more) {
+        b.write(formatCardItems([i], source: s.name));
+      }
+    }
     return b.toString().trim();
   }
 }

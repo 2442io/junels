@@ -48,9 +48,10 @@ class UpdateService {
     try {
       if (await _tokenFile.exists()) _token = (await _tokenFile.readAsString()).trim();
     } catch (_) {}
-    if (!supported || !hasToken) return;
+    if (!supported) return;
+    // Öffentliches Repository: kein Token nötig; privat: nur mit Token
     unawaited(Future<void>.delayed(const Duration(seconds: 12), () => check(quiet: true)));
-    _timer = Timer.periodic(const Duration(hours: 6), (_) => check(quiet: true));
+    _timer ??= Timer.periodic(const Duration(hours: 6), (_) => check(quiet: true));
   }
 
   Future<void> setToken(String token) async {
@@ -71,7 +72,7 @@ class UpdateService {
     final req = await c.getUrl(url);
     req.followRedirects = false;
     req.headers.set('User-Agent', 'Junels/$appVersion');
-    if (auth) req.headers.set('Authorization', 'Bearer $_token');
+    if (auth && hasToken) req.headers.set('Authorization', 'Bearer $_token');
     req.headers.set('Accept', binary ? 'application/octet-stream' : 'application/vnd.github+json');
     final res = await req.close();
     if (res.isRedirect) {
@@ -86,7 +87,7 @@ class UpdateService {
 
   /// Nach einer neuen Version suchen.
   Future<void> check({bool quiet = false}) async {
-    if (!supported || !hasToken || _busy) return;
+    if (!supported || _busy) return;
     _busy = true;
     error.value = null;
     if (!quiet) status.value = 'Suche nach Updates …';
@@ -95,9 +96,13 @@ class UpdateService {
       final res = await _get(c, Uri.parse('https://api.github.com/repos/$_repo/releases/tags/aktuell'));
       final body = await utf8.decodeStream(res);
       if (res.statusCode == 401 || res.statusCode == 403) {
-        throw Exception('GitHub-Token ungültig oder ohne Leserecht auf $_repo');
+        throw Exception(hasToken ? 'GitHub-Token ungültig oder ohne Leserecht auf $_repo' : 'GitHub hat die Anfrage abgelehnt ($_repo)');
       }
-      if (res.statusCode == 404) throw Exception('Release nicht gefunden – hat der Token Zugriff auf $_repo?');
+      if (res.statusCode == 404) {
+        throw Exception(hasToken
+            ? 'Release nicht gefunden – hat der Token Zugriff auf $_repo?'
+            : 'Release nicht erreichbar – ist das Repository privat? Dann unten einen GitHub-Token eintragen.');
+      }
       if (res.statusCode != 200) throw Exception('GitHub antwortet ${res.statusCode}');
       final rel = jsonDecode(body) as Map<String, dynamic>;
       final assets = (rel['assets'] as List).cast<Map<String, dynamic>>();

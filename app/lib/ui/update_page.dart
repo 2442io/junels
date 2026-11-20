@@ -120,19 +120,22 @@ class _UpdatePageState extends State<UpdatePage> {
                     ),
             ),
             const SizedBox(height: 8),
-            if (up.hasToken && !_editToken) ...[
-              OutlinedButton.icon(
-                icon: const Icon(Icons.refresh),
-                label: const Text('Nach Updates suchen'),
-                onPressed: () => up.check(),
-              ),
-              TextButton(onPressed: () => setState(() => _editToken = true), child: const Text('GitHub-Token ändern')),
-            ] else ...[
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('Nach Updates suchen'),
+              onPressed: () => up.check(),
+            ),
+            if (!_editToken)
+              TextButton(
+                onPressed: () => setState(() => _editToken = true),
+                child: Text(up.hasToken ? 'GitHub-Token ändern' : 'GitHub-Token eintragen (nur bei privatem Repository)'),
+              )
+            else ...[
               const SizedBox(height: 8),
-              Text('Einmalig einrichten', style: t.titleSmall),
+              Text('GitHub-Token (optional)', style: t.titleSmall),
               const SizedBox(height: 6),
-              const Text('Das Junels-Repository ist privat. Damit die App neue Versionen findet, braucht sie einen '
-                  'GitHub-Token mit reinem Leserecht. Er bleibt nur auf diesem Gerät.\n\n'
+              const Text('Nur nötig, wenn das Junels-Repository privat ist. Der Token braucht reines Leserecht und '
+                  'bleibt nur auf diesem Gerät.\n\n'
                   '1. Auf GitHub „Fine-grained token“ erstellen\n'
                   '2. Repository access: Only select repositories → 2442io/junels\n'
                   '3. Permissions → Repository → Contents: Read-only\n'

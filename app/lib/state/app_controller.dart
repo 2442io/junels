@@ -2077,9 +2077,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       // Ergebnisse (Produkte, Meldungen) als Karten fürs Karussell
       answer.cards = [
         for (final st in answer.steps)
-          if (st.isError != true && const {'site_search', 'news', 'web_fetch'}.contains(st.tool))
+          if (st.isError != true && const {'site_search', 'news', 'web_fetch', 'web_search'}.contains(st.tool))
             for (final c in parseResultCards(st.observation ?? '')) c.toJson(),
-      ].take(15).toList();
+      ].fold<List<Map<String, String>>>([], (acc, c) {
+        // doppelte Links nur einmal
+        if (!acc.any((x) => x['link'] != null && x['link'] == c['link'])) acc.add(c);
+        return acc;
+      }).take(60).toList();
       if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));
       if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);

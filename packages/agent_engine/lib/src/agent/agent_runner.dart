@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import '../llama_engine.dart';
 import 'grammar.dart';
+import 'network_tools.dart' show moreCardsMarker;
 import 'tool.dart';
 
 // ---------------------------------------------------------------------------
@@ -392,10 +393,15 @@ class AgentRunner {
       }
       lastCall = callKey;
       sw.stop();
+      // Weitere Ergebnis-Karten sieht nur die Oberfläche, nicht das Modell (kürzerer Prompt)
+      final cut = observation.indexOf(moreCardsMarker);
+      var extra = cut < 0 ? '' : observation.substring(cut);
+      if (cut >= 0) observation = observation.substring(0, cut);
+      if (extra.length > 40000) extra = extra.substring(0, 40000);
       if (observation.length > observationLimit) {
         observation = '${observation.substring(0, observationLimit)}\n[… gekürzt]';
       }
-      emit(ToolResult(step, toolName, observation, isError: isError, duration: sw.elapsed));
+      emit(ToolResult(step, toolName, '$observation$extra', isError: isError, duration: sw.elapsed));
       scratch.add(ChatMessage('user', 'Beobachtung ($toolName):\n$observation'));
     }
     emit(AgentFinished(AgentStopReason.stepLimit,
