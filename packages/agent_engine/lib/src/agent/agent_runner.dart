@@ -267,16 +267,20 @@ class AgentRunner {
     String? lastCall;
 
     String? hint; // einmaliger Hinweis an das Modell (nicht Teil des Verlaufs)
+    var answerNext = false; // Werkzeug meldet: Ergebnis reicht → nur noch antworten
 
     for (var step = 1; step <= maxSteps + 1; step++) {
       if (_stopped) {
         emit(AgentFinished(AgentStopReason.stopped));
         return;
       }
-      final forceFinal = step > maxSteps;
-      if (forceFinal) {
+      final forceFinal = step > maxSteps || answerNext;
+      if (step > maxSteps) {
         hint = 'Schrittlimit erreicht. Gib jetzt mit den vorhandenen Informationen die final_answer.';
+      } else if (answerNext) {
+        hint = 'Das Ergebnis reicht. Gib jetzt direkt die final_answer.';
       }
+      answerNext = false;
       emit(StepStarted(step));
 
       final prompt = await _fitPrompt(
@@ -347,7 +351,7 @@ class AgentRunner {
       final thought = (obj['thought'] ?? '').toString();
       if (obj.containsKey('final_answer')) {
         emit(FinalAnswer(obj['final_answer'].toString(), thought: thought));
-        emit(AgentFinished(forceFinal ? AgentStopReason.stepLimit : AgentStopReason.answered));
+        emit(AgentFinished(step > maxSteps ? AgentStopReason.stepLimit : AgentStopReason.answered));
         return;
       }
 
@@ -381,7 +385,10 @@ class AgentRunner {
           isError = true;
         } else {
           try {
+            ctx.answerNow = false;
             observation = await tool.run(args, ctx).timeout(toolTimeout);
+            if (ctx.answerNow) answerNext = true;
+            ctx.answerNow = false;
           } on TimeoutException {
             observation = 'Fehler: Zeitüberschreitung nach ${toolTimeout.inSeconds} s.';
             isError = true;

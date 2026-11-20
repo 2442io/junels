@@ -680,13 +680,24 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
       },
     );
     var asked = '';
-    final out = await weather.run({'location': '', 'days': 2},
-        ToolContext(requestNetwork: (p) async {
-          asked = p;
-          return true;
-        }));
-    check(out.contains('Wien') && out.contains('7 °C') && out.contains('leichter Regen') && out.contains('Morgen: bedeckt'),
-        'Wetter mit Heimatort, Codes übersetzt');
+    final wctx = ToolContext(requestNetwork: (p) async {
+      asked = p;
+      return true;
+    });
+    final out = await weather.run({'location': '', 'days': 2}, wctx);
+    check(out.contains('Wien') && out.contains('7 °C') && out.contains('leichter Regen') && out.contains('Morgen (Sa 21.11.): bedeckt'),
+        'Wetter mit Heimatort, Codes übersetzt ($out)');
+    check(wctx.answerNow && out.contains('Heute ist'), 'Wetter: danach direkt antworten, Datum dabei');
+    check(newsSection('Welche Sport News gibt es auf orf.at') == 'sport' && newsSection('Wetter morgen') == null,
+        'Ressort Sport erkannt');
+    final fetchedNews = <String>[];
+    final sportOut = await NewsTool(fetcher: (u) async {
+      fetchedNews.add(u.toString());
+      return '<rss><channel><item><title>Rapid gewinnt Derby</title><link>https://sport.orf.at/1</link>'
+          '<description>Fußball</description></item></channel></rss>';
+    }).run({'topic': 'Sport', 'source': 'orf', 'count': 5}, ToolContext(requestNetwork: (_) async => true));
+    check(fetchedNews.single == 'https://rss.orf.at/sport.xml' && sportOut.contains('Rapid gewinnt Derby') &&
+        !sportOut.contains('keine Meldung'), 'Sport-Nachrichten aus dem Sport-Feed ($fetchedNews)');
     check(asked.contains('Wien') && calls.length == 2, 'Internet-Freigabe gefragt, 2 Abrufe');
 
     const rss = '''<?xml version="1.0"?><rss><channel>

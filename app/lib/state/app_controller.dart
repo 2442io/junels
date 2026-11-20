@@ -570,8 +570,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Einstellungen des Gesprächsmodus ändern und speichern.
-  Future<void> setVoiceOptions({bool? manualEnd, int? pauseMs, bool? nearField, bool? smartVad}) async {
+  Future<void> setVoiceOptions(
+      {bool? manualEnd, int? pauseMs, bool? nearField, bool? smartVad, String? agentName, bool? wakeWord}) async {
     if (smartVad != null) settings.voiceSmartVad = smartVad;
+    if (agentName != null && agentName.trim().isNotEmpty) settings.agentName = agentName.trim();
+    if (wakeWord != null) settings.voiceWakeWord = wakeWord;
     if (manualEnd != null) settings.voiceManualEnd = manualEnd;
     if (pauseMs != null) settings.voicePauseMs = pauseMs;
     if (nearField != null) settings.voiceNearField = nearField;
@@ -1378,6 +1381,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (voice) {
       system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
           'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
+          'Wiederhole die Frage nicht und fasse sie nicht zusammen – beginne sofort mit der Antwort. '
+          'Du heißt ${settings.agentName}. '
           'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
           'wo sie unterbrochen wurde.');
     }
@@ -1462,6 +1467,91 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   @Deprecated('toolsFor verwenden')
   List<AgentTool> voiceToolsFor(String input) => toolsFor(input);
+
+  /// Kurze Nachfrage („wien“, „und morgen?“, „nein, Sport“) – keine neue, eigenständige Frage.
+  static bool looksLikeFollowUp(String input) {
+    final w = input.trim().split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
+    if (w.isEmpty || w.length > 5) return false;
+    final first = w.first.toLowerCase().replaceAll(RegExp(r'[^a-zäöüß]'), '');
+    if (w.length >= 3 &&
+        RegExp(r'^(wer|wie|was|wo|woher|wohin|wann|warum|wieso|weshalb|welche\w*|kannst|könntest|kann|gibt|ist|sind|'
+                r'hast|mach\w*|erstell\w*|schreib\w*|zeig\w*|such\w*|öffne\w*|erklär\w*|sag\w*|nenn\w*|übersetz\w*|'
+                r'berechne\w*|rechne\w*|ruf\w*|schick\w*)$')
+            .hasMatch(first)) {
+      return false;
+    }
+    return true;
+  }
+
+  static final _otherIntent = RegExp(
+      r'kalender|termin|e-?mail|mail |whatsapp|anruf|ruf .* an|amazon|shop|kauf|bestell|browser|öffne|datei|dokument|'
+      r'präsentation|folien|bild|foto|erinner|und dann|außerdem',
+      caseSensitive: false);
+  static final _weatherIntent = RegExp(
+      r'wetter|regen|regnet|schnee|schneit|temperatur|grad\b|sonnig|gewitter|schirm|wird es (warm|kalt|heiß)|vorhersage',
+      caseSensitive: false);
+  static final _newsIntent =
+      RegExp(r'\b(nachrichten|news|schlagzeilen|meldungen|neuigkeiten|was gibt.s neues)\b', caseSensitive: false);
+  static const _placeStop = {
+    'heute', 'morgen', 'übermorgen', 'der', 'die', 'das', 'den', 'dem', 'diesem', 'dieser', 'diese', 'nächster',
+    'nächsten', 'nächste', 'kommenden', 'kommende', 'zukunft', 'montag', 'dienstag', 'mittwoch', 'donnerstag',
+    'freitag', 'samstag', 'sonntag', 'woche', 'tagen', 'tage', 'früh', 'abend', 'nacht', 'mittag', 'zeit', 'ordnung',
+    'grad', 'celsius', 'meinem', 'meiner', 'unserer', 'unserem', 'ein', 'einer', 'einem', 'zwei', 'drei',
+  };
+
+  /// Ort aus „Wetter in Graz“, „für Linz“ – zuerst aus der neuen Nachricht, sonst aus der vorigen.
+  static String weatherPlace(String input, String gate) {
+    String? find(String t) {
+      String? hit;
+      for (final m in RegExp(r'\b(?:in|für|fuer|bei|nach|von)\s+([a-zäöüß][\wäöüß.-]*(?:\s+(?:am|an der|im|bei)\s+[\wäöüß-]+)?)',
+              caseSensitive: false)
+          .allMatches(t)) {
+        final p = m.group(1)!.replaceAll(RegExp(r'[.?!,]+$'), '');
+        if (!_placeStop.contains(p.toLowerCase().split(' ').first)) hit = p;
+      }
+      return hit;
+    }
+
+    final w = input.trim().replaceAll(RegExp(r'[.?!]+$'), '');
+    if (!w.contains(' ') && w.isNotEmpty && !_placeStop.contains(w.toLowerCase()) && !_weatherIntent.hasMatch(w)) return w;
+    return find(input) ?? (identical(input, gate) ? null : find(gate)) ?? '';
+  }
+
+  static String _newsSourceOf(String t) {
+    final l = t.toLowerCase();
+    for (final s in newsSources) {
+      if (RegExp('\\b${RegExp.escape(s.id)}\\b').hasMatch(l) || l.contains(s.name.toLowerCase())) return s.id;
+    }
+    if (l.contains('standard')) return 'derstandard';
+    return 'auto';
+  }
+
+  static String _newsTopicOf(String input, String gate) {
+    final m = RegExp(r'\b(?:über|zum thema|zu|zur|zum|rund um)\s+([\wäöüß -]{2,40})', caseSensitive: false).firstMatch(input);
+    var topic = m?.group(1)?.trim() ?? '';
+    if (topic.isNotEmpty && _newsSourceOf(topic) != 'auto') topic = '';
+    final section = newsSection(input) ?? (topic.isEmpty ? newsSection(gate) : null);
+    if (section != null && newsSection(topic) == null) topic = topic.isEmpty ? section : '$section $topic';
+    return topic;
+  }
+
+  /// Welches Werkzeug ohne Planungsschritt sofort laufen kann (Wetter, Nachrichten).
+  (AgentTool, Map<String, dynamic>)? directTool(String input, String gate, List<AgentTool> tools) {
+    if (_otherIntent.hasMatch(input)) return null;
+    AgentTool? find(String n) => tools.where((t) => t.name == n).firstOrNull;
+    final weather = find('weather'), news = find('news');
+    bool isWeather(String t) => weather != null && _weatherIntent.hasMatch(t);
+    bool isNews(String t) => news != null && _newsIntent.hasMatch(t);
+    // Erst die neue Nachricht, nur bei Nachfragen auch die vorige
+    final w = isWeather(input), n = isNews(input);
+    final useWeather = w || (!n && input != gate && isWeather(gate) && !isNews(gate));
+    final useNews = !useWeather && (n || (input != gate && isNews(gate)));
+    if (useWeather) return (weather!, {'location': weatherPlace(input, gate), 'days': 7});
+    if (useNews) {
+      return (news!, {'topic': _newsTopicOf(input, gate), 'source': _newsSourceOf(input) == 'auto' ? _newsSourceOf(gate) : _newsSourceOf(input), 'count': 6});
+    }
+    return null;
+  }
 
   /// Entfernt nackte Adressen und „(Quellen: …)“-Anhänge – die Karten zeigen die Links.
   static String _stripCardLinks(String text) {
@@ -1923,7 +2013,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     ];
     // kurze Nachfrage („wien“, „und morgen?“): Werkzeuge auch nach der vorigen Frage wählen
     final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
-    final gateText = input.trim().split(RegExp(r'\s+')).length <= 5 ? '$prevUser $input' : input;
+    final gateText = looksLikeFollowUp(input) ? '$prevUser $input' : input;
     // Gesprächsmodus: kurzer Verlauf. Der Anfang springt nur alle 10 Nachrichten weiter,
     // damit der vorgerechnete Teil (Cache) von Runde zu Runde gleich bleibt.
     if (voice) {
@@ -1973,7 +2063,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         : knowledge.search(turnInput).where((h) => rag.contains(h.chunk.url)).toList();
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
-    final runner = _makeRunner(eng, system, tools: runTools);
+    var runner = _makeRunner(eng, system, tools: runTools);
     _runner = runner;
     running = true;
     runStarted = DateTime.now();
@@ -2038,6 +2128,34 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         else
           d,
     ];
+    // Schnellweg: reine Wetter- oder Nachrichtenfrage → Werkzeug sofort, das Modell schreibt nur noch die Antwort
+    final direct = calc == null && docs.isEmpty && !runner.isStopped ? directTool(input.trim(), gateText, runTools) : null;
+    if (direct != null) {
+      final (tool, args) = direct;
+      final log = StepLog(step: 1)
+        ..tool = tool.name
+        ..args = args
+        ..thought = 'Ich frage ${tool.title} direkt ab.';
+      answer.steps.add(log);
+      notifyListeners();
+      final sw = Stopwatch()..start();
+      try {
+        final out = await tool.run(args, ctx).timeout(const Duration(seconds: 60));
+        final cut = out.indexOf(moreCardsMarker);
+        log.observation = out;
+        turnInput = 'Ergebnis (${tool.title}):\n${cut < 0 ? out : out.substring(0, cut)}\n\n$turnInput\n'
+            'Antworte direkt und kurz mit diesen Daten.';
+        runner = _makeRunner(eng, _systemText(voice: voice, tools: const []), tools: const []);
+        _runner = runner;
+      } catch (e) {
+        // Klappt der Schnellweg nicht, macht der Agent normal weiter
+        log
+          ..observation = 'Fehler: $e'
+          ..isError = true;
+      }
+      log.durationMs = sw.elapsedMilliseconds;
+      notifyListeners();
+    }
     final ctx2 = ToolContext(
       attachments: docs,
       requestNetwork: ctx.requestNetwork,

@@ -39,7 +39,7 @@ class WeatherTool extends AgentTool {
   @override
   List<ToolParam> get params => const [
         ToolParam('location', ParamType.string, 'Ort, z. B. "Wien" (leer = Heimatort)'),
-        ToolParam('days', ParamType.integer, 'Tage Vorhersage, 1–7'),
+        ToolParam('days', ParamType.integer, 'Tage Vorhersage, 1–14 (Standard 7)'),
       ];
 
   @override
@@ -47,7 +47,8 @@ class WeatherTool extends AgentTool {
     var loc = (args['location'] ?? '').toString().trim();
     if (loc.isEmpty) loc = _defaultLocation().trim();
     if (loc.isEmpty) throw ToolException('Kein Ort angegeben und kein Heimatort eingestellt – frag nach dem Ort.');
-    final days = (int.tryParse('${args['days'] ?? 3}') ?? 3).clamp(1, 7);
+    // Immer mindestens eine Woche – „Wetter am Dienstag“ soll ohne zweiten Aufruf gehen
+    final days = (int.tryParse('${args['days'] ?? 7}') ?? 7).clamp(7, 14);
     await ctx.ensureNetwork('Wetter für „$loc“ abrufen (Open-Meteo)');
     final geo = jsonDecode(await fetcher(Uri.https('geocoding-api.open-meteo.com', '/v1/search',
         {'name': loc, 'count': '1', 'language': 'de', 'format': 'json'}))) as Map<String, dynamic>;
@@ -62,8 +63,13 @@ class WeatherTool extends AgentTool {
       'timezone': 'auto',
       'forecast_days': '$days',
     }))) as Map<String, dynamic>;
-    return formatWeather(place, w);
+    ctx.answerNow = true;
+    return '${formatWeather(place, w)}\nHeute ist ${_weekdays[ctx.clock().weekday - 1]}, '
+        '${ctx.clock().day}.${ctx.clock().month}.${ctx.clock().year}. Beantworte die Frage mit diesen Daten '
+        '(auch für einzelne Tage wie „Dienstag“).';
   }
+
+  static const _weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
   static String formatWeather(Map<String, dynamic> place, Map<String, dynamic> w) {
     String n(Object? v) => v == null ? '–' : (v as num).round().toString();
@@ -81,7 +87,8 @@ class WeatherTool extends AgentTool {
       final dates = (d['time'] as List).cast<String>();
       for (var i = 0; i < dates.length; i++) {
         final dt = DateTime.tryParse(dates[i]);
-        final label = i == 0 ? 'Heute' : i == 1 ? 'Morgen' : dt == null ? dates[i] : '${wd[dt.weekday - 1]} ${dt.day}.${dt.month}.';
+        final date = dt == null ? dates[i] : '${wd[dt.weekday - 1]} ${dt.day}.${dt.month}.';
+        final label = i == 0 ? 'Heute ($date)' : i == 1 ? 'Morgen ($date)' : date;
         b.writeln('$label: ${weatherText((d['weather_code'][i] as num?)?.toInt())}, '
             '${n(d['temperature_2m_min'][i])} bis ${n(d['temperature_2m_max'][i])} °C, '
             'Regenrisiko ${n(d['precipitation_probability_max'][i])} % (${(d['precipitation_sum'][i] as num?)?.toStringAsFixed(1) ?? '0'} mm)'
@@ -110,6 +117,41 @@ const newsSources = <NewsSource>[
   NewsSource('heise', 'heise online', 'https://www.heise.de/rss/heise-atom.xml', tech: true),
   NewsSource('golem', 'Golem', 'https://rss.golem.de/rss.php?feed=RSS2.0', tech: true),
 ];
+
+/// Ressort-Feeds: Sport, Wirtschaft … liefern echte Ressort-Meldungen statt Top-Meldungen.
+const newsSections = <String, List<NewsSource>>{
+  'sport': [
+    NewsSource('orf', 'ORF Sport', 'https://rss.orf.at/sport.xml'),
+    NewsSource('derstandard', 'Der Standard Sport', 'https://www.derstandard.at/rss/sport'),
+  ],
+  'wirtschaft': [
+    NewsSource('derstandard', 'Der Standard Wirtschaft', 'https://www.derstandard.at/rss/wirtschaft'),
+    NewsSource('tagesschau', 'tagesschau Wirtschaft', 'https://www.tagesschau.de/wirtschaft/index~rss2.xml'),
+  ],
+  'wissenschaft': [
+    NewsSource('orf', 'ORF Science', 'https://rss.orf.at/science.xml'),
+    NewsSource('derstandard', 'Der Standard Wissenschaft', 'https://www.derstandard.at/rss/wissenschaft'),
+  ],
+  'kultur': [
+    NewsSource('derstandard', 'Der Standard Kultur', 'https://www.derstandard.at/rss/kultur'),
+  ],
+};
+
+final _sectionWords = <String, RegExp>{
+  'sport': RegExp(r'\b(sport\w*|fußball\w*|fussball\w*|ski\w*|tennis|formel ?1|bundesliga|champions league|'
+      r'eishockey|basketball|handball|olympi\w*|rapid|austria wien|salzburg)\b', caseSensitive: false),
+  'wirtschaft': RegExp(r'\b(wirtschaft\w*|börse\w*|aktien?|finanz\w*|konjunktur)\b', caseSensitive: false),
+  'wissenschaft': RegExp(r'\b(wissenschaft\w*|science|forschung\w*)\b', caseSensitive: false),
+  'kultur': RegExp(r'\b(kultur\w*|kino|film\w*|musik|theater)\b', caseSensitive: false),
+};
+
+/// Ressort zu einem Thema (oder null).
+String? newsSection(String text) {
+  for (final e in _sectionWords.entries) {
+    if (e.value.hasMatch(text)) return e.key;
+  }
+  return null;
+}
 
 final _techTopic = RegExp(r'\b(ki|ai|it|tech\w*|digital\w*|computer|software|internet|smartphone|handy|apple|google|'
     r'microsoft|openai|chatgpt|künstliche intelligenz|cyber\w*|startup\w*|krypto\w*|game\w*)\b', caseSensitive: false);
@@ -159,13 +201,27 @@ class NewsTool extends AgentTool {
     final src = (args['source'] ?? 'auto').toString();
     final count = (int.tryParse('${args['count'] ?? 6}') ?? 6).clamp(1, 10);
     final tech = _techTopic.hasMatch(topic);
-    final sources = src != 'auto' && newsSources.any((s) => s.id == src)
-        ? newsSources.where((s) => s.id == src).toList()
-        : tech
-            ? newsSources.where((s) => s.tech).toList()
-            : newsSources.where((s) => s.id == 'orf' || s.id == 'derstandard').toList();
+    final section = newsSection(topic);
+    var topicForFilter = topic;
+    List<NewsSource> sources;
+    if (section != null) {
+      final feeds = newsSections[section]!;
+      final picked = feeds.where((s) => s.id == src).toList();
+      sources = picked.isNotEmpty ? picked : feeds;
+      // Das Ressort selbst ist kein Filterwort („Sport“ steht selten im Titel)
+      topicForFilter = topic.replaceAll(_sectionWords[section]!, ' ').replaceAll(RegExp(r'\b(news|nachrichten|meldungen)\b', caseSensitive: false), ' ').trim();
+      if (_sectionWords[section]!.hasMatch(topic) && topicForFilter.split(RegExp(r'\s+')).where((w) => w.length > 2).isEmpty) {
+        topicForFilter = '';
+      }
+    } else {
+      sources = src != 'auto' && newsSources.any((s) => s.id == src)
+          ? newsSources.where((s) => s.id == src).toList()
+          : tech
+              ? newsSources.where((s) => s.tech).toList()
+              : newsSources.where((s) => s.id == 'orf' || s.id == 'derstandard').toList();
+    }
     await ctx.ensureNetwork('Nachrichten${topic.isEmpty ? '' : ' zu „$topic“'} von ${sources.map((s) => s.name).join(', ')} abrufen');
-    final words = topicWords(topic);
+    final words = topicWords(topicForFilter);
     final all = <(NewsSource, PageItem)>[];
     final errors = <String>[];
     for (final s in sources) {
@@ -207,7 +263,8 @@ class NewsTool extends AgentTool {
       if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
     }
     b.writeln('\nDie Meldungen sieht der Nutzer bereits als Karten mit Bild, Titel und Link. '
-        'Fasse die wichtigsten in wenigen Sätzen zusammen, keine Bilder einbinden.');
+        'Fasse die wichtigsten in wenigen Sätzen zusammen, keine Bilder und keine Adressen einbinden.');
+    ctx.answerNow = true;
     if (more.isNotEmpty) {
       b.write(moreCardsMarker);
       for (final (s, i) in more) {

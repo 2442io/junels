@@ -7,6 +7,7 @@
 // weil die bereits gesprochenen Sätze im Verlauf stehen.
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart';
@@ -24,7 +25,7 @@ extension ConvStateLabel on ConvState {
         ConvState.hearing => 'Du sprichst …',
         ConvState.transcribing => 'Verstehe …',
         ConvState.thinking => 'Denke nach …',
-        ConvState.speaking => 'Ich spreche – einfach reinreden zum Unterbrechen',
+        ConvState.speaking => 'Ich spreche …',
       };
 }
 
@@ -68,6 +69,17 @@ class ConversationMode {
   Timer? _watchdog;
   bool _restartingMic = false;
 
+  /// Bis wann eine Folgefrage ohne Namen angenommen wird.
+  DateTime _followUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _nameCheckBusy = false;
+
+  /// Anzeige: Der Agent wartet auf seinen Namen.
+  final needsName = ValueNotifier<bool>(false);
+
+  bool get _wake => app.settings.voiceWakeWord;
+  String get agentName => app.settings.agentName;
+  bool get _followOpen => DateTime.now().isBefore(_followUntil);
+
   bool get active => state.value != ConvState.off;
 
   /// Einstellungen (Sprechpause, Absender-Modus, Nahfeld) übernehmen.
@@ -108,6 +120,7 @@ class ConversationMode {
     };
     // Gesprächs-Prompt vorrechnen → erste Antwort ohne Wartezeit
     unawaited(app.warmUp(voice: true));
+    needsName.value = _wake;
     state.value = ConvState.listening;
     await app.voice.mic.start(_onFrame, echoCancel: true);
     // Manche Android-Geräte beenden die Aufnahme, wenn die Sprachausgabe läuft → neu starten
@@ -120,7 +133,8 @@ class ConversationMode {
   Future<void> _checkMic() async {
     if (!active || _restartingMic) return;
     final s = state.value;
-    if (s != ConvState.listening && s != ConvState.hearing && s != ConvState.speaking) return;
+    // Nicht während der Agent spricht: ein Neustart dort würde die Sprachausgabe stören
+    if (s != ConvState.listening && s != ConvState.hearing) return;
     if (DateTime.now().difference(app.voice.mic.lastFrameAt).inMilliseconds < 2000) return;
     _restartingMic = true;
     voiceLog('Mikrofon liefert nichts mehr – starte neu');
@@ -159,6 +173,7 @@ class ConversationMode {
   void _startListening() {
     _manualBuf.clear();
     _manualHeard = false;
+    needsName.value = _wake && !_followOpen;
     state.value = ConvState.listening;
   }
 
@@ -166,6 +181,8 @@ class ConversationMode {
   void finishSpeaking() {
     final s = state.value;
     if (s != ConvState.hearing && s != ConvState.listening) return;
+    // Getippt = eindeutig an den Agenten gerichtet, Name nicht nötig
+    _followUntil = DateTime.now().add(const Duration(seconds: 15));
     if (manualEnd.value) {
       if (_manualBuf.length < 16000 * 0.4) return;
       final pcm = Float32List.fromList(_manualBuf);
@@ -201,7 +218,7 @@ class ConversationMode {
 
     if (manualEnd.value) {
       // Absender-Modus: zuhören, bis „Fertig“ getippt wird
-      if (ev == VadEvent.speechStart && (s == ConvState.speaking || s == ConvState.thinking)) {
+      if (ev == VadEvent.speechStart && !_wake && (s == ConvState.speaking || s == ConvState.thinking)) {
         _bargeIn();
         _startListening();
       }
@@ -215,12 +232,18 @@ class ConversationMode {
       return;
     }
 
+    final busy = s == ConvState.speaking || s == ConvState.thinking;
     if (ev == VadEvent.speechStart) {
-      if (s == ConvState.speaking || s == ConvState.thinking) _bargeIn();
-      if (state.value != ConvState.transcribing) state.value = ConvState.hearing;
+      // Mit Namens-Modus unterbrechen nur der Name oder ein Tipp – Geräusche nicht
+      if (busy && !_wake) _bargeIn();
+      if (state.value != ConvState.transcribing && !(busy && _wake)) state.value = ConvState.hearing;
     } else if (ev == VadEvent.speechEnd) {
       final pcm = _vad.takeUtterance();
-      unawaited(_handleUtterance(pcm));
+      if (busy && _wake) {
+        unawaited(_checkInterruptByName(pcm));
+      } else {
+        unawaited(_handleUtterance(pcm));
+      }
     }
   }
 
@@ -272,12 +295,110 @@ class ConversationMode {
       return;
     }
     text = collapseRepeats(text);
+    if (_wake) {
+      final rest = stripWakeName(text, agentName);
+      if (rest == null && !_followOpen) {
+        voiceLog('Ohne „$agentName“ – ignoriert: "$text"');
+        error.value = null;
+        _startListening();
+        return;
+      }
+      if (rest != null && rest.isEmpty) {
+        // Nur der Name: zuhören, die Frage kommt gleich
+        _followUntil = DateTime.now().add(const Duration(seconds: 12));
+        userText.value = '$agentName …';
+        _startListening();
+        return;
+      }
+      if (rest != null) text = rest;
+    }
+    await _startTurn(text, myTurn, sttMs, audioMs);
+  }
+
+  Future<void> _startTurn(String text, int myTurn, int sttMs, int audioMs) async {
     error.value = null;
+    needsName.value = false;
     userText.value = text;
     agentText.value = '';
     state.value = ConvState.thinking;
     _turnFuture = _respond(text, myTurn, sttMs, audioMs);
     await _turnFuture;
+  }
+
+  /// Namens-Modus: Während der Agent spricht, unterbricht nur der Name („Junels, stopp“).
+  Future<void> _checkInterruptByName(Float32List pcm) async {
+    if (_nameCheckBusy || pcm.length < 16000 * 0.3) return;
+    _nameCheckBusy = true;
+    try {
+      final sw = Stopwatch()..start();
+      final stt = await app.voice.stt(app.sttModelPath!);
+      final text = collapseRepeats((await stt.transcribe(pcm, language: _language, threads: app.device.threads)).text.trim());
+      final rest = stripWakeName(text, agentName);
+      final s = state.value;
+      if (rest == null || (s != ConvState.speaking && s != ConvState.thinking)) {
+        if (text.isNotEmpty) voiceLog('Während der Antwort gehört, ohne Namen – weiter: "$text"');
+        return;
+      }
+      voiceLog('Unterbrochen durch „$agentName“: "$text"');
+      _bargeIn();
+      if (rest.isEmpty || RegExp(r'^(stopp?|halt|ruhe|still|warte|danke)\W*$', caseSensitive: false).hasMatch(rest)) {
+        _followUntil = DateTime.now().add(const Duration(seconds: 12));
+        _startListening();
+        return;
+      }
+      await _startTurn(rest, ++_turn, sw.elapsedMilliseconds, pcm.length * 1000 ~/ 16000);
+    } catch (e) {
+      voiceLog('Namensprüfung fehlgeschlagen: $e');
+    } finally {
+      _nameCheckBusy = false;
+    }
+  }
+
+  static String _normName(String s) => s
+      .toLowerCase()
+      .replaceAll('ä', 'ae')
+      .replaceAll('ö', 'oe')
+      .replaceAll('ü', 'ue')
+      .replaceAll('ß', 'ss')
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  static int _lev(String a, String b) {
+    var prev = List<int>.generate(b.length + 1, (i) => i);
+    for (var i = 1; i <= a.length; i++) {
+      final cur = List<int>.filled(b.length + 1, 0)..[0] = i;
+      for (var j = 1; j <= b.length; j++) {
+        cur[j] = [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)].reduce(math.min);
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+
+  static bool _nameLike(String w, String n) {
+    if (w.isEmpty) return false;
+    if (w == n || w.startsWith(n)) return true;
+    if (n.length >= 4 && w.length >= 3 && _lev(w, n) <= (n.length >= 6 ? 2 : 1)) return true;
+    return false;
+  }
+
+  /// Text ohne den Namen (und „hey“, „hallo“ davor) – oder null, wenn der Name nicht vorkommt.
+  static String? stripWakeName(String text, String name) {
+    final n = _normName(name);
+    if (n.isEmpty) return text;
+    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    final nameWords = name.trim().split(RegExp(r'\s+')).length;
+    for (var i = 0; i < words.length; i++) {
+      final end = math.min(words.length, i + nameWords);
+      final cand = _normName(words.sublist(i, end).join());
+      if (!_nameLike(cand, n)) continue;
+      var start = i;
+      while (start > 0 && RegExp(r'^(hey|hei|hallo|hi|ok|okay|he|oh|du|liebe[rs]?)$').hasMatch(_normName(words[start - 1]))) {
+        start--;
+      }
+      final rest = [...words.sublist(0, start), ...words.sublist(end)].join(' ');
+      return rest.replaceFirst(RegExp(r'^[\s,.!?:;–-]+'), '').trim();
+    }
+    return null;
   }
 
   Future<void> _respond(String text, int myTurn, int sttMs, int audioMs) async {
@@ -323,6 +444,8 @@ class ConversationMode {
     out.finish();
     // Hängt die Sprachausgabe, trotzdem wieder zuhören
     await out.done.timeout(const Duration(minutes: 3), onTimeout: () => out.stop());
+    // Kurz danach geht eine Folgefrage auch ohne Namen
+    _followUntil = DateTime.now().add(const Duration(seconds: 10));
     if (myTurn == _turn && active) {
       _speakingStarted = false;
       _startListening();

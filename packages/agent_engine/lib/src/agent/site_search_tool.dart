@@ -104,19 +104,26 @@ class SiteSearchTool extends AgentTool {
     String withNotes(String s, String r) => '${notes.isEmpty ? '' : '${notes.join(' ')} Stattdessen $s.\n'}$r';
     try {
       final r = await _searchOn(site, q);
-      if (r != null) return r;
+      if (r != null) {
+        ctx.answerNow = true;
+        return r;
+      }
       notes.add('Auf $site nichts Passendes gefunden.');
     } on ToolException catch (e) {
       notes.add('$site: ${e.message}.');
     }
     // Links auf die gewünschte Seite über eine Suchmaschine ("site:") – ohne Preise und Bilder
     final viaEngine = await _searchViaEngine(site, q);
+    if (viaEngine != null) ctx.answerNow = true;
     if (viaEngine != null) return withNotes('über eine Suchmaschine Links auf $site gefunden (ohne Preise)', viaEngine);
     if (shop) {
       for (final s in _shopFallback.where((f) => f != site)) {
         try {
           final r = await _searchOn(s, q);
-          if (r != null) return withNotes('auf $s gesucht', r);
+          if (r != null) {
+            ctx.answerNow = true;
+            return withNotes('auf $s gesucht', r);
+          }
           notes.add('Auf $s nichts Passendes gefunden.');
         } on ToolException catch (e) {
           notes.add('$s: ${e.message}.');

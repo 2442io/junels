@@ -171,7 +171,10 @@ class BrowserTool extends AgentTool {
         await d.open(_url(target));
       case 'search':
         if (text.trim().isEmpty) throw ToolException('text (Suchbegriffe) fehlt');
-        return _search(d, target, text.trim());
+        final r = await _search(d, target, text.trim());
+        // Genug Treffer → direkt antworten statt weiterzuklicken
+        if (parseResultCards(r).length >= 3) ctx.answerNow = true;
+        return r;
       case 'click':
         final el = await _element(d, target);
         final label = (el['label'] ?? '').toString();

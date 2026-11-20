@@ -10,6 +10,16 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.20.0', [
+    'Gespräch: Name für den Agenten frei wählbar (Einstellungen im Gespräch); „Nur auf den Namen hören“ – Geräusche lösen nichts mehr aus',
+    'Kurz nach einer Antwort geht eine Nachfrage auch ohne Namen; unterbrechen mit dem Namen oder Tipp auf den Kreis',
+    'Gespräch bricht nicht mehr ab: das Mikrofon wird nicht mehr neu gestartet, während der Agent spricht',
+    'Der Agent wiederholt deine Frage nicht mehr, sondern antwortet sofort',
+    'Schneller: Wetter- und Nachrichtenfragen laufen ohne Planungsschritt; nach Shop-/Browser-Suche antwortet der Agent direkt',
+    'Wetter: immer 7-Tage-Vorhersage mit Datum – „Wetter am Dienstag“ funktioniert',
+    'Nachrichten: echte Sport-, Wirtschafts-, Wissenschafts- und Kultur-Feeds (z. B. ORF Sport)',
+    'Neue Fragen nach einem Kalendereintrag benutzen nicht mehr fälschlich den Kalender',
+  ]),
   ('1.19.1', [
     'Gespräch: hängt nach der ersten Antwort nicht mehr – das Mikrofon wird automatisch neu gestartet, wenn es nach dem Vorlesen verstummt',
     'Gespräch: der Kreis pulsiert, während der Agent spricht oder denkt; Tippen auf den Kreis = „Fertig – antworten“ bzw. Unterbrechen',

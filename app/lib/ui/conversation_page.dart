@@ -122,6 +122,25 @@ class _ConversationPageState extends State<ConversationPage> {
                       ),
                     ),
                     Text(st.label, style: t.titleMedium),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: conv.needsName,
+                      builder: (context, need, _) => need && st == ConvState.listening
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text('Sag „${conv.agentName}, …“ oder tipp auf den Kreis',
+                                  style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            )
+                          : st == ConvState.speaking
+                              ? Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                      app.settings.voiceWakeWord
+                                          ? 'Unterbrechen: „${conv.agentName}“ sagen oder Kreis tippen'
+                                          : 'Unterbrechen: einfach reinreden oder Kreis tippen',
+                                      style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                                )
+                              : const SizedBox.shrink(),
+                    ),
                     if (st == ConvState.hearing)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
@@ -257,6 +276,30 @@ void _showVoiceSettings(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text('Name des Agenten', style: t.titleMedium),
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: st.agentName,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  hintText: 'z. B. Junels',
+                ),
+                textCapitalization: TextCapitalization.words,
+                onFieldSubmitted: (v) => app.setVoiceOptions(agentName: v),
+                onChanged: (v) {
+                  if (v.trim().length >= 2) app.setVoiceOptions(agentName: v);
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Nur auf den Namen hören'),
+                subtitle: Text('„${st.agentName}, wie wird das Wetter?“ – Geräusche und andere Gespräche lösen nichts aus. '
+                    'Kurz nach einer Antwort geht eine Nachfrage auch ohne Namen. Unterbrechen: Name sagen oder Kreis tippen.'),
+                value: st.voiceWakeWord,
+                onChanged: (v) => app.setVoiceOptions(wakeWord: v),
+              ),
+              const Divider(height: 24),
               Text('Wann bin ich fertig?', style: t.titleMedium),
               const SizedBox(height: 8),
               SegmentedButton<bool>(

@@ -77,6 +77,10 @@ class ToolContext {
 
   final List<Attachment> attachments;
 
+  /// Ein Werkzeug setzt das, wenn sein Ergebnis für die Antwort reicht:
+  /// Der Agent antwortet dann sofort, ohne weitere Werkzeuge (spart Zeit).
+  bool answerNow = false;
+
   /// Dauerhafte lokale Wissensbasis (z. B. importierte Notizen).
   final List<Attachment> knowledge;
   final void Function(Artifact) onArtifact;
