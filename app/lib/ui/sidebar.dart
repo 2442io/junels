@@ -689,6 +689,7 @@ class _ToolSection extends StatelessWidget {
     'look_at_image': Icons.visibility_outlined,
     'send_notification': Icons.notifications_active_outlined,
     'site_search': Icons.manage_search,
+    'browser': Icons.travel_explore,
     'weather': Icons.wb_sunny_outlined,
     'news': Icons.newspaper,
     'compose_email': Icons.mail_outline,

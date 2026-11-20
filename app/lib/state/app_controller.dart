@@ -1,6 +1,7 @@
 // Zentraler App-Zustand: Modelle, Engine, Profile, Tools, Chats, Agenten-Lauf.
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -16,6 +17,7 @@ import '../data/models.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
 import 'conversation_mode.dart';
+import 'browser_service.dart';
 import 'device_bridge.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
@@ -87,6 +89,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   late final VoiceService voice;
   late final ConversationMode conversation = ConversationMode(this);
   late final DeviceBridge deviceBridge = DeviceBridge(countryCodeOf: () => settings.countryCode);
+
+  /// Eingebauter Browser, den der Agent bedient.
+  late final BrowserService browser = BrowserService(confirmer: (t, d) => deviceBridge.confirm(t, d));
 
   /// Schnellstart-Aktion (Startbildschirm-Knopf, Dock-Menü): "conversation", "newchat", "prompt:<id>"
   final pendingLaunch = ValueNotifier<String?>(null);
@@ -183,6 +188,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         WeatherTool(defaultLocation: () => settings.homeCity),
         NewsTool(),
         SiteSearchTool(),
+        BrowserTool(() => headless ? null : browser),
         ContactsTool(deviceBridge),
         EmailTool(deviceBridge),
         WhatsAppTool(deviceBridge),
@@ -1362,14 +1368,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   AgentRunner _makeRunner(LlamaEngine eng, String system, {List<AgentTool>? tools}) {
     final profile = activeProfile;
+    final browsing = (tools ?? activeTools).any((t) => t.name == 'browser');
     return AgentRunner(
       engine: eng,
       systemPrompt: system,
       tools: tools ?? activeTools,
-      maxSteps: profile.maxSteps,
+      // Im Browser braucht der Agent mehrere Klicks
+      maxSteps: browsing ? math.max(profile.maxSteps, 12) : profile.maxSteps,
       // Platz für ganze Dokumente in einem Tool-Aufruf
       maxTokensPerStep: (eng.contextSize ~/ 3).clamp(256, 4096),
-      observationLimit: device.deviceClass == DeviceClass.s ? 1000 : 2000,
+      observationLimit: device.deviceClass == DeviceClass.s ? (browsing ? 1800 : 1000) : (browsing ? 3000 : 2000),
       sampling: SamplingParams(temperature: profile.temperature.clamp(0.0, 0.5), topP: 0.9),
       chatSampling: SamplingParams(temperature: profile.temperature),
     );
@@ -1379,6 +1387,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// das Werkzeug zu sehen. Für „Hi“ oder normale Fragen gibt es gar keine Werkzeuge –
   /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
   static final _toolTriggers = <String, RegExp>{
+    'browser': RegExp(r'browser|öffne\w* .*(seite|webseite|website|\.(com|at|de)\b)|geh\w* auf|navigier|klick|surf|'
+        r'amazon|ebay|willhaben|shop|bestell|anmelde|formular|auf der seite|im browser|such\w* (auf|bei) '),
     'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
     'site_search': RegExp(r'amazon|ebay|geizhals|idealo|willhaben|otto\.de|mediamarkt|thalia|chefkoch|wikipedia|'
         r'shop|kaufen|bestell|angebot|günstig|preisvergleich|produkt|auf [\w-]+\.(at|de|com)\b.*such|such\w* (auf|bei) '),
@@ -1850,7 +1860,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           add(SourceRef('tool', 'Rechner'));
         case 'weather':
           add(SourceRef('web', 'Open-Meteo', 'https://open-meteo.com'));
-        case 'news' || 'site_search':
+        case 'news' || 'site_search' || 'browser':
           for (final m in RegExp(r'Link: (\S+)').allMatches(obs).take(4)) {
             add(SourceRef('web', m.group(1)!, m.group(1)!));
           }
@@ -1902,6 +1912,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
     if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
+    // Browser nur im Chat mit offener App; dann ersetzt er die einfache Shop-Suche
+    if (voice || headless) {
+      runTools = [for (final t in runTools) if (t.name != 'browser') t];
+    } else if (runTools.any((t) => t.name == 'browser')) {
+      runTools = [for (final t in runTools) if (t.name != 'site_search') t];
+    }
     final user = ChatEntry(
         role: 'user',
         text: input.trim(),
@@ -2077,7 +2093,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       // Ergebnisse (Produkte, Meldungen) als Karten fürs Karussell
       answer.cards = [
         for (final st in answer.steps)
-          if (st.isError != true && const {'site_search', 'news', 'web_fetch', 'web_search'}.contains(st.tool))
+          if (st.isError != true && const {'site_search', 'news', 'web_fetch', 'web_search', 'browser'}.contains(st.tool))
             for (final c in parseResultCards(st.observation ?? '')) c.toJson(),
       ].fold<List<Map<String, String>>>([], (acc, c) {
         // doppelte Links nur einmal

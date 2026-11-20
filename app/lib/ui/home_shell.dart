@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'browser_panel.dart';
 import 'chat_view.dart';
 import 'inspector.dart';
 import 'prompt_editor.dart';
@@ -175,6 +176,16 @@ class _HomeShellState extends State<HomeShell> {
             icon: const Icon(Icons.speed_outlined),
             onPressed: () => openSystemCheck(context),
           ),
+          ListenableBuilder(
+            listenable: app.browser,
+            builder: (context, _) => app.browser.hasPage
+                ? IconButton(
+                    tooltip: app.browser.visible ? 'Browser ausblenden' : 'Browser zeigen',
+                    icon: Icon(app.browser.visible ? Icons.travel_explore : Icons.public),
+                    onPressed: app.browser.toggle,
+                  )
+                : const SizedBox.shrink(),
+          ),
           IconButton(
             tooltip: 'Neuer Chat',
             icon: const Icon(Icons.add_comment_outlined),
@@ -227,7 +238,30 @@ class _HomeShellState extends State<HomeShell> {
                 const SizedBox(width: 300, child: Sidebar()),
                 divider,
               ],
-              const Expanded(child: ChatView()),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: app.browser,
+                  builder: (context, _) {
+                    if (!app.browser.visible) return const ChatView();
+                    final panel = BrowserPanel(browser: app.browser);
+                    // Breit: Browser rechts neben dem Chat, sonst darüber
+                    return LayoutBuilder(builder: (context, c) {
+                      if (c.maxWidth >= 900) {
+                        return Row(children: [
+                          const Expanded(child: ChatView()),
+                          divider,
+                          SizedBox(width: (c.maxWidth * 0.5).clamp(420.0, 760.0), child: panel),
+                        ]);
+                      }
+                      return Column(children: [
+                        SizedBox(height: c.maxHeight * 0.5, child: panel),
+                        Divider(height: 1, color: scheme.outlineVariant),
+                        const Expanded(child: ChatView()),
+                      ]);
+                    });
+                  },
+                ),
+              ),
               if (!compact && _inspectorVisible && !_focus) ...[
                 divider,
                 SizedBox(width: desktop ? 360 : 320, child: const InspectorPanel()),

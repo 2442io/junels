@@ -1,6 +1,6 @@
 name: offline_agent
 description: Native Offline Agent App – lokale KI-Agenten ohne Cloud und ohne App Store.
-version: 1.18.1+24
+version: 1.19.0+25
 publish_to: none
 
 environment:
@@ -23,6 +23,8 @@ dependencies:
   archive: ^4.0.7
   # Systemstimme als Rückfallebene für das Vorlesen (offline, vom Betriebssystem)
   flutter_tts: ^4.2.0
+  # Eingebauter Browser, den der Agent bedient (Android WebView / macOS WKWebView)
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_lints: ^5.0.0

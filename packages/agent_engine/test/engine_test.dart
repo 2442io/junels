@@ -596,6 +596,38 @@ Future<void> main() async {
     check(r.contains('DuckDuckGo: ') && r.contains('Captcha') && r.contains('Grund'), 'Websuche nennt den Grund');
   });
 
+  await group('Browser', () async {
+    final d = _FakeBrowser();
+    final tool = BrowserTool(() => d);
+    final ctx = ToolContext(requestNetwork: (_) async => true);
+    var out = await tool.run({'action': 'open', 'target': 'shop.example', 'text': ''}, ctx);
+    check(d.opened.single == 'https://shop.example' && d.shown && out.contains('[1] Suchfeld „Suche“') &&
+        out.contains('[3] Knopf „Jetzt kaufen“') && out.contains('Wesco Brotkasten'), 'Seite öffnen und lesen ($out)');
+    check(!out.contains('App Store'), 'App-Store-Karten gefiltert');
+    final cards = parseResultCards(out);
+    check(cards.length == 1 && cards.first.price == '€ 59,90', 'Karten aus dem Browser (${cards.map((c) => c.toJson())})');
+    out = await tool.run({'action': 'type', 'target': '1', 'text': 'Brotdose'}, ctx);
+    check(d.scripts.any((s) => s.contains('"Brotdose"')) && d.settled == 2, 'Text eingeben');
+    d.allow = false;
+    out = await tool.run({'action': 'click', 'target': '[3]', 'text': ''}, ctx);
+    check(d.confirms == 1 && out.contains('abgelehnt') && !d.scripts.any((s) => s.contains('"click"')), 'Kaufen nur nach Bestätigung');
+    out = await tool.run({'action': 'type', 'target': '2', 'text': 'geheim'}, ctx);
+    check(d.handOvers == 1 && !d.scripts.any((s) => s.contains('geheim')), 'Passwort gibt der Nutzer selbst ein');
+    d.captcha = true;
+    out = await tool.run({'action': 'search', 'target': 'beispielshop.at', 'text': 'Brot'}, ctx);
+    check(d.handOvers == 2 && out.contains('Suchfeld [1] ausgefüllt'), 'Captcha → Nutzer übernimmt, dann Suche ($out)');
+    out = await tool.run({'action': 'search', 'target': 'amazon', 'text': 'Brot dose'}, ctx);
+    check(d.opened.last.startsWith('https://www.amazon.de/s?k=Brot+dose'), 'bekannte Shops direkt über die Such-Adresse');
+    final noApp = BrowserTool(() => null);
+    var err = '';
+    try {
+      await noApp.run({'action': 'read', 'target': '', 'text': ''}, ctx);
+    } on ToolException catch (e) {
+      err = e.message;
+    }
+    check(err.contains('nur verfügbar'), 'ohne geöffnete App klare Meldung');
+  });
+
   await group('Ergebnis-Karten', () async {
     const obs = '''Suchergebnisse auf geizhals.at für „brotdose“ (https://geizhals.at/?fs=brotdose):
 - Wesco Brotkasten Grandy
@@ -1257,6 +1289,51 @@ class _MapSource implements SyncSource {
     } else {
       data[key] = json;
     }
+  }
+}
+
+class _FakeBrowser implements BrowserDriver {
+  final opened = <String>[];
+  final scripts = <String>[];
+  bool shown = false, allow = true, captcha = false;
+  int settled = 0, confirms = 0, handOvers = 0;
+  @override
+  Future<void> show() async => shown = true;
+  @override
+  Future<void> open(Uri url) async => opened.add(url.toString());
+  @override
+  Future<void> settle() async => settled++;
+  @override
+  Future<void> back() async {}
+  @override
+  Future<bool> confirm(String title, String detail) async {
+    confirms++;
+    return allow;
+  }
+
+  @override
+  Future<bool> handOver(String message) async {
+    handOvers++;
+    captcha = false;
+    return true;
+  }
+
+  @override
+  Future<String> eval(String js) async {
+    scripts.add(js);
+    if (!js.contains('data-jid]')) return jsonEncode('{"ok":true}'); // Android: doppelt kodiert
+    return jsonEncode({
+      'url': 'https://shop.example/', 'title': 'Shop', 'captcha': captcha, 'more': true, 'text': 'Willkommen',
+      'els': [
+        {'id': 1, 'kind': 'input', 'label': 'Suche', 'type': 'search', 'search': 1},
+        {'id': 2, 'kind': 'input', 'label': 'Passwort', 'type': 'password', 'secret': 1},
+        {'id': 3, 'kind': 'button', 'label': 'Jetzt kaufen'},
+      ],
+      'cards': [
+        {'title': 'Wesco Brotkasten Grandy', 'link': 'https://shop.example/p/1', 'image': 'https://shop.example/1.jpg', 'price': '€ 59,90'},
+        {'title': 'App Store', 'link': 'https://apps.apple.com/x', 'image': 'https://shop.example/a.png', 'price': ''},
+      ],
+    });
   }
 }
 

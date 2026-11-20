@@ -14,6 +14,7 @@ export 'src/agent/memory_tools.dart';
 export 'src/agent/network_tools.dart';
 export 'src/agent/info_tools.dart';
 export 'src/agent/site_search_tool.dart';
+export 'src/agent/browser_tool.dart';
 export 'src/agent/device_tools.dart';
 export 'src/agent/tool.dart';
 export 'src/catalog.dart';

@@ -10,6 +10,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.19.0', [
+    'Eingebauter Browser: Der Agent öffnet Seiten, sucht über deren Suchfeld, klickt, tippt und scrollt – du schaust live zu',
+    'Treffer aus dem Browser (z. B. Amazon-Produkte mit Bild und Preis) erscheinen im Karussell',
+    'Captcha oder Anmeldung: Du übernimmst kurz selbst und tippst auf „Weiter“',
+    'Sicherheit: Vor Kaufen, Bestellen, Absenden oder Löschen fragt der Agent nach; Passwörter und Zahlungsdaten gibst nur du ein',
+    'Knopf oben zum Ein- und Ausblenden des Browsers; auf dem Mac rechts neben dem Chat, am Handy darüber',
+  ]),
   ('1.18.1', [
     'Shop-Suche: keine App-Store-, Google-Play- oder Menü-Links mehr im Karussell – nur Treffer, die zur Frage passen',
     'Ist Amazon gesperrt, sucht Junels zuerst über eine Suchmaschine nach Amazon-Links, erst danach auf Geizhals/Idealo',
