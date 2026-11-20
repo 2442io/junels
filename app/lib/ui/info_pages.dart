@@ -10,6 +10,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.20.2', [
+    'Browser war nach dem Update bei bestehenden Installationen ausgeschaltet – jetzt aktiv',
+    '„Suche auf amazon.de nach …“ öffnet direkt die Suche der Seite im Browser, ohne Umweg über das Modell',
+    '„Weitere Ergebnisse dazu“ und ähnliche Nachfragen beziehen sich wieder auf die vorige Suche',
+    'Links im Text: kurz und lesbar („amazon.de – Suche: brotdosen“) statt langer Adressen',
+    'Neue Stimmen: Kokoro Victoria (weiblich, ca. 100 MB), Piper Thorsten HD, Eva, Ramona, Karlsson, Pavoque',
+  ]),
   ('1.20.1', [
     'Neue Stimme: Kokoro Deutsch – Martin (sehr natürlich, ca. 316 MB) – im Systemcheck unter Stimmen laden und auswählen',
   ]),

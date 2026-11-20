@@ -1471,7 +1471,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Kurze Nachfrage („wien“, „und morgen?“, „nein, Sport“) – keine neue, eigenständige Frage.
   static bool looksLikeFollowUp(String input) {
     final w = input.trim().split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
-    if (w.isEmpty || w.length > 5) return false;
+    if (w.isEmpty) return false;
+    // Bezug auf vorher („weitere Ergebnisse dazu“, „mehr davon“, „nochmal“)
+    if (w.length <= 10 &&
+        RegExp(r'\b(dazu|davon|darüber|daraus|weitere\w*|mehr|nochmal|noch mal|nochmals|erneut|dort|damit|denen|'
+                r'diese[nmrs]?|das gleiche|dasselbe|wieder)\b',
+                caseSensitive: false)
+            .hasMatch(input)) {
+      return true;
+    }
+    if (w.length > 5) return false;
     final first = w.first.toLowerCase().replaceAll(RegExp(r'[^a-zäöüß]'), '');
     if (w.length >= 3 &&
         RegExp(r'^(wer|wie|was|wo|woher|wohin|wann|warum|wieso|weshalb|welche\w*|kannst|könntest|kann|gibt|ist|sind|'
@@ -1537,8 +1546,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Welches Werkzeug ohne Planungsschritt sofort laufen kann (Wetter, Nachrichten).
   (AgentTool, Map<String, dynamic>)? directTool(String input, String gate, List<AgentTool> tools) {
-    if (_otherIntent.hasMatch(input)) return null;
     AgentTool? find(String n) => tools.where((t) => t.name == n).firstOrNull;
+    // „Suche auf amazon.de nach Brotdosen“ / „such nach X auf willhaben“ → Seite direkt durchsuchen
+    final shop = shopSearchOf(input);
+    if (shop != null) {
+      final browser = find('browser'), site = find('site_search');
+      if (browser != null) return (browser, {'action': 'search', 'target': shop.$1, 'text': shop.$2});
+      if (site != null) return (site, {'site': shop.$1, 'query': shop.$2});
+    }
+    if (_otherIntent.hasMatch(input)) return null;
     final weather = find('weather'), news = find('news');
     bool isWeather(String t) => weather != null && _weatherIntent.hasMatch(t);
     bool isNews(String t) => news != null && _newsIntent.hasMatch(t);
@@ -1553,10 +1569,45 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
+  static const _siteWord = r'([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:de|at|com|ch|net|org|eu|io)|amazon|ebay|willhaben|geizhals|idealo|'
+      r'otto|mediamarkt|thalia|chefkoch|wikipedia|youtube|ikea|zalando)';
+
+  /// (Seite, Suchbegriffe) aus „suche auf X nach Y“ oder „such nach Y auf X“ – sonst null.
+  static (String, String)? shopSearchOf(String input) {
+    final t = input.trim().replaceAll(RegExp(r'[.!?]+$'), '');
+    final a = RegExp('(?:such\\w*|schau\\w*|find\\w*|geh\\w*)?\\s*(?:auf|bei|in)\\s+$_siteWord\\s+(?:und\\s+such\\w*\\s+)?(?:nach|für)\\s+(.{2,120}?)(?:\\s+(?:suchen|finden))?\$',
+            caseSensitive: false)
+        .firstMatch(t);
+    // „brotdosen die spülmaschinenfest sind“ → „brotdosen spülmaschinenfest“
+    String q(String x) => x
+        .replaceAll(RegExp(r'\b(die|welche|der|das|einen?|eine)\b\s*', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\s+(sind|ist|sein sollen|sein soll|haben)\s*\$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (a != null) return (a.group(1)!.toLowerCase(), q(a.group(2)!));
+    final b = RegExp('such\\w*\\s+(?:mir\\s+)?(?:nach\\s+)?(.{2,120}?)\\s+(?:auf|bei)\\s+$_siteWord\$', caseSensitive: false).firstMatch(t);
+    if (b != null) return (b.group(2)!.toLowerCase(), q(b.group(1)!));
+    return null;
+  }
+
+  /// Titel für eine Karte aus einer nackten Adresse: „amazon.de – Suche: brotdosen“.
+  static String _linkTitle(String url) {
+    final u = Uri.tryParse(cleanLink(url));
+    if (u == null || u.host.isEmpty) return url;
+    final host = u.host.replaceFirst(RegExp(r'^www\.'), '');
+    final q = u.queryParameters['k'] ?? u.queryParameters['q'] ?? u.queryParameters['query'] ??
+        u.queryParameters['search_query'] ?? u.queryParameters['fs'] ?? u.queryParameters['s'];
+    if (q != null && q.trim().isNotEmpty) return '$host – Suche: ${q.trim()}';
+    final seg = u.pathSegments.where((p) => p.isNotEmpty && p != 'dp' && !RegExp(r'^[A-Z0-9]{10}$').hasMatch(p)).firstOrNull;
+    if (seg == null) return host;
+    final name = Uri.decodeComponent(seg).replaceAll(RegExp(r'[-_+]+'), ' ').replaceAll(RegExp(r'\.(html?|php|aspx?)$'), '');
+    return '$host – ${name.length > 60 ? '${name.substring(0, 59)}…' : name}';
+  }
+
   /// Entfernt nackte Adressen und „(Quellen: …)“-Anhänge – die Karten zeigen die Links.
   static String _stripCardLinks(String text) {
     var t = text.replaceAll(RegExp(r'\s*\((Quellen?|Quelle|Links?):[^)]*https?://[^)]*\)', caseSensitive: false), '');
-    t = t.replaceAllMapped(RegExp(r'(?<!\]\()https?://[^\s<>()\[\]]{60,}'), (_) => '');
+    t = t.replaceAllMapped(RegExp(r'(?<!\]\()https?://[^\s<>()\[\]]{60,}'), (m) => '„${_linkTitle(m.group(0)!)}“ (Karte unten)');
     return t.replaceAll(RegExp(r'[ \t]+\n'), '\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
   }
 
@@ -2240,7 +2291,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             for (final c in parseResultCards(st.observation ?? '')) c.toJson(),
         // Links, die das Modell in die Antwort geschrieben hat, ebenfalls als Karte
         for (final m in RegExp(r'https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\x27"]').allMatches(answer.text))
-          {'title': Uri.tryParse(cleanLink(m.group(0)!))?.host.replaceFirst('www.', '') ?? m.group(0)!, 'link': cleanLink(m.group(0)!)},
+          {'title': _linkTitle(m.group(0)!), 'link': cleanLink(m.group(0)!)},
       ].fold<List<Map<String, String>>>([], (acc, c) {
         // doppelte Links nur einmal (auch mit/ohne Tracking-Anhang)
         final l = c['link'] == null ? null : cleanLink(c['link']!);
