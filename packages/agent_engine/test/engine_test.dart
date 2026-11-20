@@ -521,6 +521,17 @@ Future<void> main() async {
     check(s.spokenSoFar.endsWith('Mehr gibt es nicht'), 'gesprochener Text nachvollziehbar');
   });
 
+  await group('Denk-Text und Marker entfernen', () async {
+    check(cleanModelText('15 % von 2.340 € ist 351 €.<channel|>351 €') == '351 €', 'Gemma 4: nur Text nach <channel|>');
+    check(cleanModelText('<|channel>thought\nIch überlege …<channel|>Hallo!') == 'Hallo!', 'Gemma 4: Gedankenblock');
+    check(cleanModelText('<|channel>thought\nIch überl', streaming: true) == '', 'Streaming: Gedanke wird nicht gezeigt');
+    check(cleanModelText('<think>hmm</think>\nAntwort') == 'Antwort', 'Qwen <think>');
+    check(cleanModelText('Antwort<end_of_turn>') == 'Antwort', 'Endmarker');
+    check(skipThinking('<|turn>user\nhi<turn|>\n<|turn>model\n').endsWith('<|channel>thought\n<channel|>'),
+        'Gemma 4: leerer Gedanke im Prompt');
+    check(skipThinking('<|im_start|>assistant\n') == '<|im_start|>assistant\n', 'andere Modelle unverändert');
+  });
+
   await group('Abgleich: Kryptografie', () async {
     check(hexOf(sha256(utf8.encode('abc'))) == 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad', 'SHA-256 (abc)');
     check(hexOf(sha256(utf8.encode('a' * 1000))) == '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3', 'SHA-256 (1000×a)');

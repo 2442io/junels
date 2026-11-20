@@ -23,11 +23,27 @@ Future<NetworkChoice> askNetworkConsent(BuildContext context, String purpose) as
       icon: const Icon(Icons.public),
       title: const Text('Internetzugriff erlauben?'),
       content: Text('Der Agent möchte ins Internet:\n\n$purpose\n\n'
-          'Dabei wird nur diese Anfrage gesendet. Das Sprachmodell selbst läuft weiter lokal.'),
+          'Dabei wird nur diese Anfrage gesendet. Das Sprachmodell selbst läuft weiter lokal.\n\n'
+          '„Einmal“ gilt für diese Frage, „Ganzer Chat“ für alle weiteren Fragen in diesem Chat.'),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: const Text('Ablehnen')),
-        OutlinedButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.once), child: const Text('Nur diese Frage')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.chat), child: const Text('Für diesen Chat')),
+        Row(children: [
+          Expanded(
+            child: TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: const Text('Nein')),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, NetworkChoice.once),
+                child: const Text('Einmal', textAlign: TextAlign.center)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: FilledButton(
+                onPressed: () => Navigator.pop(ctx, NetworkChoice.chat),
+                child: const Text('Ganzer Chat', textAlign: TextAlign.center)),
+          ),
+        ]),
       ],
     ),
   );

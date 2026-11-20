@@ -10,6 +10,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.13.1', [
+    'Kein „<channel|>“ und kein Gedankentext mehr in Antworten (Gemma 4 denkt nicht mehr laut nach – auch schneller)',
+    'Internet-Freigabe: Knöpfe nebeneinander („Nein / Einmal / Ganzer Chat“)',
+    'Kurze Nachfragen wie „wien“ nach einer Wetterfrage bekommen wieder die Websuche',
+  ]),
   ('1.13.0', [
     'Werkzeuge nur noch, wenn die Nachricht sie braucht – „Hi“ oder normale Fragen werden direkt beantwortet (viel schneller, keine unnötige Websuche)',
     'Rechenfragen („15 % von 2.340 €“) werden sofort exakt berechnet',

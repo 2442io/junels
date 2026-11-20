@@ -1637,12 +1637,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
     var history = <ChatMessage>[
       for (final e in conv.entries)
-        if (e.text.trim().isNotEmpty && e.error == null) ChatMessage(e.role, e.text),
+        if (e.text.trim().isNotEmpty && e.error == null)
+          ChatMessage(e.role, e.role == 'assistant' ? cleanModelText(e.text) : e.text),
     ];
+    // kurze Nachfrage („wien“, „und morgen?“): Werkzeuge auch nach der vorigen Frage wählen
+    final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
+    final gateText = input.trim().split(RegExp(r'\s+')).length <= 5 ? '$prevUser $input' : input;
     // Gesprächsmodus: nur die letzten Wechsel mitschicken (kurzer Prompt = schnelle Antwort)
     if (voice && history.length > 8) history = history.sublist(history.length - 8);
     var docs = List<Attachment>.of(attachments);
-    var runTools = toolsFor(input,
+    var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
     if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
     final user = ChatEntry(

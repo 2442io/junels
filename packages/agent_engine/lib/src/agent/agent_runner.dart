@@ -228,14 +228,14 @@ class AgentRunner {
     GenerationStats? stats;
     FinishReason reason = FinishReason.done;
     String? error;
-    await for (final ev in engine.generate(prompt,
+    await for (final ev in engine.generate(skipThinking(prompt),
         grammar: blockCjk ? AgentGrammar.plainTextNoCjk() : null,
         sampling: chatSampling,
         maxTokens: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()))) {
       switch (ev) {
         case TokenEvent(:final text):
           raw.write(text);
-          emit(StepStreaming(1, answer: raw.toString(), raw: raw.toString()));
+          emit(StepStreaming(1, answer: cleanModelText(raw.toString(), streaming: true), raw: raw.toString()));
         case DoneEvent():
           stats = ev.stats;
           reason = ev.reason;
@@ -247,7 +247,7 @@ class AgentRunner {
       emit(AgentFinished(AgentStopReason.error, message: error ?? 'Fehler bei der Generierung'));
       return;
     }
-    emit(FinalAnswer(raw.toString().trim(),
+    emit(FinalAnswer(cleanModelText(raw.toString()),
         truncated: reason == FinishReason.maxTokens || reason == FinishReason.contextFull));
     emit(AgentFinished(reason == FinishReason.stopped ? AgentStopReason.stopped : AgentStopReason.answered));
   }
@@ -455,4 +455,29 @@ class AgentRunner {
           'Bitte kürzen oder einen größeren Context wählen.');
     }
   }
+}
+
+/// Gemma 4 und Qwen „denken“ sonst erst laut nach. Ein leerer Gedanken-Block am
+/// Anfang der Antwort schaltet das ab (schneller, kein Gedankentext im Chat).
+String skipThinking(String prompt) {
+  if (RegExp(r'<\|turn>model\s*$').hasMatch(prompt)) return '$prompt<|channel>thought\n<channel|>';
+  return prompt;
+}
+
+/// Entfernt Denk-Abschnitte und Steuer-Marker aus Modelltext.
+String cleanModelText(String raw, {bool streaming = false}) {
+  var t = raw;
+  // Gemma 4: "<|channel>thought …<channel|>Antwort"
+  final ch = t.lastIndexOf('<channel|>');
+  if (ch >= 0) t = t.substring(ch + '<channel|>'.length);
+  if (streaming && ch < 0 && t.contains('<|channel>')) return '';
+  // Qwen/DeepSeek: "<think>…</think>"
+  t = t.replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '');
+  final open = t.indexOf('<think>');
+  if (open >= 0) t = t.substring(0, open);
+  final close = t.lastIndexOf('</think>');
+  if (close >= 0) t = t.substring(close + '</think>'.length);
+  // übrig gebliebene Steuer-Marker
+  t = t.replaceAll(RegExp(r'<\|?(channel|turn|im_start|im_end|end_of_turn|start_of_turn|eot_id)\|?>'), '');
+  return streaming ? t.trimLeft() : t.trim();
 }

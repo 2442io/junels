@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:agent_engine/agent_engine.dart' show modelCatalog;
+import 'package:agent_engine/agent_engine.dart' show modelCatalog, cleanModelText;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -366,7 +366,7 @@ class _AssistantMessage extends StatelessWidget {
           if (entry.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: MarkdownLite(entry.text,
+              child: MarkdownLite(entry.text.contains("channel|>") || entry.text.contains("<think>") ? cleanModelText(entry.text) : entry.text,
                   selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
             ),
           if (entry.error != null)
