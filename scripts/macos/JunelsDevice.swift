@@ -1,0 +1,287 @@
+
+// Kanal "junels/device" (Mac): E-Mail, WhatsApp, FaceTime-Anruf, Kalender (EventKit),
+// Kontakte, freigegebene Ordner (Lesezeichen), Dateien suchen/umbenennen/verschieben,
+// Dock-Menü und Dateien, die aufs Dock-Symbol gezogen werden.
+enum JunelsDevice {
+  static var channel: FlutterMethodChannel?
+  static var quickActions: [(String, String)] = [("conversation", "Gespräch starten"), ("newchat", "Neuer Chat")]
+  static var pendingOpen: [String] = []
+  static var folders: [String: URL] = [:]   // Lesezeichen-ID → freigegebener Ordner
+  static let events = EKEventStore()
+
+  static func register(_ controller: FlutterViewController) {
+    let ch = FlutterMethodChannel(name: "junels/device", binaryMessenger: controller.engine.binaryMessenger)
+    channel = ch
+    ch.setMethodCallHandler { call, result in
+      let a = call.arguments as? [String: Any] ?? [:]
+      switch call.method {
+      case "takeLaunch":
+        let files = pendingOpen
+        pendingOpen = []
+        var shared: Any = NSNull()
+        if !files.isEmpty {
+          shared = ["text": "", "files": files.map { ["path": $0, "name": URL(fileURLWithPath: $0).lastPathComponent] }] as [String: Any]
+        }
+        result(["action": NSNull(), "shared": shared] as [String: Any])
+      case "composeEmail":
+        var c = URLComponents()
+        c.scheme = "mailto"
+        c.path = a["to"] as? String ?? ""
+        c.queryItems = [URLQueryItem(name: "subject", value: a["subject"] as? String ?? ""),
+                        URLQueryItem(name: "body", value: a["body"] as? String ?? "")]
+        result(c.url.map { NSWorkspace.shared.open($0) } ?? false)
+      case "whatsapp":
+        let phone = (a["phone"] as? String ?? "").filter { $0.isNumber }
+        var c = URLComponents(string: "whatsapp://send")!
+        c.queryItems = [URLQueryItem(name: "phone", value: phone), URLQueryItem(name: "text", value: a["text"] as? String ?? "")]
+        if let u = c.url, NSWorkspace.shared.urlForApplication(toOpen: u) != nil {
+          result(NSWorkspace.shared.open(u))
+        } else {
+          var w = URLComponents(string: "https://wa.me/\(phone)")!
+          w.queryItems = [URLQueryItem(name: "text", value: a["text"] as? String ?? "")]
+          result(w.url.map { NSWorkspace.shared.open($0) } ?? false)
+        }
+      case "dial":
+        let n = (a["number"] as? String ?? "").filter { $0.isNumber || $0 == "+" }
+        result(URL(string: "tel:\(n)").map { NSWorkspace.shared.open($0) } ?? false)
+      case "calendarInsert":
+        // .ics erzeugen und öffnen → Kalender fragt, in welchen Kalender
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        fmt.timeZone = TimeZone(identifier: "UTC")
+        let dayFmt = DateFormatter()
+        dayFmt.dateFormat = "yyyyMMdd"
+        let begin = Date(timeIntervalSince1970: ((a["begin"] as? NSNumber)?.doubleValue ?? 0) / 1000)
+        let end = Date(timeIntervalSince1970: ((a["end"] as? NSNumber)?.doubleValue ?? 0) / 1000)
+        let allDay = a["allDay"] as? Bool ?? false
+        func esc(_ s: String) -> String {
+          s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: ",", with: "\\,").replacingOccurrences(of: ";", with: "\;")
+        }
+        var ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Junels//DE\r\nBEGIN:VEVENT\r\n"
+        ics += "UID:\(UUID().uuidString)@junels\r\nDTSTAMP:\(fmt.string(from: Date()))\r\n"
+        if allDay {
+          ics += "DTSTART;VALUE=DATE:\(dayFmt.string(from: begin))\r\nDTEND;VALUE=DATE:\(dayFmt.string(from: end))\r\n"
+        } else {
+          ics += "DTSTART:\(fmt.string(from: begin))\r\nDTEND:\(fmt.string(from: end))\r\n"
+        }
+        ics += "SUMMARY:\(esc(a["title"] as? String ?? "Termin"))\r\n"
+        if let l = a["location"] as? String, !l.isEmpty { ics += "LOCATION:\(esc(l))\r\n" }
+        if let n = a["notes"] as? String, !n.isEmpty { ics += "DESCRIPTION:\(esc(n))\r\n" }
+        ics += "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        let f = FileManager.default.temporaryDirectory.appendingPathComponent("Termin-\(Int(Date().timeIntervalSince1970)).ics")
+        do {
+          try ics.write(to: f, atomically: true, encoding: .utf8)
+          result(NSWorkspace.shared.open(f))
+        } catch {
+          result(FlutterError(code: "calendar", message: error.localizedDescription, details: nil))
+        }
+      case "calendarList":
+        let from = Date(timeIntervalSince1970: ((a["from"] as? NSNumber)?.doubleValue ?? 0) / 1000)
+        let to = Date(timeIntervalSince1970: ((a["to"] as? NSNumber)?.doubleValue ?? 0) / 1000)
+        let done: (Bool, Error?) -> Void = { ok, err in
+          DispatchQueue.main.async {
+            guard ok else {
+              result(FlutterError(code: "permission", message: err?.localizedDescription ?? "Kein Zugriff auf den Kalender – in den Systemeinstellungen erlauben", details: nil))
+              return
+            }
+            let pred = events.predicateForEvents(withStart: from, end: to, calendars: nil)
+            let list = events.events(matching: pred).sorted { $0.startDate < $1.startDate }.prefix(100).map { e -> [String: Any] in
+              ["title": e.title ?? "", "begin": Int(e.startDate.timeIntervalSince1970 * 1000),
+               "end": Int(e.endDate.timeIntervalSince1970 * 1000), "allDay": e.isAllDay,
+               "location": e.location ?? "", "calendar": e.calendar?.title ?? ""]
+            }
+            result(Array(list))
+          }
+        }
+        if #available(macOS 14.0, *) {
+          events.requestFullAccessToEvents(completion: done)
+        } else {
+          events.requestAccess(to: .event, completion: done)
+        }
+      case "contacts":
+        let q = a["query"] as? String ?? ""
+        let store = CNContactStore()
+        store.requestAccess(for: .contacts) { ok, err in
+          guard ok else {
+            DispatchQueue.main.async {
+              result(FlutterError(code: "permission", message: err?.localizedDescription ?? "Kein Zugriff auf Kontakte – in den Systemeinstellungen erlauben", details: nil))
+            }
+            return
+          }
+          let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactOrganizationNameKey,
+                      CNContactPhoneNumbersKey, CNContactEmailAddressesKey] as [CNKeyDescriptor]
+          let found = (try? store.unifiedContacts(matching: CNContact.predicateForContacts(matchingName: q), keysToFetch: keys)) ?? []
+          let list = found.prefix(10).map { c -> [String: Any] in
+            let name = [c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " ")
+            return ["name": name.isEmpty ? c.organizationName : name,
+                    "phones": c.phoneNumbers.map { $0.value.stringValue },
+                    "emails": c.emailAddresses.map { $0.value as String }]
+          }
+          DispatchQueue.main.async { result(Array(list)) }
+        }
+      case "pickFolder":
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Freigeben"
+        panel.message = a["message"] as? String ?? "Ordner für Junels freigeben"
+        guard panel.runModal() == .OK, let url = panel.url else { return result(NSNull()) }
+        do {
+          let data = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+          let id = data.base64EncodedString()
+          _ = url.startAccessingSecurityScopedResource()
+          folders[id] = url
+          result(["id": id, "name": url.lastPathComponent, "path": url.path])
+        } catch {
+          result(FlutterError(code: "folder", message: error.localizedDescription, details: nil))
+        }
+      case "grantFolders":
+        // gespeicherte Freigaben beim Start wieder öffnen
+        var ok: [[String: String]] = []
+        for id in a["ids"] as? [String] ?? [] {
+          guard folders[id] == nil, let data = Data(base64Encoded: id) else {
+            if let u = folders[id] { ok.append(["id": id, "path": u.path]) }
+            continue
+          }
+          var stale = false
+          if let u = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &stale) {
+            _ = u.startAccessingSecurityScopedResource()
+            folders[id] = u
+            ok.append(["id": id, "path": u.path])
+          }
+        }
+        result(ok)
+      case "scanFolder":
+        guard let root = folders[a["id"] as? String ?? ""] else { return result(FlutterError(code: "folder", message: "Ordner nicht freigegeben", details: nil)) }
+        let since = Date(timeIntervalSince1970: ((a["since"] as? NSNumber)?.doubleValue ?? 0) / 1000)
+        DispatchQueue.global(qos: .utility).async {
+          var out: [[String: Any]] = []
+          let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
+          if let en = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
+            for case let u as URL in en {
+              if out.count >= 30 { break }
+              if en.level > 3 { en.skipDescendants(); continue }
+              let ext = u.pathExtension.lowercased()
+              guard ["pdf", "txt", "md"].contains(ext) else { continue }
+              let v = try? u.resourceValues(forKeys: Set(keys))
+              guard v?.isRegularFile == true, let m = v?.contentModificationDate, m > since else { continue }
+              out.append(["path": u.path, "name": u.lastPathComponent, "modified": Int(m.timeIntervalSince1970 * 1000)])
+            }
+          }
+          DispatchQueue.main.async { result(out) }
+        }
+      case "fileSearch":
+        let q = (a["query"] as? String ?? "").lowercased()
+        let words = q.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        let ext = (a["ext"] as? String ?? "").lowercased().replacingOccurrences(of: ".", with: "")
+        DispatchQueue.global(qos: .userInitiated).async {
+          var out: [[String: Any]] = []
+          let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey]
+          for root in folders.values {
+            guard let en = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+            var seen = 0
+            for case let u as URL in en {
+              seen += 1
+              if seen > 20000 || out.count >= 40 { break }
+              let name = u.lastPathComponent.lowercased()
+              if !ext.isEmpty && u.pathExtension.lowercased() != ext { continue }
+              if !words.allSatisfy({ name.contains($0) }) { continue }
+              let v = try? u.resourceValues(forKeys: Set(keys))
+              out.append(["path": u.path, "name": u.lastPathComponent, "dir": v?.isDirectory ?? false,
+                          "size": v?.fileSize ?? 0, "modified": Int((v?.contentModificationDate ?? Date()).timeIntervalSince1970 * 1000)])
+            }
+          }
+          DispatchQueue.main.async { result(out) }
+        }
+      case "fileRename", "fileMove", "fileMkdir":
+        let src = URL(fileURLWithPath: a["path"] as? String ?? "")
+        func inside(_ u: URL) -> Bool {
+          let p = u.standardizedFileURL.path
+          return folders.values.contains { p == $0.standardizedFileURL.path || p.hasPrefix($0.standardizedFileURL.path + "/") }
+        }
+        do {
+          switch call.method {
+          case "fileRename":
+            let name = (a["name"] as? String ?? "").replacingOccurrences(of: "/", with: "-")
+            let dst = src.deletingLastPathComponent().appendingPathComponent(name)
+            guard inside(src), inside(dst), !name.isEmpty else { throw NSError(domain: "junels", code: 1, userInfo: [NSLocalizedDescriptionKey: "Nur in freigegebenen Ordnern erlaubt"]) }
+            if FileManager.default.fileExists(atPath: dst.path) { throw NSError(domain: "junels", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(name) gibt es dort schon"]) }
+            try FileManager.default.moveItem(at: src, to: dst)
+            result(dst.path)
+          case "fileMove":
+            let dir = URL(fileURLWithPath: a["folder"] as? String ?? "")
+            let dst = dir.appendingPathComponent(src.lastPathComponent)
+            guard inside(src), inside(dir) else { throw NSError(domain: "junels", code: 1, userInfo: [NSLocalizedDescriptionKey: "Nur in freigegebenen Ordnern erlaubt"]) }
+            if FileManager.default.fileExists(atPath: dst.path) { throw NSError(domain: "junels", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(src.lastPathComponent) gibt es im Zielordner schon"]) }
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: src, to: dst)
+            result(dst.path)
+          default:
+            guard inside(src) else { throw NSError(domain: "junels", code: 1, userInfo: [NSLocalizedDescriptionKey: "Nur in freigegebenen Ordnern erlaubt"]) }
+            try FileManager.default.createDirectory(at: src, withIntermediateDirectories: true)
+            result(src.path)
+          }
+        } catch {
+          result(FlutterError(code: "file", message: error.localizedDescription, details: nil))
+        }
+      case "setQuickActions":
+        let items = a["items"] as? [[String: String]] ?? []
+        quickActions = items.map { ($0["id"] ?? "", $0["label"] ?? "") }
+        result(true)
+      case "pinQuickAction":
+        result(false)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  // Dock-Menü (Rechtsklick aufs Dock-Symbol)
+  static func dockMenu() -> NSMenu {
+    let menu = NSMenu()
+    for (id, label) in quickActions {
+      let item = NSMenuItem(title: label, action: #selector(DockTarget.run(_:)), keyEquivalent: "")
+      item.target = DockTarget.shared
+      item.representedObject = id
+      menu.addItem(item)
+    }
+    return menu
+  }
+
+  static func launch(_ id: String) {
+    NSApp.activate(ignoringOtherApps: true)
+    channel?.invokeMethod("launchAction", arguments: ["id": id])
+  }
+
+  /// Dateien, die aufs Dock-Symbol gezogen oder mit „Öffnen mit“ an Junels gegeben wurden.
+  static func open(_ paths: [String]) {
+    guard !paths.isEmpty else { return }
+    NSApp.activate(ignoringOtherApps: true)
+    if let ch = channel {
+      ch.invokeMethod("shared", arguments: ["text": "", "files": paths.map { ["path": $0, "name": URL(fileURLWithPath: $0).lastPathComponent] }])
+    } else {
+      pendingOpen.append(contentsOf: paths)
+    }
+  }
+}
+
+final class DockTarget: NSObject {
+  static let shared = DockTarget()
+  @objc func run(_ sender: NSMenuItem) {
+    if let id = sender.representedObject as? String { JunelsDevice.launch(id) }
+  }
+  @objc func openDocuments(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+    guard let list = event.paramDescriptor(forKeyword: AEKeyword(0x2D2D_2D2D)) else { return }  // '----'
+    var paths: [String] = []
+    if list.numberOfItems == 0 {
+      if let u = list.fileURLValue { paths.append(u.path) }
+    } else {
+      for i in 1...list.numberOfItems {
+        if let u = list.atIndex(i)?.fileURLValue { paths.append(u.path) }
+      }
+    }
+    JunelsDevice.open(paths)
+  }
+}

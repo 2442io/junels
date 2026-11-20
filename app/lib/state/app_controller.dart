@@ -16,6 +16,7 @@ import '../data/models.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
 import 'conversation_mode.dart';
+import 'device_bridge.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
 import '../tools/chart_render.dart';
@@ -85,6 +86,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // Sprache
   late final VoiceService voice;
   late final ConversationMode conversation = ConversationMode(this);
+  late final DeviceBridge deviceBridge = DeviceBridge(countryCodeOf: () => settings.countryCode);
+
+  /// Schnellstart-Aktion (Startbildschirm-Knopf, Dock-Menü): "conversation", "newchat", "prompt:<id>"
+  final pendingLaunch = ValueNotifier<String?>(null);
+
+  /// Text für das Eingabefeld (z. B. aus „Teilen an Junels“)
+  final pendingInput = ValueNotifier<String?>(null);
+  Timer? _watchTimer;
   late final SyncService sync = SyncService(this);
   late final UpdateService updates = UpdateService(storage.root);
 
@@ -171,6 +180,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           await BackgroundWork.notify(title, text, conversationId: current?.id, at: at);
         }),
         SavePromptTool(savePrompt, () => prompts),
+        WeatherTool(defaultLocation: () => settings.homeCity),
+        NewsTool(),
+        ContactsTool(deviceBridge),
+        EmailTool(deviceBridge),
+        WhatsAppTool(deviceBridge),
+        CallTool(deviceBridge),
+        CalendarAddTool(deviceBridge),
+        CalendarListTool(deviceBridge),
+        FileSearchTool(deviceBridge),
+        FileRenameTool(deviceBridge),
+        FileMoveTool(deviceBridge),
       ];
       refreshFreeDisk();
       settings = await storage.loadSettings();
@@ -208,6 +228,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
       if (!headless) unawaited(sync.init());
       if (!headless) unawaited(updates.init());
+      if (!headless) unawaited(_initDevice());
 
       if (!headless && settings.autoLoadLastModel && settings.lastModelId != null) {
         final m = models.where((x) => x.id == settings.lastModelId).firstOrNull;
@@ -270,10 +291,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       ? [
           ...tools
               .where((t) => settings.enabledTools.contains(t.name))
-              .where((t) => t.name != 'knowledge_search' || !knowledge.isEmpty),
+              .where((t) => t.name != 'knowledge_search' || !knowledge.isEmpty)
+              .where(_toolAvailableHere),
           ...mcpTools,
         ]
       : const [];
+
+  static const _phoneTools = {'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list'};
+  static const _macFileTools = {'file_search', 'file_rename', 'file_move'};
+
+  bool _toolAvailableHere(AgentTool t) {
+    if (_phoneTools.contains(t.name)) return DeviceBridge.supported;
+    if (_macFileTools.contains(t.name)) return Platform.isMacOS && settings.grantedFolders.isNotEmpty;
+    return true;
+  }
 
   /// Tools aller aktiven MCP-Server (aus dem Zwischenspeicher, offline verfügbar).
   List<AgentTool> get mcpTools => [
@@ -787,7 +818,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<String?> addFileSource(String path, String name) async {
     try {
-      final text = await File(path).readAsString();
+      final text = name.toLowerCase().endsWith('.pdf')
+          ? (await NativeFiles.pdfText(path)).text
+          : await File(path).readAsString();
+      if (text.trim().isEmpty) return '$name enthält keinen auslesbaren Text.';
       final existing = knowledge.sources.where((s) => s.origin == name).firstOrNull;
       knowledge.putSource(
         KnowledgeSource(id: existing?.id ?? newId(), name: name, origin: name, kind: 'file'),
@@ -1309,8 +1343,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
   static final _toolTriggers = <String, RegExp>{
     'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
-    'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal)|recherch|nachrichten|news|wetter|'
+    'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal)|recherch|'
         r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
+    'weather': RegExp(r'wetter|regen|regnet|temperatur|grad\b|schnee|sonnig|wind|gewitter|schirm|jacke|vorhersage'),
+    'news': RegExp(r'news|nachrichten|schlagzeilen|neuigkeiten|neues (zu|von|aus|über|bei|in)|was gibt.s neues|was gibt es neues|meldungen|presse|morgen-übersicht'),
+    'contacts_search': RegExp(r'nummer von|telefonnummer|handynummer|e-?mail-?adresse von|adresse von|kontakt'),
+    'compose_email': RegExp(r'e-?mail|\bmail\b|mail an|mailen'),
+    'compose_whatsapp': RegExp(r'whats ?app|\bwa\b'),
+    'call_phone': RegExp(r'ruf\w* .*\ban\b|anrufen|telefonier|\banruf'),
+    'calendar_add': RegExp(r'termin|kalender|eintragen|trag .* ein|meeting|besprechung|einladung|veranstaltung|plakat|flyer'),
+    'calendar_list': RegExp(r'termin|kalender|was steht|was hab ich|habe ich (heute|morgen)|agenda|tagesplan|morgen-übersicht|bin ich (frei|verfügbar)'),
+    'file_search': RegExp(r'datei|dateien|ordner|dokumente? (finden|suchen)|finde .*\.(pdf|docx?|xlsx?|jpg|png)|downloads|schreibtisch'),
+    'file_rename': RegExp(r'umbenenn|benenn|dateinamen?'),
+    'file_move': RegExp(r'verschieb|sortier|aufräumen|ordne|in den ordner'),
     'calculator': RegExp(r'\d\s*(%|prozent|[+*/^×÷]|mal\b|geteilt|plus|minus|hoch)|rechne|berechne|wurzel|zins'),
     'datetime': RegExp(r'uhrzeit|wie spät|datum|wochentag|welcher tag|kalenderwoche|wie lange (noch )?bis|in \d+ tagen'),
     'remember': RegExp(r'merk dir|merke dir|vergiss|behalte|notier dir|erinnere dich|was weißt du über mich'),
@@ -1477,6 +1522,154 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Android: Wecker für die nächsten Termine (auch bei geschlossener App).
+  // ------------------------------------------------------------ Gerät
+
+  Future<void> _initDevice() async {
+    deviceBridge
+      ..onLaunchAction = ((a) {
+        pendingLaunch.value = a;
+      })
+      ..onShared = receiveShared
+      ..init();
+    await deviceBridge.grantFolders([
+      for (final f in [...settings.grantedFolders, ...settings.watchFolders]) f['id']!,
+    ]);
+    final (action, shared) = await deviceBridge.takeLaunch();
+    if (shared != null) await receiveShared(shared);
+    if (action != null) pendingLaunch.value = action;
+    unawaited(updateQuickActions());
+    if (settings.watchFolders.isNotEmpty) {
+      unawaited(Future<void>.delayed(const Duration(seconds: 20), scanWatchFolders));
+    }
+    _watchTimer?.cancel();
+    _watchTimer = Timer.periodic(const Duration(minutes: 30), (_) => scanWatchFolders());
+  }
+
+  /// „Teilen an Junels“ / Dateien aufs Dock-Symbol: als Anhang bzw. Text ins Eingabefeld.
+  Future<void> receiveShared(SharedContent c) async {
+    final errors = <String>[];
+    for (final (path, name) in c.files) {
+      final err = await addAttachment(path, name);
+      if (err != null) errors.add(err);
+    }
+    if (c.text.isNotEmpty) pendingInput.value = c.text;
+    appLog('Teilen', '${c.files.length} Datei(en)${c.text.isEmpty ? '' : ', Text'} empfangen');
+    if (errors.isNotEmpty) statusMessage = errors.join('\n');
+    notifyListeners();
+  }
+
+  /// Schnellstart-Knöpfe (Android: lange auf das Symbol drücken; Mac: Dock-Menü).
+  Future<void> updateQuickActions() => deviceBridge.setQuickActions([
+        ('conversation', 'Gespräch starten'),
+        ('newchat', 'Neuer Chat'),
+        for (final p in prompts.take(3)) ('prompt:${p.id}', p.title),
+      ]);
+
+  /// Ordner, deren neue PDFs/Texte automatisch in die Wissensbasis kommen.
+  Future<void> addWatchFolder() async {
+    final f = await deviceBridge.pickFolder(message: 'Ordner überwachen: neue PDFs kommen in die Wissensbasis');
+    if (f == null) return;
+    settings.watchFolders.add({'id': f['id']!, 'name': f['name'] ?? f['path'] ?? 'Ordner', 'since': '0'});
+    await storage.saveSettings(settings);
+    notifyListeners();
+    await scanWatchFolders();
+  }
+
+  Future<void> removeWatchFolder(Map<String, String> f) async {
+    settings.watchFolders.removeWhere((x) => x['id'] == f['id']);
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  bool _scanning = false;
+  Future<void> scanWatchFolders() async {
+    if (_scanning || settings.watchFolders.isEmpty) return;
+    _scanning = true;
+    try {
+      var added = 0;
+      for (final f in settings.watchFolders) {
+        final since = int.tryParse(f['since'] ?? '0') ?? 0;
+        var newest = since;
+        try {
+          for (final (path, name, mod) in await deviceBridge.scanFolder(f['id']!, since)) {
+            final err = await addFileSource(path, name);
+            if (err == null) {
+              added++;
+            } else {
+              appLog('Ordner', err, error: true);
+            }
+            if (mod > newest) newest = mod;
+          }
+        } catch (e) {
+          appLog('Ordner', '${f['name']}: $e', error: true);
+        }
+        f['since'] = '$newest';
+      }
+      await storage.saveSettings(settings);
+      if (added > 0) {
+        appLog('Ordner', '$added neue Datei(en) in die Wissensbasis übernommen');
+        notifyListeners();
+      }
+    } finally {
+      _scanning = false;
+    }
+  }
+
+  /// Mac: Ordner für die Dateihilfe freigeben.
+  Future<void> addGrantedFolder() async {
+    final f = await deviceBridge.pickFolder(message: 'Ordner freigeben: Junels darf hier Dateien suchen, umbenennen und verschieben');
+    if (f == null) return;
+    settings.grantedFolders.add({'id': f['id']!, 'name': f['name'] ?? '', 'path': f['path'] ?? ''});
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> removeGrantedFolder(Map<String, String> f) async {
+    settings.grantedFolders.removeWhere((x) => x['id'] == f['id']);
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> setHomeCity(String city, {String? countryCode}) async {
+    settings.homeCity = city.trim();
+    if (countryCode != null && countryCode.trim().isNotEmpty) settings.countryCode = countryCode.replaceAll(RegExp(r'\D'), '');
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  /// Morgen-Übersicht als geplanten Prompt anlegen (Termine, Wetter, Nachrichten → Push).
+  Future<SavedPrompt> createMorningBriefing({required String city, int hour = 7, int minute = 0, String topics = ''}) async {
+    await setHomeCity(city);
+    final text = 'Erstelle meine Morgen-Übersicht für heute:\n'
+        '1. Rufe meine Termine für heute aus dem Kalender ab (calendar_list).\n'
+        '2. Hole das Wetter für $city für heute (weather).\n'
+        '3. Hole die wichtigsten Nachrichten${topics.trim().isEmpty ? '' : ' zu: ${topics.trim()}'} (news, 5 Meldungen).\n'
+        'Fasse alles kurz und übersichtlich zusammen: zuerst Termine, dann Wetter (mit Tipp, z. B. Schirm), dann Nachrichten mit Link.';
+    final existing = prompts.where((p) => p.title == 'Morgen-Übersicht').firstOrNull;
+    final p = SavedPrompt(
+      id: existing?.id,
+      title: 'Morgen-Übersicht',
+      text: text,
+      schedule: ScheduleKind.daily,
+      hour: hour,
+      minute: minute,
+      allowInternet: true,
+      notify: true,
+      lastRun: existing?.lastRun,
+    );
+    await savePrompt(p);
+    // Kalender-Zugriff gleich jetzt erfragen – morgens im Hintergrund ginge das nicht
+    if (DeviceBridge.supported) {
+      try {
+        final now = DateTime.now();
+        await deviceBridge.calendarList(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1));
+      } catch (e) {
+        appLog('Gerät', 'Kalender-Zugriff: $e', error: true);
+      }
+    }
+    return p;
+  }
+
   /// Nach einem Abgleich: Prompts speichern und Wecker neu setzen.
   Future<void> promptsChangedExternally() async {
     await storage.savePrompts(prompts);
@@ -1488,6 +1681,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   void refreshUi() => notifyListeners();
 
   Future<void> _syncAlarms() async {
+    unawaited(updateQuickActions());
     final now = DateTime.now();
     await BackgroundWork.schedule([
       for (final p in prompts)
@@ -1614,6 +1808,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           }
         case 'calculator':
           add(SourceRef('tool', 'Rechner'));
+        case 'weather':
+          add(SourceRef('web', 'Open-Meteo', 'https://open-meteo.com'));
+        case 'news':
+          for (final m in RegExp(r'Link: (\S+)').allMatches(obs).take(4)) {
+            add(SourceRef('web', m.group(1)!, m.group(1)!));
+          }
+        case 'calendar_list' || 'calendar_add':
+          add(SourceRef('tool', 'Kalender'));
+        case 'contacts_search' || 'compose_email' || 'compose_whatsapp' || 'call_phone':
+          add(SourceRef('tool', 'Adressbuch'));
+        case 'file_search' || 'file_rename' || 'file_move':
+          add(SourceRef('tool', 'Dateien'));
         case 'datetime':
           add(SourceRef('tool', 'Uhr des Geräts'));
         case 'read_file' || 'text_search' || 'json_query':

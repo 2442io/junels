@@ -521,6 +521,86 @@ Future<void> main() async {
     check(s.spokenSoFar.endsWith('Mehr gibt es nicht'), 'gesprochener Text nachvollziehbar');
   });
 
+  await group('Wetter und Nachrichten', () async {
+    final calls = <String>[];
+    final weather = WeatherTool(
+      defaultLocation: () => 'Wien',
+      fetcher: (u) async {
+        calls.add(u.host);
+        if (u.host.startsWith('geocoding')) {
+          return '{"results":[{"name":"Wien","latitude":48.2,"longitude":16.37,"country":"Österreich","admin1":"Wien"}]}';
+        }
+        return '{"current":{"temperature_2m":7.4,"apparent_temperature":4.1,"weather_code":61,"wind_speed_10m":18,'
+            '"relative_humidity_2m":80},"daily":{"time":["2026-11-20","2026-11-21"],"weather_code":[61,3],'
+            '"temperature_2m_max":[9,8],"temperature_2m_min":[3,2],"precipitation_probability_max":[70,20],'
+            '"precipitation_sum":[4.2,0],"sunrise":["2026-11-20T07:18","2026-11-21T07:19"],"sunset":["2026-11-20T16:10","2026-11-21T16:09"]}}';
+      },
+    );
+    var asked = '';
+    final out = await weather.run({'location': '', 'days': 2},
+        ToolContext(requestNetwork: (p) async {
+          asked = p;
+          return true;
+        }));
+    check(out.contains('Wien') && out.contains('7 °C') && out.contains('leichter Regen') && out.contains('Morgen: bedeckt'),
+        'Wetter mit Heimatort, Codes übersetzt');
+    check(asked.contains('Wien') && calls.length == 2, 'Internet-Freigabe gefragt, 2 Abrufe');
+
+    const rss = '''<?xml version="1.0"?><rss><channel>
+<item><title>OpenAI stellt neues Modell vor</title><link>https://futurezone.at/a</link><description>KI-News</description></item>
+<item><title>Fußball: Rapid gewinnt</title><link>https://futurezone.at/b</link></item>
+<item><title>Neue Chips von Nvidia</title><link>https://futurezone.at/c</link></item>
+</channel></rss>''';
+    final news = NewsTool(fetcher: (u) async => rss);
+    final n1 = await news.run({'topic': 'KI', 'source': 'auto', 'count': 5}, ToolContext(requestNetwork: (_) async => true));
+    check(n1.contains('OpenAI stellt') && n1.contains('Nvidia') && !n1.contains('Rapid'), 'KI-Thema gefiltert (Synonyme)');
+    check(n1.contains('futurezone') || n1.contains('heise'), 'Tech-Quellen bei KI');
+    final n2 = await news.run({'topic': 'Weltraum'}, ToolContext(requestNetwork: (_) async => true));
+    check(n2.contains('keine Meldung') && n2.contains('Rapid'), 'kein Treffer → allgemeine Meldungen');
+    var denied = false;
+    try {
+      await news.run({}, ToolContext(requestNetwork: (_) async => false));
+    } catch (_) {
+      denied = true;
+    }
+    check(denied, 'ohne Freigabe kein Abruf');
+  });
+
+  await group('Gerät: E-Mail, WhatsApp, Anruf, Kalender, Dateien', () async {
+    final dev = _FakeDevice();
+    final ctx = ToolContext();
+    var r = await EmailTool(dev).run({'to': 'Anna', 'subject': 'Treffen', 'body': 'Hallo Anna'}, ctx);
+    check(dev.log.last == 'mail:anna@example.com|Treffen|Hallo Anna' && r.contains('Senden'), 'E-Mail an Kontakt per Name');
+    await WhatsAppTool(dev).run({'to': 'Anna', 'text': 'Komme 10 min später'}, ctx);
+    check(dev.log.last == 'wa:436641234567|Komme 10 min später', 'WhatsApp: Nummer international ($dev.log)');
+    await CallTool(dev).run({'to': '+43 1 234'}, ctx);
+    check(dev.log.last == 'dial:+43 1 234', 'Anruf mit Nummer');
+    var multi = '';
+    try {
+      await CallTool(dev).run({'to': 'Max'}, ctx);
+    } on ToolException catch (e) {
+      multi = e.message;
+    }
+    check(multi.contains('Max Muster') && multi.contains('Max Mayer'), 'mehrere Kontakte → Rückfrage');
+    final now = DateTime(2026, 11, 20, 7, 0);
+    await CalendarAddTool(dev, clock: () => now).run({'title': 'Zahnarzt', 'start': 'morgen 9:30', 'duration_minutes': 45}, ctx);
+    check(dev.log.last == 'cal:Zahnarzt|2026-11-21 09:30|2026-11-21 10:15|false', 'Termin mit Dauer (${dev.log.last})');
+    await CalendarAddTool(dev, clock: () => now).run({'title': 'Urlaub', 'start': '2026-12-24'}, ctx);
+    check(dev.log.last.endsWith('|true') && dev.log.last.contains('2026-12-24 00:00'), 'nur Datum → ganztägig');
+    r = await CalendarListTool(dev, clock: () => now).run({'day': 'heute'}, ctx);
+    check(r.contains('09:00–10:00 Team-Meeting (Büro)') && r.contains('Freitag'), 'Termine heute ($r)');
+    check(dev.log.last == 'list:2026-11-20 00:00-2026-11-21 00:00', 'Zeitraum heute');
+    final (f, t) = parseDayRange('Montag', 1, now);
+    check(f == DateTime(2026, 11, 23) && t == DateTime(2026, 11, 24), 'Wochentag → nächster Montag');
+    check(normalizePhone('0664 123', '43') == '43664123' && normalizePhone('+49 30 1', '43') == '49301', 'Nummern normalisieren');
+    dev.allow = false;
+    r = await FileRenameTool(dev).run({'path': '/Users/c/Docs/a.pdf', 'new_name': 'Rechnung.pdf'}, ctx);
+    check(r.contains('abgelehnt') && !dev.log.last.startsWith('rename'), 'Umbenennen nur nach Bestätigung');
+    dev.allow = true;
+    r = await FileMoveTool(dev).run({'path': '/Users/c/Docs/a.pdf', 'folder': '/Users/c/Docs/Rechnungen'}, ctx);
+    check(dev.log.last == 'move:/Users/c/Docs/a.pdf>/Users/c/Docs/Rechnungen', 'Verschieben nach Bestätigung');
+  });
+
   await group('Denk-Text und Marker entfernen', () async {
     check(cleanModelText('15 % von 2.340 € ist 351 €.<channel|>351 €') == '351 €', 'Gemma 4: nur Text nach <channel|>');
     check(cleanModelText('<|channel>thought\nIch überlege …<channel|>Hallo!') == 'Hallo!', 'Gemma 4: Gedankenblock');
@@ -1072,4 +1152,46 @@ class _MapSource implements SyncSource {
       data[key] = json;
     }
   }
+}
+
+class _FakeDevice implements DeviceActions {
+  final log = <String>[];
+  bool allow = true;
+  String _d(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  @override
+  String get countryCode => '43';
+  @override
+  Future<List<ContactInfo>> contacts(String q) async => [
+        ContactInfo('Anna Berger', ['0664 1234567'], ['anna@example.com']),
+        ContactInfo('Max Muster', ['01 555'], []),
+        ContactInfo('Max Mayer', ['0699 1'], []),
+      ].where((c) => c.name.toLowerCase().contains(q.toLowerCase())).toList();
+  @override
+  Future<void> composeEmail(String to, String subject, String body) async => log.add('mail:$to|$subject|$body');
+  @override
+  Future<void> whatsapp(String phone, String text) async => log.add('wa:$phone|$text');
+  @override
+  Future<void> dial(String number) async => log.add('dial:$number');
+  @override
+  Future<void> calendarInsert(CalendarEvent e) async => log.add('cal:${e.title}|${_d(e.begin)}|${_d(e.end)}|${e.allDay}');
+  @override
+  Future<List<CalendarEvent>> calendarList(DateTime from, DateTime to) async {
+    log.add('list:${_d(from)}-${_d(to)}');
+    return [CalendarEvent('Team-Meeting', DateTime(2026, 11, 20, 9), DateTime(2026, 11, 20, 10), location: 'Büro')];
+  }
+  @override
+  Future<List<FileHit>> fileSearch(String q, String ext) async => [];
+  @override
+  Future<String> fileRename(String path, String n) async {
+    log.add('rename:$path>$n');
+    return n;
+  }
+  @override
+  Future<String> fileMove(String path, String folder) async {
+    log.add('move:$path>$folder');
+    return folder;
+  }
+  @override
+  Future<bool> confirm(String title, String detail) async => allow;
 }

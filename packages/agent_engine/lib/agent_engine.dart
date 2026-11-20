@@ -10,6 +10,8 @@ export 'src/agent/mcp.dart';
 export 'src/agent/grammar.dart';
 export 'src/agent/memory_tools.dart';
 export 'src/agent/network_tools.dart';
+export 'src/agent/info_tools.dart';
+export 'src/agent/device_tools.dart';
 export 'src/agent/tool.dart';
 export 'src/catalog.dart';
 export 'src/device_profile.dart';

@@ -709,9 +709,52 @@ class _InputBar extends StatefulWidget {
 class _InputBarState extends State<_InputBar> {
   final _ctrl = TextEditingController();
   late final _focus = FocusNode(onKeyEvent: _onKey);
+  ValueNotifier<String?>? _pending;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final p = AppScope.read(context).pendingInput;
+    if (!identical(p, _pending)) {
+      _pending?.removeListener(_takePending);
+      _pending = p..addListener(_takePending);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _takePending());
+    }
+  }
+
+  /// Text aus „Teilen an Junels“ ins Eingabefeld übernehmen.
+  void _takePending() {
+    final t = _pending?.value;
+    if (t == null || !mounted) return;
+    _pending!.value = null;
+    final existing = _ctrl.text.trim();
+    _ctrl.text = existing.isEmpty ? t : '$existing\n$t';
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+    _focus.requestFocus();
+  }
+
+  Future<void> _photo() async {
+    final app = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final path = await app.deviceBridge.takePhoto();
+      if (path == null) return;
+      final err = await app.addAttachment(path, path.split('/').last);
+      if (err != null) messenger.showSnackBar(SnackBar(content: Text(err)));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Kamera: $e')));
+    }
+  }
+
+  void _useSuggestion(String text) {
+    _ctrl.text = text;
+    _ctrl.selection = TextSelection.collapsed(offset: text.length);
+    _focus.requestFocus();
+  }
 
   @override
   void dispose() {
+    _pending?.removeListener(_takePending);
     _ctrl.dispose();
     _focus.dispose();
     super.dispose();
@@ -832,6 +875,28 @@ class _InputBarState extends State<_InputBar> {
                         ]),
                       ),
                     ),
+                  if (app.attachments.any((a) => isImageFile(a.name)) && !app.running)
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _ctrl,
+                      builder: (context, v, _) => v.text.trim().isNotEmpty
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Wrap(spacing: 6, runSpacing: 4, children: [
+                                for (final (label, text) in const [
+                                  ('Zusammenfassen', 'Was steht auf dem Bild? Fasse es kurz zusammen.'),
+                                  ('Text abschreiben', 'Schreib den Text auf dem Bild vollständig ab.'),
+                                  ('Termin anlegen', 'Lies Datum, Uhrzeit, Ort und Titel vom Bild und trag den Termin in meinen Kalender ein.'),
+                                  ('Kassenbon', 'Lies den Kassenbon: Geschäft, Datum, Positionen und Gesamtbetrag als Tabelle.'),
+                                ])
+                                  ActionChip(
+                                    avatar: const Icon(Icons.auto_awesome, size: 16),
+                                    label: Text(label),
+                                    onPressed: () => _useSuggestion(text),
+                                  ),
+                              ]),
+                            ),
+                    ),
                   if (app.attachments.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
@@ -855,11 +920,29 @@ class _InputBarState extends State<_InputBar> {
                     ),
                   LayoutBuilder(builder: (context, box) {
                     final tools = <Widget>[
-                      IconButton(
-                        tooltip: 'Datei anhängen (PDF, Bilder, TXT, MD, CSV, JSON)',
-                        icon: const Icon(Icons.attach_file),
-                        onPressed: app.running ? null : _attach,
-                      ),
+                      if (Platform.isAndroid)
+                        PopupMenuButton<String>(
+                          tooltip: 'Anhängen',
+                          icon: const Icon(Icons.attach_file),
+                          enabled: !app.running,
+                          onSelected: (v) => v == 'photo' ? _photo() : _attach(),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'photo',
+                              child: ListTile(dense: true, leading: Icon(Icons.photo_camera_outlined), title: Text('Foto aufnehmen')),
+                            ),
+                            PopupMenuItem(
+                              value: 'file',
+                              child: ListTile(dense: true, leading: Icon(Icons.attach_file), title: Text('Datei oder Bild wählen')),
+                            ),
+                          ],
+                        )
+                      else
+                        IconButton(
+                          tooltip: 'Datei anhängen (PDF, Bilder, TXT, MD, CSV, JSON)',
+                          icon: const Icon(Icons.attach_file),
+                          onPressed: app.running ? null : _attach,
+                        ),
                       PopupMenuButton<String>(
                         tooltip: 'Prompts & Vorlagen',
                         icon: const Icon(Icons.bolt_outlined),

@@ -10,6 +10,17 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.14.0', [
+    'E-Mail und WhatsApp vorbereiten, Anrufen – mit Empfängern aus dem Adressbuch; du sendest bzw. rufst selbst',
+    'Kalender: Termine abfragen und eintragen',
+    'Wetter (Open-Meteo) und Nachrichten (ORF, Der Standard, tagesschau, futurezone, heise, Golem) als feste Werkzeuge',
+    'Morgen-Übersicht: Termine, Wetter und News jeden Morgen als Push-Nachricht',
+    'Teilen an Junels aus jeder App (Android) bzw. Dateien aufs Dock-Symbol ziehen (Mac)',
+    'Schnellstart: Knöpfe auf dem Startbildschirm, App-Verknüpfungen bzw. Dock-Menü',
+    'Fotos aufnehmen und auswerten: zusammenfassen, abschreiben, Termin anlegen, Kassenbon',
+    'Ordner überwachen: neue PDFs automatisch in die Wissensbasis',
+    'Mac: Dateien in freigegebenen Ordnern suchen, umbenennen und verschieben – jeweils mit Rückfrage',
+  ]),
   ('1.13.1', [
     'Kein „<channel|>“ und kein Gedankentext mehr in Antworten (Gemma 4 denkt nicht mehr laut nach – auch schneller)',
     'Internet-Freigabe: Knöpfe nebeneinander („Nein / Einmal / Ganzer Chat“)',

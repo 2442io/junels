@@ -321,6 +321,11 @@ class AppSettings {
     this.voicePauseMs = 1200,
     this.voiceNearField = true,
     this.voiceSmartVad = true,
+    this.homeCity = '',
+    this.countryCode = '43',
+    List<Map<String, String>>? watchFolders,
+    List<Map<String, String>>? grantedFolders,
+    this.lastWatchScan = 0,
     this.systemCheckSeen = false,
     Map<String, String>? installed,
   })  : enabledTools = enabledTools ??
@@ -330,8 +335,11 @@ class AppSettings {
               'create_document', 'create_presentation', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
+              ...AppSettings.deviceTools,
             },
-        installed = installed ?? {};
+        installed = installed ?? {},
+        watchFolders = watchFolders ?? [],
+        grantedFolders = grantedFolders ?? [];
 
   int contextSize;
 
@@ -353,6 +361,11 @@ class AppSettings {
   int voicePauseMs; // Gesprächsmodus: so lange Pause beendet die Äußerung
   bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
   bool voiceSmartVad; // Gesprächsmodus: Silero-Spracherkennung statt nur Lautstärke
+  String homeCity; // Heimatort für Wetter und Morgen-Übersicht
+  String countryCode; // Landesvorwahl für WhatsApp (ohne +)
+  List<Map<String, String>> watchFolders; // überwachte Ordner → Wissensbasis {id, name}
+  List<Map<String, String>> grantedFolders; // Mac: freigegebene Ordner für Dateihilfe {id, name, path}
+  int lastWatchScan;
   bool systemCheckSeen;
 
   /// Installierte Sprach-Modelle: Katalog-ID → Pfad (Datei oder Ordner)
@@ -375,6 +388,11 @@ class AppSettings {
         'voicePauseMs': voicePauseMs,
         'voiceNearField': voiceNearField,
         'voiceSmartVad': voiceSmartVad,
+        'homeCity': homeCity,
+        'countryCode': countryCode,
+        'watchFolders': watchFolders,
+        'grantedFolders': grantedFolders,
+        'lastWatchScan': lastWatchScan,
         'systemCheckSeen': systemCheckSeen,
         'installed': installed,
         'toolsVersion': toolsVersion,
@@ -397,11 +415,17 @@ class AppSettings {
         voicePauseMs: (j['voicePauseMs'] as num?)?.toInt() ?? 1200,
         voiceNearField: j['voiceNearField'] as bool? ?? true,
         voiceSmartVad: j['voiceSmartVad'] as bool? ?? true,
+        homeCity: j['homeCity'] as String? ?? '',
+        countryCode: j['countryCode'] as String? ?? '43',
+        watchFolders: [for (final m in (j['watchFolders'] as List? ?? const [])) (m as Map).cast<String, String>()],
+        grantedFolders: [for (final m in (j['grantedFolders'] as List? ?? const [])) (m as Map).cast<String, String>()],
+        lastWatchScan: (j['lastWatchScan'] as num?)?.toInt() ?? 0,
         systemCheckSeen: j['systemCheckSeen'] as bool? ?? false,
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 6;
+  static const toolsVersion = 7;
+  static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
   void _migrateTools(int from) {
@@ -412,6 +436,7 @@ class AppSettings {
     }
     if (from < 5) enabledTools.add('send_notification');
     if (from < 6) enabledTools.add('save_prompt');
+    if (from < 7) enabledTools.addAll(deviceTools);
   }
 }
 

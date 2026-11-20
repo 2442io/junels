@@ -20,15 +20,34 @@ class MainActivity : FlutterActivity() {
     }
 
     private var launchConversation: String? = null
+    private var launchAction: String? = null
+    private var launchShared: Map<String, Any>? = null
+    private var device: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         launchConversation = intent?.getStringExtra("conversation")
+        launchAction = intent?.getStringExtra("junels_action")
+        launchShared = JunelsDevice.readShared(applicationContext, intent)
         super.onCreate(savedInstanceState)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra("conversation")?.let { channel?.invokeMethod("openConversation", mapOf("id" to it)) }
+        intent.getStringExtra("junels_action")?.let { device?.invokeMethod("launchAction", mapOf("id" to it)) }
+        JunelsDevice.readShared(applicationContext, intent)?.let { device?.invokeMethod("shared", it) }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!JunelsDevice.onActivityResult(applicationContext, requestCode, resultCode, data)) {
+            @Suppress("DEPRECATION")
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == JunelsDevice.REQ_PERMISSION) JunelsDevice.onPermissionResult()
     }
 
     override fun onDestroy() {
@@ -60,6 +79,20 @@ class MainActivity : FlutterActivity() {
                     result.error("background", e.message, null)
                 }
             }
+
+        // Kanal "junels/device": E-Mail, WhatsApp, Kalender, Kontakte, Kamera, Teilen, Schnellstart
+        val dev = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "junels/device")
+        device = dev
+        dev.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "takeLaunch" -> {
+                    result.success(mapOf("action" to launchAction, "shared" to launchShared))
+                    launchAction = null
+                    launchShared = null
+                }
+                else -> JunelsDevice.handle(this, this, call, result)
+            }
+        }
 
         // Kanal "junels/files": PDF-Text lesen, Dateien öffnen und teilen
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "junels/files")

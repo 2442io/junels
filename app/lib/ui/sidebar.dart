@@ -2,6 +2,7 @@
 
 import '../version.dart';
 import 'info_pages.dart';
+import 'device_page.dart';
 import 'sync_page.dart';
 import 'update_page.dart';
 import 'dart:io';
@@ -49,6 +50,15 @@ class Sidebar extends StatelessWidget {
             subtitle: Text('${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => openKnowledge(context),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.devices_other),
+            title: const Text('Gerät & Automatik'),
+            subtitle: const Text('Heimatort, Morgen-Übersicht, Schnellstart, Ordner'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => openDevicePage(context),
           ),
         ),
         Card(
@@ -148,6 +158,7 @@ class _PromptSection extends StatelessWidget {
           child: Text('Prompts speichern, per Klick starten oder täglich automatisch ausführen lassen.',
               style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
         ),
+      morningBriefingTile(context, app),
       for (final p in app.prompts)
         ListTile(
           dense: true,

@@ -9,6 +9,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'chat_view.dart';
 import 'inspector.dart';
+import 'prompt_editor.dart';
 import 'internet_menu.dart';
 import 'conversation_page.dart';
 import 'sidebar.dart';
@@ -67,10 +68,45 @@ class _HomeShellState extends State<HomeShell> {
     if (_firstRunHandled) return;
     _firstRunHandled = true;
     app.consentHandler = (purpose) => askNetworkConsent(context, purpose);
+    app.deviceBridge.confirmHandler = (title, detail) => _confirm(title, detail);
+    app.pendingLaunch.addListener(() => _launch(app));
+    if (app.pendingLaunch.value != null) WidgetsBinding.instance.addPostFrameCallback((_) => _launch(app));
     if (app.needsSystemCheck) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) openSystemCheck(context);
       });
+    }
+  }
+
+  Future<bool> _confirm(String title, String detail) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.help_outline),
+        title: Text(title),
+        content: Text(detail),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Nein')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ja, ausführen')),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  /// Schnellstart vom Startbildschirm / Dock-Menü.
+  void _launch(AppController app) {
+    final a = app.pendingLaunch.value;
+    if (a == null || !mounted) return;
+    app.pendingLaunch.value = null;
+    if (a == 'conversation') {
+      openConversation(context);
+    } else if (a == 'newchat') {
+      app.newConversation();
+    } else if (a.startsWith('prompt:')) {
+      final p = app.prompts.where((x) => x.id == a.substring(7)).firstOrNull;
+      if (p != null) runSavedPrompt(context, app, p);
     }
   }
 

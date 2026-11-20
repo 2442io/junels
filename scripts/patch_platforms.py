@@ -69,6 +69,8 @@ def patch_android():
             ("android.permission.USE_EXACT_ALARM", "Geplante Prompts pünktlich starten"),
             ("android.permission.RECEIVE_BOOT_COMPLETED", "Geplante Prompts nach Neustart wieder einplanen"),
             ("android.permission.REQUEST_INSTALL_PACKAGES", "Updates direkt in der App installieren"),
+            ("android.permission.READ_CALENDAR", "Termine vorlesen (nur auf Nachfrage)"),
+            ("android.permission.READ_CONTACTS", "Empfänger für E-Mail, WhatsApp und Anrufe finden"),
         ]
         for name, why in perms:
             if f'android:name="{name}"' not in s:
@@ -98,6 +100,25 @@ def patch_android():
                           '                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n'
                           '            </intent-filter>\n'
                           '        </receiver>\n    </application>', 1)
+        if "android.intent.action.SEND" not in s:
+            # Teilen an Junels: Text, Links, Fotos, PDFs aus anderen Apps
+            share = ('''
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>''')
+            m = re.search(r'(<activity[^>]*android:name="\.MainActivity".*?</intent-filter>)', s, re.S)
+            if m:
+                s = s[:m.end()] + share + s[m.end():]
         if ".AgentService" not in s:
             s = s.replace("</application>",
                           '    <service android:name=".AgentService" android:exported="false"\n'
@@ -118,7 +139,7 @@ def patch_android():
     src = ROOT / "scripts/android"
     for kt in sorted(android.glob("app/src/main/kotlin/**/MainActivity.kt")):
         pkg = re.search(r"^package\s+([\w.]+)", kt.read_text(), re.M).group(1)
-        for name in ("MainActivity.kt", "AgentService.kt", "JunelsNative.kt", "AlarmReceiver.kt"):
+        for name in ("MainActivity.kt", "AgentService.kt", "JunelsNative.kt", "AlarmReceiver.kt", "JunelsDevice.kt"):
             (kt.parent / name).write_text((src / name).read_text().replace("__PACKAGE__", pkg))
         log(f"Hintergrunddienst eingesetzt ({pkg})")
 
@@ -241,6 +262,14 @@ def patch_macos():
     return true
   }
 ''' + s[i:]
+        if "applicationDockMenu" not in s:
+            i = s.rfind("}")
+            s = s[:i] + '''
+  // Dock-Menü: Gespräch starten, neuer Chat, gespeicherte Prompts
+  override func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+    return JunelsDevice.dockMenu()
+  }
+''' + s[i:]
         if "_exit(0)" in s:
             return s
         hook = '''
@@ -252,6 +281,14 @@ def patch_macos():
     NotificationCenter.default.addObserver(
       forName: NSApplication.willTerminateNotification, object: nil, queue: nil
     ) { _ in Darwin._exit(0) }
+    // Dateien aufs Dock-Symbol ziehen / „Öffnen mit“ → an den Agenten übergeben
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.willFinishLaunchingNotification, object: nil, queue: nil
+    ) { _ in
+      NSAppleEventManager.shared().setEventHandler(
+        DockTarget.shared, andSelector: #selector(DockTarget.openDocuments(_:withReplyEvent:)),
+        forEventClass: AEEventClass(0x6165_7674), andEventID: AEEventID(0x6F64_6F63))  // 'aevt' / 'odoc'
+    }
   }
 '''
         i = s.rfind("}")
@@ -264,9 +301,11 @@ def patch_macos():
             return s
         s = s.replace("import FlutterMacOS", "import FlutterMacOS\nimport PDFKit", 1)
         s = re.sub(r"(RegisterGeneratedPlugins\(registry: flutterViewController\))",
-                   r"\1\n    JunelsFiles.register(flutterViewController)\n    self.isReleasedWhenClosed = false", s, count=1)
-        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications", 1)
-        return s + (ROOT / "scripts/macos/JunelsFiles.swift").read_text()
+                   r"\1\n    JunelsFiles.register(flutterViewController)\n    JunelsDevice.register(flutterViewController)"
+                   r"\n    self.isReleasedWhenClosed = false", s, count=1)
+        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications\nimport EventKit\nimport Contacts", 1)
+        return (s + (ROOT / "scripts/macos/JunelsFiles.swift").read_text()
+                + (ROOT / "scripts/macos/JunelsDevice.swift").read_text())
 
     edit(mac / "Runner/MainFlutterWindow.swift", main_window)
     def common(d):
@@ -277,6 +316,10 @@ def patch_macos():
         d["com.apple.security.device.audio-input"] = True
         # eingehende Verbindungen: Abgleich mit dem Handy im WLAN (nur wenn in der App eingeschaltet)
         d["com.apple.security.network.server"] = True
+        # Kalender und Kontakte (nur auf Nachfrage), freigegebene Ordner merken
+        d["com.apple.security.personal-information.calendars"] = True
+        d["com.apple.security.personal-information.addressbook"] = True
+        d["com.apple.security.files.bookmarks.app-scope"] = True
 
     def release(d):
         common(d)
@@ -287,6 +330,16 @@ def patch_macos():
     def mac_info(d):
         d["NSMicrophoneUsageDescription"] = "Für die Spracheingabe. Die Erkennung läuft lokal auf dem Mac."
         d["NSLocalNetworkUsageDescription"] = "Für den Abgleich von Chats und Gedächtnis mit deinem Handy im WLAN."
+        d["NSCalendarsUsageDescription"] = "Damit der Agent dir sagen kann, welche Termine du hast."
+        d["NSCalendarsFullAccessUsageDescription"] = "Damit der Agent dir sagen kann, welche Termine du hast."
+        d["NSContactsUsageDescription"] = "Damit der Agent Empfänger für E-Mails, WhatsApp und Anrufe findet."
+        # Dateien aufs Dock-Symbol ziehen
+        d["CFBundleDocumentTypes"] = [{
+            "CFBundleTypeName": "Dokumente für Junels",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["com.adobe.pdf", "public.image", "public.plain-text", "net.daringfireball.markdown"],
+        }]
 
     edit_plist(mac / "Runner/Info.plist", mac_info)
     edit(mac / "Runner/Configs/AppInfo.xcconfig",

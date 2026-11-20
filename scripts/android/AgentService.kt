@@ -90,6 +90,10 @@ class AgentService : Service() {
                     else -> if (!JunelsNative.handle(applicationContext, call, result)) result.notImplemented()
                 }
             }
+            // Kalender/Kontakte auch für geplante Prompts (z. B. Morgen-Übersicht)
+            MethodChannel(engine.dartExecutor.binaryMessenger, "junels/device").setMethodCallHandler { call, result ->
+                JunelsDevice.handle(applicationContext, null, call, result)
+            }
             val loader = FlutterInjector.instance().flutterLoader()
             engine.dartExecutor.executeDartEntrypoint(
                 DartExecutor.DartEntrypoint(loader.findAppBundlePath(), "backgroundMain"))
