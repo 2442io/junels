@@ -1,0 +1,41 @@
+name: Stimmen
+
+# Baut zusätzliche Stimmenpakete (Kokoro) und legt sie im Release „stimmen“ ab.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/voices/**', '.github/workflows/voices.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  kokoro-martin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Werkzeuge
+        run: pip install onnx numpy huggingface_hub sherpa-onnx==1.13.8 faster-whisper
+      - name: Paket bauen
+        run: python scripts/voices/build_kokoro_martin.py kokoro-de-martin
+      - name: Prüfen (Sprechen und mit Whisper zurückerkennen)
+        run: python scripts/voices/test_voice.py kokoro-de-martin
+      - name: Packen
+        run: |
+          tar -cjf kokoro-de-martin.tar.bz2 kokoro-de-martin
+          ls -la kokoro-de-martin.tar.bz2
+      - name: Hörprobe aufheben
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoerprobe
+          path: probe.wav
+      - name: Veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view stimmen >/dev/null 2>&1 || gh release create stimmen --title "Stimmen" --notes "Zusätzliche Stimmen für Junels (Kokoro)." --prerelease
+          gh release upload stimmen kokoro-de-martin.tar.bz2 --clobber
