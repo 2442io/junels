@@ -8,7 +8,15 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Reine Stimmen-Pakete brauchen keinen App-Build
+    paths-ignore: ['scripts/voices/**', '.github/workflows/voices.yml']
   workflow_dispatch:
+
+# Ein neuerer Push bricht ältere Builds ab – sonst könnte ein älterer, später fertiger
+# Build die neueren Dateien im Release „aktuell“ überschreiben.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
