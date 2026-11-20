@@ -10,6 +10,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.20.3', [
+    'Gespräch: Wiederholt der Agent deine Frage oder denkt laut („Der Nutzer möchte …“, „Du fragst …“), wird das nicht vorgelesen – nur die Antwort',
+  ]),
   ('1.20.2', [
     'Browser war nach dem Update bei bestehenden Installationen ausgeschaltet – jetzt aktiv',
     '„Suche auf amazon.de nach …“ öffnet direkt die Suche der Seite im Browser, ohne Umweg über das Modell',

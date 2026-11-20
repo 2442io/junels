@@ -1382,6 +1382,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
           'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
           'Wiederhole die Frage nicht und fasse sie nicht zusammen – beginne sofort mit der Antwort. '
+          'Denke nicht laut: kein Vorspann wie „Der Nutzer möchte …“, „Du fragst …“ oder „Okay, …“. '
           'Du heißt ${settings.agentName}. '
           'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
           'wo sie unterbrochen wurde.');
@@ -1581,7 +1582,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // „brotdosen die spülmaschinenfest sind“ → „brotdosen spülmaschinenfest“
     String q(String x) => x
         .replaceAll(RegExp(r'\b(die|welche|der|das|einen?|eine)\b\s*', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'\s+(sind|ist|sein sollen|sein soll|haben)\s*\$', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+(sind|ist|sein sollen|sein soll|haben)\s*$', caseSensitive: false), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     if (a != null) return (a.group(1)!.toLowerCase(), q(a.group(2)!));
