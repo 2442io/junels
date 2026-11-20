@@ -185,6 +185,30 @@ dependencies {
 
     edit(android / "app/build.gradle", gradle_groovy)
 
+    # Lint der Plugins beim Release-Build abschalten (stürzt bei webview_flutter_android ab)
+    def root_kts(s):
+        if "lintVital" not in s:
+            s += '''
+// Release-Lint der Plugins überspringen (Lint-Absturz in generiertem Plugin-Code)
+subprojects {
+    tasks.matching { it.name.startsWith("lintVital") }.configureEach { enabled = false }
+}
+'''
+        return s
+
+    def root_groovy(s):
+        if "lintVital" not in s:
+            s += '''
+// Release-Lint der Plugins überspringen (Lint-Absturz in generiertem Plugin-Code)
+subprojects {
+    tasks.matching { it.name.startsWith("lintVital") }.configureEach { enabled = false }
+}
+'''
+        return s
+
+    edit(android / "build.gradle.kts", root_kts)
+    edit(android / "build.gradle", root_groovy)
+
     # AGP-Version des Plugins an die App angleichen
     agp = None
     for name in ("settings.gradle.kts", "settings.gradle"):
