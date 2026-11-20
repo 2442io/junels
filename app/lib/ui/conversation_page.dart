@@ -75,7 +75,7 @@ class _ConversationPageState extends State<ConversationPage> {
             padding: const EdgeInsets.only(right: 12),
             child: Center(
               child: Text(
-                app.ttsVoicePath != null ? 'Stimme: Piper' : 'Stimme: System',
+                app.ttsVoicePath == null ? 'Stimme: System' : (app.settings.ttsVoiceId ?? '').startsWith('kokoro') ? 'Stimme: Kokoro' : 'Stimme: Piper',
                 style: t.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ),

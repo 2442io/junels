@@ -233,6 +233,19 @@ const modelCatalog = <CatalogEntry>[
     isArchive: true,
   ),
   CatalogEntry(
+    id: 'kokoro-de-martin',
+    kind: ModelKind.tts,
+    name: 'Kokoro Deutsch – Martin (männlich)',
+    description: 'Sehr natürliche deutsche Stimme (Kokoro-82M, Fine-Tune „Martin“). Größer und etwas langsamer '
+        'als Piper – am Mac und auf schnellen Handys die schönste Stimme.',
+    url: 'https://github.com/2442io/junels/releases/download/stimmen/kokoro-de-martin.tar.bz2',
+    fileName: 'kokoro-de-martin.tar.bz2',
+    sizeBytes: 330 * _mb,
+    minClass: DeviceClass.m,
+    language: 'de',
+    isArchive: true,
+  ),
+  CatalogEntry(
     id: 'piper-de-kerstin',
     kind: ModelKind.tts,
     name: 'Piper Deutsch – Kerstin (weiblich)',

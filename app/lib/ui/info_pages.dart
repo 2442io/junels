@@ -10,6 +10,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.20.1', [
+    'Neue Stimme: Kokoro Deutsch – Martin (sehr natürlich, ca. 316 MB) – im Systemcheck unter Stimmen laden und auswählen',
+  ]),
   ('1.20.0', [
     'Gespräch: Name für den Agenten frei wählbar (Einstellungen im Gespräch); „Nur auf den Namen hören“ – Geräusche lösen nichts mehr aus',
     'Kurz nach einer Antwort geht eine Nachfrage auch ohne Namen; unterbrechen mit dem Namen oder Tipp auf den Kreis',

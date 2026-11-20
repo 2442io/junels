@@ -684,15 +684,29 @@ void _ttsMain(SendPort out) {
             });
             return;
           }
+          // Kokoro-Stimmen haben eine voices.bin (Stil-Vektoren), Piper nicht
+          final voices = files.where((f) => f.path.endsWith('voices.bin')).firstOrNull;
+          final threads = math.max(2, math.min(4, Platform.numberOfProcessors ~/ 2));
           tts = sherpa.OfflineTts(sherpa.OfflineTtsConfig(
-            model: sherpa.OfflineTtsModelConfig(
-              vits: sherpa.OfflineTtsVitsModelConfig(
-                model: model.path,
-                tokens: tokens.path,
-                dataDir: espeak.path,
-              ),
-              numThreads: 2,
-            ),
+            model: voices != null
+                ? sherpa.OfflineTtsModelConfig(
+                    kokoro: sherpa.OfflineTtsKokoroModelConfig(
+                      model: model.path,
+                      voices: voices.path,
+                      tokens: tokens.path,
+                      dataDir: espeak.path,
+                      lang: (m['lang'] as String?) ?? 'de',
+                    ),
+                    numThreads: threads,
+                  )
+                : sherpa.OfflineTtsModelConfig(
+                    vits: sherpa.OfflineTtsVitsModelConfig(
+                      model: model.path,
+                      tokens: tokens.path,
+                      dataDir: espeak.path,
+                    ),
+                    numThreads: 2,
+                  ),
           ));
           if (tts!.ptr.address == 0) {
             tts = null;
