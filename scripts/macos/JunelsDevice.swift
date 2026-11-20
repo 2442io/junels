@@ -56,7 +56,7 @@ enum JunelsDevice {
         let allDay = a["allDay"] as? Bool ?? false
         func esc(_ s: String) -> String {
           s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: ",", with: "\\,").replacingOccurrences(of: ";", with: "\;")
+            .replacingOccurrences(of: ",", with: "\\,").replacingOccurrences(of: ";", with: "\\;")
         }
         var ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Junels//DE\r\nBEGIN:VEVENT\r\n"
         ics += "UID:\(UUID().uuidString)@junels\r\nDTSTAMP:\(fmt.string(from: Date()))\r\n"
