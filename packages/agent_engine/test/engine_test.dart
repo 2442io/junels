@@ -276,7 +276,9 @@ Future<void> main() async {
     check(best(ModelKind.llm, xl) == 'gemma-4-26b-a4b', 'XL → Gemma 4 26B A4B');
     check(best(ModelKind.stt, xl) == 'whisper-turbo', 'XL → Whisper turbo voll');
     check(best(ModelKind.stt, s) == 'whisper-base', 'S → Whisper base');
-    check(best(ModelKind.stt, m) == 'whisper-turbo-q5', 'M → Whisper turbo q5');
+    check(best(ModelKind.stt, m) == 'whisper-turbo-q5', 'M Desktop → Whisper turbo q5');
+    final phone12 = DeviceProfile.detect(totalMemoryOverride: 12 * gb, cpuOverride: 8, mobileOverride: true);
+    check(best(ModelKind.stt, phone12) == 'whisper-small', 'Handy → Whisper small (schnell genug für Gespräche)');
     // Rechner (Linux/macOS) gilt als Desktop → volle Präzision
     check(best(ModelKind.stt, l) == 'whisper-turbo', 'L Desktop → Whisper turbo voll');
     check(best(ModelKind.tts, m) == 'piper-de-thorsten', 'Stimme → Thorsten');

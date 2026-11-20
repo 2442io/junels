@@ -10,6 +10,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.15.1', [
+    'Gespräch: Spracherkennung rechnet nur noch die tatsächliche Aufnahmelänge statt immer 30 s (bei kurzen Sätzen 3–5× schneller)',
+    'Am Handy wird für Gespräche Whisper small empfohlen (turbo ist auf dem Handy-Prozessor zu langsam)',
+    'Erste Worte früher: Vorlesen startet schon am ersten Komma eines langen Satzes',
+    'Gesprächsverlauf so gekürzt, dass der vorgerechnete Teil von Runde zu Runde erhalten bleibt',
+    'Tipps in der Zeitanzeige, wenn Spracherkennung oder Antwort zu langsam sind',
+  ]),
   ('1.15.0', [
     'Menü neu geordnet: oben Modell-Status mit „Neuer Chat“ und „Gespräch“',
     'Täglich gebraucht zuerst: Chats (die letzten 8, ältere aufklappbar) und Meine Prompts',

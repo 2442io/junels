@@ -52,7 +52,17 @@ class SentenceStreamer {
     }
     // nur bis zum letzten Satzende ausgeben (mind. 25 Zeichen, damit kurze Fragmente warten)
     final m = RegExp(r'[.!?;:](?=\s)').allMatches(rest).toList();
-    if (m.isEmpty) return const [];
+    if (m.isEmpty) {
+      // Erster Satz noch nicht fertig, aber lang genug: schon am Komma starten (schnellere erste Worte)
+      if (_consumed == 0 && rest.length >= 40) {
+        final c = RegExp(r',(?=\s)').allMatches(rest).where((x) => x.end >= 30).firstOrNull;
+        if (c != null) {
+          _consumed += c.end;
+          return splitForSpeech(rest.substring(0, c.end));
+        }
+      }
+      return const [];
+    }
     final end = m.last.end;
     if (end < 25) return const [];
     _consumed += end;

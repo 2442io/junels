@@ -74,6 +74,14 @@ int32_t ae_stt_transcribe(ae_stt * s, const float * pcm, int32_t n_samples, cons
     p.print_timestamps = false;
     p.suppress_blank   = true;
     p.no_timestamps    = true;
+    p.temperature_inc  = 0.0f;   // kein mehrfaches Neu-Dekodieren (schneller)
+    // Kurze Aufnahmen: Encoder nur über die tatsächliche Länge statt immer 30 s rechnen
+    // (bis zu 5× schneller). 1500 Positionen = 30 s → 50 pro Sekunde, plus Reserve.
+    if (n_samples < 16000 * 28) {
+        int ctx = (int) ((int64_t) n_samples * 50 / 16000) + 128;
+        if (ctx < 384) ctx = 384;
+        if (ctx < 1500) p.audio_ctx = ctx;
+    }
     p.abort_callback   = stt_abort;
     p.abort_callback_user_data = s;
 

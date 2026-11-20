@@ -188,7 +188,7 @@ const modelCatalog = <CatalogEntry>[
     id: 'whisper-small',
     kind: ModelKind.stt,
     name: 'Whisper small (q5_1)',
-    description: 'Gute Genauigkeit bei moderatem Tempo.',
+    description: 'Gute Genauigkeit bei moderatem Tempo – die beste Wahl für Gespräche am Handy.',
     url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin',
     fileName: 'ggml-small-q5_1.bin',
     sizeBytes: 181 * _mb,
@@ -198,7 +198,7 @@ const modelCatalog = <CatalogEntry>[
     id: 'whisper-turbo-q5',
     kind: ModelKind.stt,
     name: 'Whisper large-v3-turbo (q5_0)',
-    description: 'Fast so genau wie large-v3, ein Drittel der Größe.',
+    description: 'Fast so genau wie large-v3, ein Drittel der Größe. Am Handy für Gespräche zu langsam.',
     url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin',
     fileName: 'ggml-large-v3-turbo-q5_0.bin',
     sizeBytes: 547 * _mb,
@@ -286,6 +286,10 @@ List<Recommendation> recommendFor(ModelKind kind, DeviceProfile device,
 
   // Empfehlung: Eintrag mit idealClass == Geräteklasse; passt der nicht in den
   // Arbeitsspeicher, die Empfehlung der nächstkleineren Klasse; sonst der größte passende
+  // Handy: für flüssige Gespräche Whisper small statt turbo (CPU-Encoder ist sonst zu langsam)
+  if (kind == ModelKind.stt && device.isMobile && device.deviceClass.index >= DeviceClass.m.index) {
+    best = entries.where((e) => e.id == 'whisper-small' && runs(e)).firstOrNull;
+  }
   for (var c = device.deviceClass.index; c >= 0 && best == null; c--) {
     for (final e in entries) {
       if (e.idealClass?.index == c && runs(e)) {

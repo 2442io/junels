@@ -61,6 +61,7 @@ class ConversationMode {
   static const _manualMaxSamples = 16000 * 120;
 
   final _streamer = SentenceStreamer();
+  bool _sttSlow = false;
   int _turn = 0; // erhöht sich bei jeder neuen Runde/Unterbrechung
   bool _speakingStarted = false;
   Future<void>? _turnFuture;
@@ -239,6 +240,7 @@ class ConversationMode {
     final sttMs = sw.elapsedMilliseconds;
     timing.value = 'Aufnahme ${_sec(audioMs)} · Erkennung ${_sec(sttMs)}';
     voiceLog('Erkannt (${_sec(audioMs)} Audio in ${_sec(sttMs)}): "$text"');
+    _sttSlow = sttMs > 3000;
     if (myTurn != _turn || !active) return;
     // Whisper halluziniert bei Stille gern solche Floskeln
     if (text.isEmpty || RegExp(r'^[\[(].*[\])]$').hasMatch(text) || _isFiller(text)) {
@@ -285,9 +287,11 @@ class ConversationMode {
       if (done) out.finish();
     });
     voiceLog('Antwort: erste Worte nach ${firstMs < 0 ? '–' : _sec(firstMs)}, fertig nach ${_sec(sw.elapsedMilliseconds)}');
-    if (firstMs > 8000) {
-      timing.value = '${timing.value}\nTipp: Für flüssige Gespräche ein kleineres Modell laden (z. B. Gemma 4 E2B).';
-    }
+    final tips = <String>[
+      if (_sttSlow) 'Spracherkennung langsam → im Systemcheck „Whisper small“ laden',
+      if (firstMs > 6000) 'Antwort langsam → kleineres Sprachmodell (z. B. Gemma 4 E2B)',
+    ];
+    if (tips.isNotEmpty) timing.value = '${timing.value}\nTipp: ${tips.join(' · ')}';
     if (myTurn != _turn) return;
     if (agentText.value.trim().isEmpty) {
       error.value = app.statusMessage ?? 'Keine Antwort erhalten – ist das Sprachmodell geladen?';

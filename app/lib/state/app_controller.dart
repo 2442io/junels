@@ -1849,8 +1849,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // kurze Nachfrage („wien“, „und morgen?“): Werkzeuge auch nach der vorigen Frage wählen
     final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
     final gateText = input.trim().split(RegExp(r'\s+')).length <= 5 ? '$prevUser $input' : input;
-    // Gesprächsmodus: nur die letzten Wechsel mitschicken (kurzer Prompt = schnelle Antwort)
-    if (voice && history.length > 8) history = history.sublist(history.length - 8);
+    // Gesprächsmodus: kurzer Verlauf. Der Anfang springt nur alle 10 Nachrichten weiter,
+    // damit der vorgerechnete Teil (Cache) von Runde zu Runde gleich bleibt.
+    if (voice) {
+      final start = history.length <= 12 ? 0 : ((history.length - 6) ~/ 10) * 10;
+      history = [
+        for (final m in history.sublist(start))
+          ChatMessage(m.role, m.content.length > 700 ? '${m.content.substring(0, 700)} …' : m.content),
+      ];
+    }
     var docs = List<Attachment>.of(attachments);
     var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
