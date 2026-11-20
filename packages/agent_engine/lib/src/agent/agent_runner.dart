@@ -163,6 +163,8 @@ class AgentRunner {
       b.writeln('\nRegeln:');
       b.writeln('- Nutze ein Tool nur, wenn es nötig ist. Einfache Fragen direkt mit final_answer beantworten.');
       b.writeln('- Nach jedem Tool-Aufruf erhältst du eine Beobachtung. Erfinde keine Ergebnisse.');
+      b.writeln('- Schlägt ein Tool fehl, nenne dem Nutzer den konkreten Grund (z. B. „Amazon blockiert automatische Abrufe“) '
+          'und probiere einen anderen Weg. Behaupte nie pauschal, du hättest keinen Zugriff.');
       b.writeln('- Rechne nie im Kopf, wenn calculator verfügbar ist.');
       b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt.');
       if (activeTools.any((t) => t.name == 'web_fetch' || t.name == 'web_search')) {

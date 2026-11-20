@@ -10,6 +10,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.16.0', [
+    'Neu: Suche direkt auf Webseiten (Amazon, Geizhals, Idealo, eBay, willhaben, Wikipedia … oder über das Suchfeld jeder Seite) – mit Preis, Bild und Link',
+    'Blockiert ein Shop (z. B. Amazon mit Captcha), sucht der Agent automatisch bei Geizhals/Idealo weiter',
+    'Websuche robuster: DuckDuckGo, DuckDuckGo Lite, Bing und Mojeek; Seiten werden wie mit einem Handy-Browser abgerufen',
+    'Der Agent nennt den konkreten Grund, wenn etwas nicht klappt, statt „kein Zugriff“',
+    'Einkaufs- und Suchanfragen („such mir Angebote …“) bekommen jetzt zuverlässig die Websuche',
+  ]),
   ('1.15.1', [
     'Gespräch: Spracherkennung rechnet nur noch die tatsächliche Aufnahmelänge statt immer 30 s (bei kurzen Sätzen 3–5× schneller)',
     'Am Handy wird für Gespräche Whisper small empfohlen (turbo ist auf dem Handy-Prozessor zu langsam)',

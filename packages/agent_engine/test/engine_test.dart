@@ -523,6 +523,53 @@ Future<void> main() async {
     check(s.spokenSoFar.endsWith('Mehr gibt es nicht'), 'gesprochener Text nachvollziehbar');
   });
 
+  await group('Suche auf Webseiten (Shops)', () async {
+    const amazon = '''<html><body>
+<div data-component-type="s-search-result" data-asin="A1"><a href="/dp/A1"><img class="s-image" src="https://m.media-amazon.com/1.jpg"></a>
+<h2><a href="/Brotkasten-XL/dp/A1"><span>Brotkasten XL aus Edelstahl, spülmaschinenfest</span></a></h2>
+<span class="a-price"><span class="a-offscreen">29,99&nbsp;€</span></span></div>
+<div data-component-type="s-search-result" data-asin="A2"><img class="s-image" src="https://m.media-amazon.com/2.jpg">
+<h2><a href="/Brotbox/dp/A2"><span>Brotbox Bambus für Familie mit Deckel</span></a></h2>
+<span class="a-price"><span class="a-offscreen">24,90 €</span></span></div>
+</body></html>''';
+    final items = extractPageItems(amazon, Uri.parse('https://www.amazon.de/s?k=brotdose'));
+    check(items.length == 2 && items[0].title.contains('Brotkasten XL') && items[0].summary.contains('29,99'),
+        'Amazon-Ergebnisse mit Preis (${items.map((i) => '${i.title}|${i.summary}').join(' / ')})');
+    check(items[0].link == 'https://www.amazon.de/Brotkasten-XL/dp/A1' && items[0].image.endsWith('1.jpg'), 'Link und Bild');
+
+    final urls = <String>[];
+    final tool = SiteSearchTool(fetcher: (u) async {
+      urls.add(u.toString());
+      if (u.host.contains('amazon')) return '<html>Geben Sie die unten angezeigten Zeichen ein api-services-support@amazon.com</html>'.isEmpty ? '' : throw ToolException('www.amazon.de: blockiert automatische Abrufe (Captcha)');
+      if (u.host.contains('geizhals')) {
+        return '<article><a href="/brotkasten-a1.html"><h3>Wesco Brotkasten Grandy</h3></a><span>ab € 59,90</span></article>'
+            '<article><a href="/brotbox-a2.html"><h3>Zassenhaus Brotbox Edelstahl</h3></a><span>ab € 34,99</span></article>'
+            '<article><a href="/a3.html"><h3>Emsa Brotkasten Fresh Box</h3></a><span>€ 19,99</span></article>';
+      }
+      return '';
+    });
+    final out = await tool.run({'site': 'amazon', 'query': 'brotdose spülmaschinenfest'}, ToolContext(requestNetwork: (_) async => true));
+    check(urls.first.startsWith('https://www.amazon.de/s?k=brotdose') && out.contains('blockiert') && out.contains('geizhals.at') &&
+        out.contains('Wesco Brotkasten') && out.contains('59,90'), 'Amazon blockiert → automatisch Geizhals ($out)');
+
+    // Unbekannte Seite: Suchfeld der Startseite finden
+    const home = '<html><form action="/suche" method="get"><input type="hidden" name="lang" value="de">'
+        '<input type="search" name="begriff" placeholder="Suchen"></form></html>';
+    final u = searchUrlFromForm(home, Uri.parse('https://www.beispiel.at/'), 'Brot dose');
+    check(u.toString() == 'https://www.beispiel.at/suche?lang=de&begriff=Brot+dose', 'Suchfeld erkannt ($u)');
+    check(searchUrlFromForm('<form method="post"><input name="q"></form>', Uri.parse('https://x.at/'), 'a') == null,
+        'POST-Formulare werden nicht benutzt');
+    check(normalizeSite('https://www.Geizhals.at/abc') == 'geizhals.at' && normalizeSite('amazon') == 'amazon.de', 'Seitennamen');
+
+    check(detectBlockPage('<div class="anomaly-modal">') != null && detectBlockPage('<h1>Hallo</h1>') == null, 'Bot-Sperre erkannt');
+    final bing = WebSearchTool.parseBing('<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?!&&u=a1aHR0cHM6Ly9leGFtcGxlLmNvbS9h&ntb=1">'
+        'Beispiel</a></h2><p>Kurztext</p></li>');
+    check(bing.length == 1 && bing.first.url == 'https://example.com/a' && bing.first.snippet == 'Kurztext', 'Bing-Treffer');
+    final ws = WebSearchTool(fetcher: (u) async => u.host.contains('duckduckgo') ? throw ToolException('Captcha') : '');
+    final r = await ws.run({'query': 'x'}, ToolContext(requestNetwork: (_) async => true));
+    check(r.contains('DuckDuckGo: ') && r.contains('Captcha') && r.contains('Grund'), 'Websuche nennt den Grund');
+  });
+
   await group('Wetter und Nachrichten', () async {
     final calls = <String>[];
     final weather = WeatherTool(

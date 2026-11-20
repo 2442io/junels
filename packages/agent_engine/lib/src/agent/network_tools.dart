@@ -25,7 +25,7 @@ class WebSearchTool extends AgentTool {
   @override
   String get name => 'web_search';
   @override
-  String get keywords => 'url web internet suche suchen google recherche news nachrichten aktuell heute neueste wetter preis';
+  String get keywords => 'url web internet suche suchen google recherche aktuell heute neueste preis angebot';
   @override
   String get title => 'Websuche';
   @override
@@ -41,22 +41,31 @@ class WebSearchTool extends AgentTool {
     if (q.isEmpty) throw ToolException('query ist leer');
     await ctx.ensureNetwork('Websuche nach „$q“');
     List<SearchHit> hits = [];
-    String? lastError;
+    final errors = <String>[];
+    var used = '';
     for (final engine in [
-      (Uri.https('html.duckduckgo.com', '/html/', {'q': q}), parseDuckDuckGo),
-      (Uri.https('www.mojeek.com', '/search', {'q': q}), parseMojeek),
+      ('DuckDuckGo', Uri.https('html.duckduckgo.com', '/html/', {'q': q, 'kl': 'de-de'}), parseDuckDuckGo),
+      ('DuckDuckGo Lite', Uri.https('lite.duckduckgo.com', '/lite/', {'q': q, 'kl': 'de-de'}), parseDuckDuckGoLite),
+      ('Bing', Uri.https('www.bing.com', '/search', {'q': q, 'setlang': 'de', 'cc': 'AT'}), parseBing),
+      ('Mojeek', Uri.https('www.mojeek.com', '/search', {'q': q}), parseMojeek),
     ]) {
       try {
-        hits = engine.$2(await fetcher(engine.$1));
-        if (hits.isNotEmpty) break;
+        hits = engine.$3(await fetcher(engine.$2));
+        if (hits.isNotEmpty) {
+          used = engine.$1;
+          break;
+        }
+        errors.add('${engine.$1}: keine Treffer');
       } catch (e) {
-        lastError = e.toString();
+        errors.add('${engine.$1}: $e');
       }
     }
     if (hits.isEmpty) {
-      return lastError != null ? 'Suche fehlgeschlagen: $lastError' : 'Keine Treffer für "$q".';
+      return 'Websuche ohne Ergebnis (${errors.join('; ')}). '
+          'Sag dem Nutzer den Grund. Für Produkte/Preise kann site_search (z. B. geizhals) helfen.';
     }
     return [
+      'Treffer ($used) – lies die passendsten mit web_fetch, bevor du antwortest:',
       for (final (i, h) in hits.take(6).indexed) '${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet}',
     ].join('\n');
   }
@@ -73,6 +82,44 @@ class WebSearchTool extends AgentTool {
       if (href.startsWith('//')) href = 'https:$href';
       if (href.contains('duckduckgo.com/y.js')) continue; // Anzeigen
       final sn = RegExp(r'class="result__snippet"[^>]*>(.*?)</a>', dotAll: true).firstMatch(b);
+      hits.add(SearchHit(htmlToText(a.group(2)!), href, sn == null ? '' : htmlToText(sn.group(1)!)));
+    }
+    return hits;
+  }
+
+  static List<SearchHit> parseDuckDuckGoLite(String html) {
+    final hits = <SearchHit>[];
+    final links = RegExp(r"<a[^>]*class=.result-link.[^>]*href=.([^'\x22]+).[^>]*>(.*?)</a>", dotAll: true).allMatches(html).toList();
+    final snippets = RegExp(r"class=.result-snippet.[^>]*>(.*?)</td>", dotAll: true).allMatches(html).toList();
+    for (var i = 0; i < links.length; i++) {
+      var href = htmlDecode(links[i].group(1)!);
+      final uddg = RegExp(r'[?&]uddg=([^&]+)').firstMatch(href);
+      if (uddg != null) href = Uri.decodeComponent(uddg.group(1)!);
+      if (href.startsWith('//')) href = 'https:$href';
+      if (href.contains('duckduckgo.com/y.js')) continue;
+      hits.add(SearchHit(htmlToText(links[i].group(2)!), href, i < snippets.length ? htmlToText(snippets[i].group(1)!) : ''));
+    }
+    return hits;
+  }
+
+  static List<SearchHit> parseBing(String html) {
+    final hits = <SearchHit>[];
+    for (final b in html.split('<li class="b_algo"').skip(1)) {
+      final a = RegExp(r'<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', dotAll: true).firstMatch(b);
+      if (a == null) continue;
+      var href = htmlDecode(a.group(1)!);
+      // Bing-Weiterleitung (…/ck/a?…&u=a1<base64>) auflösen
+      final u = RegExp(r'[?&]u=a1([^&]+)').firstMatch(href);
+      if (u != null) {
+        try {
+          var b64 = u.group(1)!.replaceAll('-', '+').replaceAll('_', '/');
+          while (b64.length % 4 != 0) {
+            b64 += '=';
+          }
+          href = utf8.decode(base64.decode(b64));
+        } catch (_) {}
+      }
+      final sn = RegExp(r'<p[^>]*>(.*?)</p>', dotAll: true).firstMatch(b);
       hits.add(SearchHit(htmlToText(a.group(2)!), href, sn == null ? '' : htmlToText(sn.group(1)!)));
     }
     return hits;
@@ -177,12 +224,16 @@ class WebFetchTool extends AgentTool {
 Future<String> httpGetText(Uri uri) async {
   final client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 15)
-    ..userAgent = 'Mozilla/5.0 (OfflineAgent; +local)';
+    ..userAgent = browserUserAgent;
   try {
     final req = await client.getUrl(uri);
-    req.headers.set(HttpHeaders.acceptHeader, 'text/html,text/plain;q=0.9,*/*;q=0.5');
-    req.headers.set(HttpHeaders.acceptLanguageHeader, 'de,en;q=0.8');
+    req.headers.set(HttpHeaders.acceptHeader, 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5');
+    req.headers.set(HttpHeaders.acceptLanguageHeader, 'de-AT,de;q=0.9,en;q=0.7');
     final resp = await req.close().timeout(const Duration(seconds: 20));
+    if (resp.statusCode == 503 || resp.statusCode == 429 || resp.statusCode == 403) {
+      await resp.drain<void>();
+      throw ToolException('${uri.host} blockiert automatische Abrufe (HTTP ${resp.statusCode})');
+    }
     if (resp.statusCode >= 400) throw ToolException('HTTP ${resp.statusCode} von ${uri.host}');
     final type = resp.headers.contentType;
     if (type != null && !(type.primaryType == 'text' || type.subType.contains('json') || type.subType.contains('xml'))) {
@@ -195,9 +246,12 @@ Future<String> httpGetText(Uri uri) async {
       if (bytes.length > 3 * 1024 * 1024) break;
     }
     final charset = type?.charset?.toLowerCase();
-    return charset == 'iso-8859-1' || charset == 'latin1' || charset == 'windows-1252'
+    final text = charset == 'iso-8859-1' || charset == 'latin1' || charset == 'windows-1252'
         ? latin1.decode(bytes, allowInvalid: true)
         : utf8.decode(bytes, allowMalformed: true);
+    final block = detectBlockPage(text);
+    if (block != null) throw ToolException('${uri.host}: $block');
+    return text;
   } on TimeoutException {
     throw ToolException('Zeitüberschreitung bei ${uri.host}');
   } on SocketException catch (e) {
@@ -205,6 +259,26 @@ Future<String> httpGetText(Uri uri) async {
   } finally {
     client.close(force: true);
   }
+}
+
+/// Wie ein normaler Handy-Browser – manche Seiten liefern sonst nichts.
+const browserUserAgent =
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+
+/// Erkennt Captcha-/Sperrseiten (Amazon, DuckDuckGo, Cloudflare …).
+String? detectBlockPage(String html) {
+  final head = html.length > 20000 ? html.substring(0, 20000) : html;
+  if (RegExp(r'api-services-support@amazon|Geben Sie die unten angezeigten Zeichen ein|Enter the characters you see below|'
+          r'opfcaptcha|/errors/validateCaptcha', caseSensitive: false)
+      .hasMatch(head)) {
+    return 'blockiert automatische Abrufe (Captcha)';
+  }
+  if (RegExp(r'anomaly-modal|Unfortunately, bots use DuckDuckGo too|challenge-form|cf-chl-|Just a moment\.\.\.|Attention Required',
+          caseSensitive: false)
+      .hasMatch(head)) {
+    return 'verlangt eine Bot-Prüfung (Captcha)';
+  }
+  return null;
 }
 
 /// Wandelt HTML in lesbaren Text um.
@@ -268,6 +342,15 @@ String? _imgSrc(String block) {
   return RegExp(r'background(?:-image)?\s*:\s*url\(\s*["\x27]?([^"\x27)]+)', caseSensitive: false).firstMatch(block)?.group(1);
 }
 
+/// Preis in einem HTML-Block (z. B. "19,99 €", "€ 24,90", "EUR 12.50").
+String? findPrice(String block) {
+  final off = RegExp(r'class="a-offscreen"[^>]*>([^<]+)<').firstMatch(block);
+  if (off != null) return htmlToText(off.group(1)!).trim();
+  final t = htmlToText(block);
+  final m = RegExp(r'(?:€|EUR)\s?\d{1,5}(?:[.,]\d{2})?|\d{1,5}(?:[.,]\d{2})\s?(?:€|EUR)').firstMatch(t);
+  return m?.group(0)?.trim();
+}
+
 /// Einträge aus RSS/Atom.
 List<PageItem> extractFeedItems(String xml, Uri base) {
   final head = xml.length > 600 ? xml.substring(0, 600) : xml;
@@ -314,7 +397,15 @@ List<PageItem> extractPageItems(String html, Uri base) {
   final blocks = <String>[
     for (final m in RegExp(r'<article\b.*?</article>', dotAll: true, caseSensitive: false).allMatches(clean)) m.group(0)!,
   ];
-  if (blocks.length < 3) {
+  // Shop-Ergebnislisten (Amazon u. a.): jeder Treffer in einem eigenen Block
+  final shop = clean.split(RegExp(r'<div[^>]+data-component-type="s-search-result"')).skip(1).toList();
+  final isShop = shop.length >= 2;
+  if (isShop) {
+    blocks
+      ..clear()
+      ..addAll(shop.map((b) => b.length > 12000 ? b.substring(0, 12000) : b));
+  }
+  if (blocks.length < 3 && !isShop) {
     blocks
       ..clear()
       ..addAll([
@@ -325,9 +416,11 @@ List<PageItem> extractPageItems(String html, Uri base) {
   final out = <PageItem>[];
   final seen = <String>{};
   for (final b in blocks) {
-    final href = RegExp(r'<a\b[^>]*href=["\x27]([^"\x27#][^"\x27]*)["\x27]', caseSensitive: false).firstMatch(b)?.group(1);
-    final link = _abs(base, href);
     final h = RegExp(r'<h[1-4]\b[^>]*>(.*?)</h[1-4]>', dotAll: true, caseSensitive: false).firstMatch(b)?.group(1);
+    final hrefRe = RegExp(r'<a\b[^>]*href=["\x27]([^"\x27#][^"\x27]*)["\x27]', caseSensitive: false);
+    // Link der Überschrift bevorzugen (Produktseite statt Bild-Link)
+    final href = (h == null ? null : hrefRe.firstMatch(h)?.group(1)) ?? hrefRe.firstMatch(b)?.group(1);
+    final link = _abs(base, href);
     final alt = RegExp(r'<img\b[^>]*alt=["\x27]([^"\x27]+)', caseSensitive: false).firstMatch(b)?.group(1);
     var title = htmlToText(h ?? '').trim();
     if (title.isEmpty) title = htmlToText(b).trim();
@@ -335,9 +428,11 @@ List<PageItem> extractPageItems(String html, Uri base) {
     if (title.length > 160) title = '${title.substring(0, 157)}…';
     final key = link.isNotEmpty ? link : title;
     if (title.isEmpty || !seen.add(key)) continue;
-    final summary = h == null ? '' : htmlToText(b.replaceFirst(h, '')).trim();
-    out.add(PageItem(title, link, _abs(base, _imgSrc(b)),
-        summary: summary.length > 160 ? '${summary.substring(0, 157)}…' : summary));
+    var summary = h == null ? '' : htmlToText(b.replaceFirst(h, '')).trim();
+    if (summary.length > 160) summary = '${summary.substring(0, 157)}…';
+    final price = findPrice(b);
+    if (price != null && !summary.contains(price)) summary = 'Preis: $price${summary.isEmpty ? '' : ' · $summary'}';
+    out.add(PageItem(title, link, _abs(base, _imgSrc(b)), summary: summary));
     if (out.length >= 30) break;
   }
   return out;

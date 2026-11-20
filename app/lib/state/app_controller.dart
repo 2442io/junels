@@ -182,6 +182,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         SavePromptTool(savePrompt, () => prompts),
         WeatherTool(defaultLocation: () => settings.homeCity),
         NewsTool(),
+        SiteSearchTool(),
         ContactsTool(deviceBridge),
         EmailTool(deviceBridge),
         WhatsAppTool(deviceBridge),
@@ -1343,7 +1344,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
   static final _toolTriggers = <String, RegExp>{
     'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
-    'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal)|recherch|'
+    'site_search': RegExp(r'amazon|ebay|geizhals|idealo|willhaben|otto\.de|mediamarkt|thalia|chefkoch|wikipedia|'
+        r'shop|kaufen|bestell|angebot|günstig|preisvergleich|produkt|auf [\w-]+\.(at|de|com)\b.*such|such\w* (auf|bei) '),
+    'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal|mir)|such mir|finde (mir|im)|recherch|'
+        r'angebot|kaufen|empfehl\w* .*(produkt|marke)|vergleich|test(sieger|bericht)|'
         r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
     'weather': RegExp(r'wetter|regen|regnet|temperatur|grad\b|schnee|sonnig|wind|gewitter|schirm|jacke|vorhersage'),
     'news': RegExp(r'news|nachrichten|schlagzeilen|neuigkeiten|neues (zu|von|aus|über|bei|in)|was gibt.s neues|was gibt es neues|meldungen|presse|morgen-übersicht'),
@@ -1810,7 +1814,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           add(SourceRef('tool', 'Rechner'));
         case 'weather':
           add(SourceRef('web', 'Open-Meteo', 'https://open-meteo.com'));
-        case 'news':
+        case 'news' || 'site_search':
           for (final m in RegExp(r'Link: (\S+)').allMatches(obs).take(4)) {
             add(SourceRef('web', m.group(1)!, m.group(1)!));
           }

@@ -336,6 +336,7 @@ class AppSettings {
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
+              'site_search',
             },
         installed = installed ?? {},
         watchFolders = watchFolders ?? [],
@@ -424,7 +425,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 7;
+  static const toolsVersion = 8;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -437,6 +438,7 @@ class AppSettings {
     if (from < 5) enabledTools.add('send_notification');
     if (from < 6) enabledTools.add('save_prompt');
     if (from < 7) enabledTools.addAll(deviceTools);
+    if (from < 8) enabledTools.add('site_search');
   }
 }
 
