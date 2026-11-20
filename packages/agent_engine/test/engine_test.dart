@@ -570,6 +570,22 @@ Future<void> main() async {
     check(r.contains('DuckDuckGo: ') && r.contains('Captcha') && r.contains('Grund'), 'Websuche nennt den Grund');
   });
 
+  await group('Ergebnis-Karten', () async {
+    const obs = '''Suchergebnisse auf geizhals.at für „brotdose“ (https://geizhals.at/?fs=brotdose):
+- Wesco Brotkasten Grandy
+  Preis: ab € 59,90 · Edelstahl, 3 Farben
+  Bild: https://gzhls.at/1.jpg
+  Link: https://geizhals.at/a1.html
+- Emsa Fresh Box
+  Link: https://geizhals.at/a3.html
+- Ohne Link
+
+Die Treffer sieht der Nutzer bereits als Karten.''';
+    final c = parseResultCards(obs);
+    check(c.length == 2 && c[0].title == 'Wesco Brotkasten Grandy' && c[0].price == 'ab € 59,90' && c[0].image.endsWith('1.jpg') &&
+        c[0].note == 'Edelstahl, 3 Farben' && c[1].link.endsWith('a3.html'), 'Karten aus Werkzeug-Ausgabe (${c.map((x) => x.toJson())})');
+  });
+
   await group('Wetter und Nachrichten', () async {
     final calls = <String>[];
     final weather = WeatherTool(
@@ -928,7 +944,7 @@ Future<void> main() async {
         'RSS mit media:content und Bild in der Beschreibung');
     final tool = WebFetchTool(fetcher: (u) async => u.path.endsWith('feed.xml') ? rss : page);
     final out = await tool.run({'url': 'https://rtb.li/p/ainews'}, ToolContext(requestNetwork: (_) async => true));
-    check(out.contains('EINTRÄGE (3)') && out.contains('Bild: https://rtb.li/img/1.jpg') && out.contains('![Titel](Bild-URL)'),
+    check(out.contains('EINTRÄGE (3)') && out.contains('Bild: https://rtb.li/img/1.jpg') && out.contains('Karten'),
         'web_fetch liefert Einträge mit Bildern');
     final jsPage = '<html><head><link rel="alternate" type="application/rss+xml" href="/feed.xml"></head><body><div id="app"></div></body></html>';
     final out2 = await WebFetchTool(fetcher: (u) async => u.path.endsWith('feed.xml') ? rss : jsPage)

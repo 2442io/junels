@@ -199,8 +199,8 @@ class WebFetchTool extends AgentTool {
         if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
         if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
       }
-      b.writeln('\nIn der Antwort je Eintrag: "### Titel", darunter "![Titel](Bild-URL)" in eigener Zeile, dann "[Zum Artikel](Link)". '
-          'Die Überschrift EINTRÄGE nicht übernehmen.');
+      b.writeln('\nDie Einträge sieht der Nutzer bereits als Karten mit Bild, Titel und Link. '
+          'Fasse zusammen bzw. beantworte die Frage, keine Bilder einbinden, die Überschrift EINTRÄGE nicht übernehmen.');
     }
     var text = htmlToText(html);
     final room = maxChars - b.length;
@@ -435,5 +435,66 @@ List<PageItem> extractPageItems(String html, Uri base) {
     out.add(PageItem(title, link, _abs(base, _imgSrc(b)), summary: summary));
     if (out.length >= 30) break;
   }
+  return out;
+}
+
+/// Ergebnis-Karte (für die Darstellung als Karussell im Chat).
+class ResultCard {
+  ResultCard({required this.title, this.link = '', this.image = '', this.price = '', this.note = ''});
+  final String title;
+  final String link;
+  final String image;
+  final String price;
+  final String note;
+
+  Map<String, String> toJson() => {
+        'title': title,
+        if (link.isNotEmpty) 'link': link,
+        if (image.isNotEmpty) 'image': image,
+        if (price.isNotEmpty) 'price': price,
+        if (note.isNotEmpty) 'note': note,
+      };
+}
+
+/// Liest Einträge aus der Ausgabe von site_search / news / web_fetch
+/// ("- Titel", eingerückt "Preis: …", "Bild: …", "Link: …").
+List<ResultCard> parseResultCards(String observation) {
+  final out = <ResultCard>[];
+  String? title;
+  var link = '', image = '', price = '', note = '';
+  void flush() {
+    final t = title;
+    if (t != null && t.trim().isNotEmpty && (link.isNotEmpty || image.isNotEmpty)) {
+      out.add(ResultCard(title: t.trim(), link: link, image: image, price: price, note: note));
+    }
+    title = null;
+    link = image = price = note = '';
+  }
+
+  for (final raw in observation.split('\n')) {
+    if (raw.startsWith('- ')) {
+      flush();
+      title = raw.substring(2);
+      continue;
+    }
+    if (title == null || !raw.startsWith('  ')) {
+      if (raw.trim().isEmpty || !raw.startsWith(' ')) flush();
+      continue;
+    }
+    final l = raw.trim();
+    if (l.startsWith('Link: ')) {
+      link = l.substring(6).trim();
+    } else if (l.startsWith('Bild: ')) {
+      image = l.substring(6).trim();
+    } else if (l.startsWith('Preis: ')) {
+      final p = l.substring(7);
+      final i = p.indexOf(' · ');
+      price = (i < 0 ? p : p.substring(0, i)).trim();
+      if (i >= 0 && note.isEmpty) note = p.substring(i + 3).trim();
+    } else if (note.isEmpty) {
+      note = l;
+    }
+  }
+  flush();
   return out;
 }

@@ -136,7 +136,9 @@ class SiteSearchTool extends AgentTool {
       if (i.image.isNotEmpty) b.writeln('  Bild: ${i.image}');
       if (i.link.isNotEmpty) b.writeln('  Link: ${i.link}');
     }
-    b.writeln('\nNenne die passendsten Angebote mit Preis und Link "[Zum Angebot](Link)". Preise können sich ändern.');
+    b.writeln('\nDie Treffer sieht der Nutzer bereits als Karten mit Bild, Titel, Preis und Link. '
+        'Fasse in 2–3 Sätzen zusammen und empfiehl die 2–3 passendsten (mit Preis). Keine vollständige Liste, '
+        'keine Bilder einbinden. Preise können sich ändern.');
     return b.toString().trim();
   }
 }

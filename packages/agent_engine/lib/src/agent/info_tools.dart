@@ -204,7 +204,8 @@ class NewsTool extends AgentTool {
       if (i.image.isNotEmpty) b.writeln('  Bild: ${i.image}');
       if (i.summary.isNotEmpty) b.writeln('  ${i.summary}');
     }
-    b.writeln('\nIn der Antwort je Meldung: Titel, darunter ggf. "![Titel](Bild-URL)", dann "[Zum Artikel](Link)".');
+    b.writeln('\nDie Meldungen sieht der Nutzer bereits als Karten mit Bild, Titel und Link. '
+        'Fasse die wichtigsten in wenigen Sätzen zusammen, keine Bilder einbinden.');
     return b.toString().trim();
   }
 }

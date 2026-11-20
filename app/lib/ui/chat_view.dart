@@ -96,6 +96,89 @@ class _ChatViewState extends State<ChatView> {
   }
 }
 
+// ------------------------------------------------------ Ergebnis-Karussell
+
+/// Produkte/Meldungen als horizontal wischbare Karten: Bild, Titel, Preis, externer Link.
+class ResultCarousel extends StatelessWidget {
+  const ResultCarousel({super.key, required this.cards, this.loadImages = true});
+  final List<Map<String, String>> cards;
+  final bool loadImages;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: SizedBox(
+        height: 268,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: cards.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (context, i) {
+            final c = cards[i];
+            final link = c['link'] ?? '';
+            final img = c['image'] ?? '';
+            final host = Uri.tryParse(link)?.host.replaceFirst('www.', '') ?? '';
+            return SizedBox(
+              width: 176,
+              child: Card(
+                margin: EdgeInsets.zero,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: link.isEmpty ? null : () => openExternalLink(context, link),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Container(
+                      height: 120,
+                      color: Colors.white,
+                      alignment: Alignment.center,
+                      child: img.isEmpty || !loadImages
+                          ? Icon(Icons.image_outlined, size: 40, color: scheme.outline)
+                          : Image.network(
+                              img,
+                              fit: BoxFit.contain,
+                              height: 120,
+                              width: 176,
+                              cacheWidth: 400,
+                              errorBuilder: (_, __, ___) => Icon(Icons.broken_image_outlined, size: 40, color: scheme.outline),
+                              loadingBuilder: (_, child, p) => p == null
+                                  ? child
+                                  : const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                            ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(c['title'] ?? '', maxLines: 3, overflow: TextOverflow.ellipsis, style: t.bodyMedium),
+                          const Spacer(),
+                          if ((c['price'] ?? '').isNotEmpty)
+                            Text(c['price']!, style: t.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 6, 6),
+                      child: Row(children: [
+                        Expanded(
+                          child: Text(host, maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                        ),
+                        if (link.isNotEmpty) Icon(Icons.open_in_new, size: 16, color: scheme.primary),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 // --------------------------------------------- Status unter der letzten Antwort
 
 /// Zeigt unter der letzten Antwort, was gerade passiert und wie lange schon.
@@ -369,6 +452,8 @@ class _AssistantMessage extends StatelessWidget {
               child: MarkdownLite(entry.text.contains("channel|>") || entry.text.contains("<think>") ? cleanModelText(entry.text) : entry.text,
                   selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
             ),
+          if (entry.cards.isNotEmpty)
+            ResultCarousel(cards: entry.cards, loadImages: !(AppScope.of(context).current?.internetOff ?? false)),
           if (entry.error != null)
             Container(
               margin: const EdgeInsets.only(top: 8),

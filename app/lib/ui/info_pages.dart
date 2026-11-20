@@ -10,6 +10,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.17.0', [
+    'MCP-Store: empfohlene Server von GitHub, Notion, Atlassian, Microsoft, Stripe … und Suche im offiziellen MCP Registry – mit einem Tipp hinzufügen',
+    'Anmeldung im Browser (OAuth) für MCP-Server, Token werden automatisch erneuert',
+    'Suchergebnisse (Produkte, Nachrichten) als wischbares Karussell mit Bild, Titel, Preis und Link',
+  ]),
   ('1.16.0', [
     'Neu: Suche direkt auf Webseiten (Amazon, Geizhals, Idealo, eBay, willhaben, Wikipedia … oder über das Suchfeld jeder Seite) – mit Preis, Bild und Link',
     'Blockiert ein Shop (z. B. Amazon mit Captcha), sucht der Agent automatisch bei Geizhals/Idealo weiter',

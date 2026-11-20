@@ -93,7 +93,7 @@ class Sidebar extends StatelessWidget {
             const SizedBox(height: 8),
             _NavTile(
               icon: Icons.hub_outlined,
-              title: 'MCP-Server',
+              title: 'MCP-Store & Server',
               subtitle: app.mcpServers.isEmpty
                   ? 'Weitere Werkzeuge anbinden'
                   : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Werkzeuge',

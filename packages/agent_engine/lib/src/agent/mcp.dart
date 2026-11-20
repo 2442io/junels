@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'mcp_oauth.dart';
 import 'tool.dart';
 
 const mcpProtocolVersion = '2025-06-18';
@@ -37,8 +38,10 @@ class McpServerConfig {
     this.trusted = false,
     List<McpToolSpec>? tools,
     this.lastSync,
+    Map<String, String>? oauth,
   })  : headers = headers ?? {},
-        tools = tools ?? [];
+        tools = tools ?? [],
+        oauth = oauth ?? {};
 
   final String id;
   String name;
@@ -53,6 +56,10 @@ class McpServerConfig {
   List<McpToolSpec> tools;
   DateTime? lastSync;
 
+  /// OAuth-Anmeldung (access_token, refresh_token, expires_at, client_id, token_endpoint …)
+  Map<String, String> oauth;
+  bool get loggedIn => (oauth['access_token'] ?? '').isNotEmpty;
+
   Map<String, Object?> toJson() => {
         'id': id,
         'name': name,
@@ -62,6 +69,7 @@ class McpServerConfig {
         'trusted': trusted,
         'tools': tools.map((t) => t.toJson()).toList(),
         'lastSync': lastSync?.toIso8601String(),
+        if (oauth.isNotEmpty) 'oauth': oauth,
       };
 
   factory McpServerConfig.fromJson(Map<String, dynamic> j) => McpServerConfig(
@@ -73,6 +81,7 @@ class McpServerConfig {
         trusted: j['trusted'] as bool? ?? false,
         tools: [for (final t in (j['tools'] as List? ?? const [])) McpToolSpec.fromJson((t as Map).cast())],
         lastSync: DateTime.tryParse(j['lastSync'] as String? ?? ''),
+        oauth: (j['oauth'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
       );
 
   /// Kurzname für Tool-Präfixe, z. B. "github".
@@ -87,6 +96,12 @@ class McpException implements Exception {
   final String message;
   @override
   String toString() => message;
+}
+
+/// Server verlangt eine Anmeldung (HTTP 401) – ggf. per OAuth im Browser.
+class McpAuthException extends McpException {
+  McpAuthException(super.message, {this.wwwAuthenticate});
+  final String? wwwAuthenticate;
 }
 
 /// Eine Server-Ereignis-Nachricht aus einem SSE-Strom.
@@ -156,9 +171,14 @@ class McpClient {
     config.headers.forEach((k, v) {
       if (k.trim().isNotEmpty) req.headers.set(k.trim(), v.trim());
     });
+    final token = config.oauth['access_token'];
+    if (token != null && token.isNotEmpty && !config.headers.keys.any((k) => k.toLowerCase() == 'authorization')) {
+      req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
   }
 
   Future<Map<String, dynamic>> _request(String method, [Map<String, dynamic>? params]) async {
+    if (method == 'initialize') await McpOAuth.ensureFresh(config);
     if (!_initialized && method != 'initialize') await initialize();
     final id = _nextId++;
     final msg = {'jsonrpc': '2.0', 'id': id, 'method': method, if (params != null) 'params': params};
@@ -170,9 +190,13 @@ class McpClient {
     final res = await req.close().timeout(timeout);
     final sid = res.headers.value('mcp-session-id');
     if (sid != null && sid.isNotEmpty) _session = sid;
-    if (res.statusCode == 401 || res.statusCode == 403) {
+    if (res.statusCode == 401) {
       await res.drain<void>();
-      throw McpException('Zugriff verweigert (${res.statusCode}) – Token/Anmeldedaten prüfen.');
+      throw McpAuthException('Anmeldung nötig (401)', wwwAuthenticate: res.headers.value('www-authenticate'));
+    }
+    if (res.statusCode == 403) {
+      await res.drain<void>();
+      throw McpException('Zugriff verweigert (403) – Token/Anmeldedaten prüfen.');
     }
     if (res.statusCode >= 400) {
       final body = await res.transform(utf8.decoder).join().catchError((_) => '');
@@ -246,6 +270,10 @@ class McpClient {
     _headers(req, json: false);
     req.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
     final res = await req.close().timeout(timeout);
+    if (res.statusCode == 401) {
+      await res.drain<void>();
+      throw McpAuthException('Anmeldung nötig (401)', wwwAuthenticate: res.headers.value('www-authenticate'));
+    }
     if (res.statusCode >= 400) {
       await res.drain<void>();
       throw McpException('Server antwortet mit ${res.statusCode} (weder Streamable HTTP noch SSE)');

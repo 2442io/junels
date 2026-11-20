@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'mcp_store_page.dart';
 
 Future<void> openMcp(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const McpPage()));
@@ -22,7 +23,7 @@ class McpPage extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _editServer(context, app, null),
         icon: const Icon(Icons.add),
-        label: const Text('Server hinzufügen'),
+        label: const Text('Eigene Adresse'),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -37,6 +38,18 @@ class McpPage extends StatelessWidget {
                 style: t.bodySmall,
               ),
               const SizedBox(height: 12),
+              Card(
+                color: scheme.primaryContainer,
+                child: ListTile(
+                  leading: Icon(Icons.storefront_outlined, color: scheme.onPrimaryContainer),
+                  title: Text('MCP-Store öffnen', style: TextStyle(color: scheme.onPrimaryContainer)),
+                  subtitle: Text('Server von GitHub, Notion, Atlassian, Microsoft … mit einem Tipp hinzufügen',
+                      style: TextStyle(color: scheme.onPrimaryContainer)),
+                  trailing: Icon(Icons.chevron_right, color: scheme.onPrimaryContainer),
+                  onTap: () => openMcpStore(context),
+                ),
+              ),
+              const SizedBox(height: 8),
               if (app.mcpServers.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(8),
@@ -71,6 +84,21 @@ class _ServerCardState extends State<_ServerCard> {
       _error = null;
     });
     final err = await app.syncMcpServer(widget.server);
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = err;
+      if (err == null) _expanded = true;
+    });
+  }
+
+  Future<void> _login() async {
+    final app = AppScope.read(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final err = await app.loginMcpServer(widget.server);
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -117,10 +145,14 @@ class _ServerCardState extends State<_ServerCard> {
               onSelected: (v) async {
                 if (v == 'edit') await _editServer(context, app, s);
                 if (v == 'delete') await app.removeMcpServer(s);
+                if (v == 'logout') await app.logoutMcpServer(s);
+                if (v == 'login') await _login();
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'edit', child: Text('Bearbeiten')),
-                PopupMenuItem(value: 'delete', child: Text('Entfernen')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'edit', child: Text('Bearbeiten')),
+                if (s.loggedIn) const PopupMenuItem(value: 'logout', child: Text('Abmelden')),
+                if (!s.loggedIn) const PopupMenuItem(value: 'login', child: Text('Im Browser anmelden')),
+                const PopupMenuItem(value: 'delete', child: Text('Entfernen')),
               ],
             ),
           ]),
@@ -128,6 +160,15 @@ class _ServerCardState extends State<_ServerCard> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(_error!, style: t.bodySmall?.copyWith(color: scheme.error)),
+            ),
+          if (app.mcpNeedsLogin.containsKey(s.id))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _login,
+                icon: const Icon(Icons.login),
+                label: const Text('Anmelden'),
+              ),
             ),
           Row(children: [
             TextButton.icon(

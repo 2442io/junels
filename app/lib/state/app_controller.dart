@@ -230,6 +230,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (!headless) unawaited(sync.init());
       if (!headless) unawaited(updates.init());
       if (!headless) unawaited(_initDevice());
+      McpOAuth.onTokens = (_) => unawaited(storage.saveMcpServers(mcpServers));
 
       if (!headless && settings.autoLoadLastModel && settings.lastModelId != null) {
         final m = models.where((x) => x.id == settings.lastModelId).firstOrNull;
@@ -336,6 +337,35 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Server, die eine Anmeldung brauchen (id → WWW-Authenticate-Hinweis).
+  final Map<String, String> mcpNeedsLogin = {};
+
+  /// Anmeldung im Browser (OAuth), danach Tools laden.
+  Future<String?> loginMcpServer(McpServerConfig srv) async {
+    try {
+      await BackgroundWork.begin('mcp-login', 'Warte auf Anmeldung bei ${srv.name} …');
+      await McpOAuth.login(srv,
+          wwwAuthenticate: mcpNeedsLogin[srv.id], openBrowser: (u) => NativeFiles.openUrl(u.toString()));
+      mcpNeedsLogin.remove(srv.id);
+      appLog('MCP', '${srv.name}: angemeldet');
+      await storage.saveMcpServers(mcpServers);
+      return await syncMcpServer(srv);
+    } catch (e) {
+      appLog('MCP', '${srv.name}: Anmeldung fehlgeschlagen: $e', error: true);
+      return '$e';
+    } finally {
+      await BackgroundWork.end('mcp-login');
+      notifyListeners();
+    }
+  }
+
+  Future<void> logoutMcpServer(McpServerConfig srv) async {
+    McpOAuth.logout(srv);
+    await _mcpClients.remove(srv.id)?.close();
+    await storage.saveMcpServers(mcpServers);
+    notifyListeners();
+  }
+
   /// Verbindet sich mit dem Server und lädt die Tool-Liste (vom Nutzer ausgelöst).
   Future<String?> syncMcpServer(McpServerConfig srv) async {
     await _mcpClients.remove(srv.id)?.close();
@@ -353,9 +383,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final si = info['serverInfo'];
       if (srv.name.trim().isEmpty && si is Map && si['name'] is String) srv.name = si['name'] as String;
       _mcpClients[srv.id] = c;
+      mcpNeedsLogin.remove(srv.id);
       await saveMcpServer(srv);
       _mcpClients[srv.id] = c;
       return null;
+    } on McpAuthException catch (e) {
+      await c.close();
+      mcpNeedsLogin[srv.id] = e.wwwAuthenticate ?? '';
+      notifyListeners();
+      return 'Anmeldung nötig – tippe auf „Anmelden“.';
     } catch (e) {
       await c.close();
       return e.toString();
@@ -2038,6 +2074,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       answer.sources
         ..clear()
         ..addAll(_collectSources(answer, docs, ragHits));
+      // Ergebnisse (Produkte, Meldungen) als Karten fürs Karussell
+      answer.cards = [
+        for (final st in answer.steps)
+          if (st.isError != true && const {'site_search', 'news', 'web_fetch'}.contains(st.tool))
+            for (final c in parseResultCards(st.observation ?? '')) c.toJson(),
+      ].take(15).toList();
       if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));
       if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);

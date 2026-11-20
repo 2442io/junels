@@ -204,6 +204,7 @@ class ChatEntry {
     this.truncated = false,
     this.tokensPerSecond,
     this.durationMs,
+    List<Map<String, String>>? cards,
     this.viaVoice = false,
     List<SourceRef>? sources,
     List<String>? files,
@@ -211,6 +212,7 @@ class ChatEntry {
   })  : steps = steps ?? [],
         sources = sources ?? [],
         files = files ?? [],
+        cards = cards ?? [],
         time = time ?? DateTime.now();
 
   final String role; // user | assistant
@@ -221,6 +223,7 @@ class ChatEntry {
   bool truncated;
   double? tokensPerSecond;
   int? durationMs; // wie lange die Antwort gedauert hat
+  List<Map<String, String>> cards; // Ergebnis-Karten (Produkte, Meldungen) fürs Karussell
   final bool viaVoice; // im Gesprächsmodus gesprochen
   final List<SourceRef> sources;
 
@@ -237,6 +240,7 @@ class ChatEntry {
         'truncated': truncated,
         'tps': tokensPerSecond,
         if (durationMs != null) 'ms': durationMs,
+        if (cards.isNotEmpty) 'cards': cards,
         'voice': viaVoice,
         if (sources.isNotEmpty) 'sources': sources.map((e) => e.toJson()).toList(),
         if (files.isNotEmpty) 'files': files,
@@ -254,6 +258,7 @@ class ChatEntry {
         truncated: j['truncated'] as bool? ?? false,
         tokensPerSecond: (j['tps'] as num?)?.toDouble(),
         durationMs: (j['ms'] as num?)?.toInt(),
+        cards: [for (final c in (j['cards'] as List? ?? const [])) (c as Map).cast<String, String>()],
         viaVoice: j['voice'] as bool? ?? false,
         time: DateTime.tryParse(j['time'] as String? ?? ''),
       );
