@@ -10,6 +10,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.18.1', [
+    'Shop-Suche: keine App-Store-, Google-Play- oder Menü-Links mehr im Karussell – nur Treffer, die zur Frage passen',
+    'Ist Amazon gesperrt, sucht Junels zuerst über eine Suchmaschine nach Amazon-Links, erst danach auf Geizhals/Idealo',
+  ]),
   ('1.18.0', [
     'Alle Web-Inhalte als Karussell: Websuche, Webseiten, Shop-Suche und Nachrichten – mit Bild, Titel, Text und Link',
     '„Weitere laden“ am Ende des Karussells (bis zu 60 Treffer) und „Mehr suchen“ für eine neue Suche',

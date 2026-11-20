@@ -101,19 +101,46 @@ class SiteSearchTool extends AgentTool {
     await ctx.ensureNetwork('Auf $site nach „$q“ suchen');
     final notes = <String>[];
     final shop = RegExp(r'amazon|ebay|otto|mediamarkt|thalia').hasMatch(site);
-    for (final s in [site, if (shop) ..._shopFallback.where((f) => f != site)]) {
-      try {
-        final r = await _searchOn(s, q);
-        if (r != null) {
-          return '${notes.isEmpty ? '' : '${notes.join(' ')} Stattdessen auf $s gesucht.\n'}$r';
+    String withNotes(String s, String r) => '${notes.isEmpty ? '' : '${notes.join(' ')} Stattdessen $s.\n'}$r';
+    try {
+      final r = await _searchOn(site, q);
+      if (r != null) return r;
+      notes.add('Auf $site nichts Passendes gefunden.');
+    } on ToolException catch (e) {
+      notes.add('$site: ${e.message}.');
+    }
+    // Links auf die gewünschte Seite über eine Suchmaschine ("site:") – ohne Preise und Bilder
+    final viaEngine = await _searchViaEngine(site, q);
+    if (viaEngine != null) return withNotes('über eine Suchmaschine Links auf $site gefunden (ohne Preise)', viaEngine);
+    if (shop) {
+      for (final s in _shopFallback.where((f) => f != site)) {
+        try {
+          final r = await _searchOn(s, q);
+          if (r != null) return withNotes('auf $s gesucht', r);
+          notes.add('Auf $s nichts Passendes gefunden.');
+        } on ToolException catch (e) {
+          notes.add('$s: ${e.message}.');
         }
-        notes.add('Auf $s nichts Brauchbares gefunden.');
-      } on ToolException catch (e) {
-        notes.add('$s: ${e.message}.');
       }
-      if (!shop) break;
     }
     return '${notes.join(' ')} Sag dem Nutzer den Grund und schlag die direkte Suche auf der Seite vor.';
+  }
+
+  Future<String?> _searchViaEngine(String site, String q) async {
+    try {
+      final (hits, _, _) = await WebSearchTool.searchAllEngines('site:$site $q', fetcher);
+      final base = site.split('.').first;
+      final items = relevantItems([
+        for (final h in hits)
+          if ((Uri.tryParse(h.url)?.host ?? '').contains(base)) PageItem(h.title, h.url, '', summary: h.snippet),
+      ], q);
+      if (items.isEmpty) return null;
+      return '${formatCardItems(items.take(8))}\n'
+          'Der Nutzer sieht die Treffer als Karten. Fasse kurz zusammen und nenne die 2–3 passendsten. Preise kennst du hier nicht.'
+          '${items.length > 8 ? '$moreCardsMarker${formatCardItems(items.skip(8).take(24))}' : ''}';
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> _searchOn(String site, String q) async {
@@ -127,7 +154,8 @@ class SiteSearchTool extends AgentTool {
       if (url == null) throw ToolException('kein Suchfeld auf der Startseite gefunden');
     }
     final html = await fetcher(url);
-    final items = extractPageItems(html, url).where((i) => i.title.length > 8).toList();
+    // Nur Treffer, die zur Anfrage passen (keine Menü-, App-Store- oder Werbe-Links)
+    final items = relevantItems(extractPageItems(html, url).where((i) => i.title.length > 8).toList(), q);
     if (items.isEmpty) return null;
     final b = StringBuffer('Suchergebnisse auf $site für „$q“ ($url):\n');
     b.write(formatCardItems(items.take(8)));

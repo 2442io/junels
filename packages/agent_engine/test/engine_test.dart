@@ -552,6 +552,32 @@ Future<void> main() async {
     check(urls.first.startsWith('https://www.amazon.de/s?k=brotdose') && out.contains('blockiert') && out.contains('geizhals.at') &&
         out.contains('Wesco Brotkasten') && out.contains('59,90'), 'Amazon blockiert → automatisch Geizhals ($out)');
 
+    // Fußzeile mit App-Store-Badges ist kein Suchergebnis
+    const badges = '<html><body><main><p>Keine Treffer</p></main><footer>'
+        '<a href="https://apps.apple.com/at/app/geizhals/id1"><img src="/apple.png" alt="App Store"></a>'
+        '<a href="https://play.google.com/store/apps/details?id=x"><img src="/play.png" alt="Google Play"></a>'
+        '<a href="https://appgallery.huawei.com/app/C1"><img src="/hw.png" alt="Huawei AppGallery"></a></footer>'
+        '<a href="https://apps.apple.com/x"><img src="/a.png" alt="App Store"></a></body></html>';
+    final junk = extractPageItems(badges, Uri.parse('https://geizhals.at/?fs=brotdose'));
+    check(junk.isEmpty, 'App-Store-Links werden ignoriert (${junk.map((i) => i.title)})');
+    final rel = relevantItems([PageItem('Wesco Brotdose Edelstahl', 'https://geizhals.at/a1.html', ''),
+      PageItem('Gutscheine und Aktionen', 'https://geizhals.at/aktion', '')], 'Brotdose spülmaschinenfest Familie');
+    check(rel.length == 1 && rel.first.title.startsWith('Wesco'), 'nur passende Treffer');
+
+    // Amazon gesperrt, Suchmaschine liefert Amazon-Links → diese zuerst
+    final viaDdg = await SiteSearchTool(fetcher: (u) async {
+      if (u.host.contains('amazon')) throw ToolException('www.amazon.de: blockiert automatische Abrufe (Captcha)');
+      if (u.host.contains('duckduckgo') && u.queryParameters['q']!.startsWith('site:amazon.de')) {
+        return '<div class="result__body"><a class="result__a" href="https://www.amazon.de/Brotkasten-Familie/dp/B01">Brotkasten für Familien</a>'
+            '<a class="result__snippet">spülmaschinenfest</a></div>'
+            '<div class="result__body"><a class="result__a" href="https://apps.apple.com/x">Amazon Shopping App</a></div>';
+      }
+      return '';
+    }).run({'site': 'amazon.de', 'query': 'Brotdose Brotkasten spülmaschinenfest'}, ToolContext(requestNetwork: (_) async => true));
+    final dc = parseResultCards(viaDdg);
+    check(dc.length == 1 && dc.first.link.contains('amazon.de/Brotkasten') && viaDdg.contains('blockiert'),
+        'Amazon-Links über Suchmaschine ($viaDdg)');
+
     // Unbekannte Seite: Suchfeld der Startseite finden
     const home = '<html><form action="/suche" method="get"><input type="hidden" name="lang" value="de">'
         '<input type="search" name="begriff" placeholder="Suchen"></form></html>';

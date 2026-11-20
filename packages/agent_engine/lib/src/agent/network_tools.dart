@@ -40,6 +40,24 @@ class WebSearchTool extends AgentTool {
     final q = (args['query'] ?? '').toString().trim();
     if (q.isEmpty) throw ToolException('query ist leer');
     await ctx.ensureNetwork('Websuche nach „$q“');
+    final (hits, used, errors) = await searchAllEngines(q, fetcher);
+    if (hits.isEmpty) {
+      return 'Websuche ohne Ergebnis (${errors.join('; ')}). '
+          'Sag dem Nutzer den Grund. Für Produkte/Preise kann site_search (z. B. geizhals) helfen.';
+    }
+    String fmt(SearchHit h) => '- ${h.title}\n${h.snippet.isEmpty ? '' : '  ${h.snippet}\n'}  Link: ${h.url}';
+    return [
+      'Treffer ($used) – lies die passendsten mit web_fetch, bevor du antwortest. '
+          'Der Nutzer sieht die Treffer als Karten.',
+      for (final h in hits.take(6)) fmt(h),
+      if (hits.length > 6) moreCardsMarker.trim(),
+      for (final h in hits.skip(6).take(30)) fmt(h),
+    ].join('\n');
+  }
+
+  /// Fragt die Suchmaschinen der Reihe nach ab: (Treffer, benutzte Maschine, Fehler).
+  static Future<(List<SearchHit>, String, List<String>)> searchAllEngines(
+      String q, Future<String> Function(Uri) fetcher) async {
     List<SearchHit> hits = [];
     final errors = <String>[];
     var used = '';
@@ -60,18 +78,7 @@ class WebSearchTool extends AgentTool {
         errors.add('${engine.$1}: $e');
       }
     }
-    if (hits.isEmpty) {
-      return 'Websuche ohne Ergebnis (${errors.join('; ')}). '
-          'Sag dem Nutzer den Grund. Für Produkte/Preise kann site_search (z. B. geizhals) helfen.';
-    }
-    String fmt(SearchHit h) => '- ${h.title}\n${h.snippet.isEmpty ? '' : '  ${h.snippet}\n'}  Link: ${h.url}';
-    return [
-      'Treffer ($used) – lies die passendsten mit web_fetch, bevor du antwortest. '
-          'Der Nutzer sieht die Treffer als Karten.',
-      for (final h in hits.take(6)) fmt(h),
-      if (hits.length > 6) moreCardsMarker.trim(),
-      for (final h in hits.skip(6).take(30)) fmt(h),
-    ].join('\n');
+    return (hits, used, errors);
   }
 
   static List<SearchHit> parseDuckDuckGo(String html) {
@@ -424,10 +431,13 @@ List<PageItem> extractPageItems(String html, Uri base) {
       ..addAll(shop.map((b) => b.length > 12000 ? b.substring(0, 12000) : b));
   }
   if (blocks.length < 3 && !isShop) {
+    // Kopf-, Navigations- und Fußbereich enthalten keine Treffer (App-Store-Badges, Social-Links …)
+    final body = clean.replaceAll(
+        RegExp(r'<(header|nav|footer|aside)\b.*?</\1>', dotAll: true, caseSensitive: false), '');
     blocks
       ..clear()
       ..addAll([
-        for (final m in RegExp(r'<a\b[^>]*href=[^>]*>.*?</a>', dotAll: true, caseSensitive: false).allMatches(clean))
+        for (final m in RegExp(r'<a\b[^>]*href=[^>]*>.*?</a>', dotAll: true, caseSensitive: false).allMatches(body))
           if (RegExp(r'<img\b|<h[1-4]\b', caseSensitive: false).hasMatch(m.group(0)!)) m.group(0)!,
       ]);
   }
@@ -445,7 +455,7 @@ List<PageItem> extractPageItems(String html, Uri base) {
     if (title.isEmpty && alt != null) title = htmlDecode(alt);
     if (title.length > 160) title = '${title.substring(0, 157)}…';
     final key = link.isNotEmpty ? link : title;
-    if (title.isEmpty || !seen.add(key)) continue;
+    if (title.isEmpty || isJunkLink(link, title) || !seen.add(key)) continue;
     var summary = h == null ? '' : htmlToText(b.replaceFirst(h, '')).trim();
     if (summary.length > 160) summary = '${summary.substring(0, 157)}…';
     final price = findPrice(b);
@@ -454,6 +464,40 @@ List<PageItem> extractPageItems(String html, Uri base) {
     if (out.length >= 30) break;
   }
   return out;
+}
+
+final _junkHost = RegExp(
+    r'(^|\.)(apps\.apple\.com|itunes\.apple\.com|play\.google\.com|appgallery\.huawei\.com|appgallery\.cloud\.huawei\.com|'
+    r'galaxy\.store|microsoft\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|tiktok\.com|'
+    r'linkedin\.com|pinterest\.\w+|whatsapp\.com|t\.me|threads\.net)$');
+final _junkTitle = RegExp(
+    r'^(app ?store|apple|google play|play store|huawei|appgallery|app gallery|facebook|instagram|youtube|tiktok|'
+    r'impressum|datenschutz\w*|agb|kontakt|cookie\w*|anmelden|login|registrieren|newsletter|hilfe|karriere|presse)\b',
+    caseSensitive: false);
+
+/// Links, die keine Inhalte sind: App-Stores, soziale Netzwerke, Rechtliches, Konto.
+bool isJunkLink(String link, String title) {
+  final host = Uri.tryParse(link)?.host.toLowerCase() ?? '';
+  if (host.isNotEmpty && _junkHost.hasMatch(host)) return true;
+  final t = title.trim();
+  return t.length < 40 && _junkTitle.hasMatch(t);
+}
+
+/// Wortstämme einer Suchanfrage (für die Prüfung, ob ein Treffer passt).
+List<String> queryStems(String q) => [
+      for (final w in q.toLowerCase().split(RegExp(r'[^a-z0-9äöüß]+')))
+        if (w.length >= 4 && !const {'eine', 'einen', 'einer', 'für', 'fuer', 'damit', 'gerne', 'soll', 'sein', 'mit', 'oder', 'von', 'auf', 'nach', 'link', 'links', 'amazon'}.contains(w))
+          w.length >= 8 ? w.substring(0, 4) : (w.length > 6 ? w.substring(0, 6) : w),
+    ];
+
+/// Nur Treffer, die mindestens einen Begriff der Anfrage enthalten.
+List<PageItem> relevantItems(List<PageItem> items, String q) {
+  final stems = queryStems(q);
+  if (stems.isEmpty) return items;
+  return [
+    for (final i in items)
+      if (stems.any(('${i.title} ${i.summary} ${Uri.decodeFull(i.link)}').toLowerCase().contains)) i,
+  ];
 }
 
 /// Ab hier folgen weitere Einträge nur für die Karten-Anzeige (nicht fürs Modell).
