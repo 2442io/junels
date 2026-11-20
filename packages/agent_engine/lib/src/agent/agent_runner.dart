@@ -268,6 +268,8 @@ class AgentRunner {
 
     String? hint; // einmaliger Hinweis an das Modell (nicht Teil des Verlaufs)
     var answerNext = false; // Werkzeug meldet: Ergebnis reicht → nur noch antworten
+    final seenCalls = <String, String>{}; // gleiche Aufrufe nicht wiederholen
+    final failures = <String, int>{}; // erfolglose Aufrufe je Werkzeug
 
     for (var step = 1; step <= maxSteps + 1; step++) {
       if (_stopped) {
@@ -374,9 +376,9 @@ class AgentRunner {
       String observation;
       var isError = false;
       final sw = Stopwatch()..start();
-      if (callKey == lastCall) {
-        observation = 'Du hast dieses Tool gerade mit denselben Argumenten aufgerufen. '
-            'Nutze das bisherige Ergebnis und gib die final_answer.';
+      if (callKey == lastCall || seenCalls.containsKey(callKey)) {
+        observation = 'Du hast dieses Tool gerade schon mit denselben Argumenten aufgerufen. '
+            'Ergebnis damals: ${seenCalls[callKey] ?? ''}\nNutze das und gib jetzt die final_answer.';
         isError = true;
       } else {
         final tool = activeTools.where((t) => t.name == toolName).firstOrNull;
@@ -400,6 +402,13 @@ class AgentRunner {
       }
       lastCall = callKey;
       sw.stop();
+      seenCalls.putIfAbsent(callKey, () => observation.length > 300 ? '${observation.substring(0, 300)} …' : observation);
+      // Zweimal erfolglos (Fehler oder „ohne Ergebnis“) → nicht weiter probieren, antworten
+      if (isError || RegExp(r'ohne Ergebnis|keine Treffer|nichts gefunden', caseSensitive: false).hasMatch(observation.length > 200 ? observation.substring(0, 200) : observation)) {
+        final n = (failures[toolName] ?? 0) + 1;
+        failures[toolName] = n;
+        if (n >= 2) answerNext = true;
+      }
       // Weitere Ergebnis-Karten sieht nur die Oberfläche, nicht das Modell (kürzerer Prompt)
       final cut = observation.indexOf(moreCardsMarker);
       var extra = cut < 0 ? '' : observation.substring(cut);

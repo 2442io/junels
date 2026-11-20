@@ -174,6 +174,30 @@ const modelCatalog = <CatalogEntry>[
 
   // ------------------------------------------------------- Spracherkennung (Whisper)
   CatalogEntry(
+    id: 'canary-de',
+    kind: ModelKind.stt,
+    name: 'Canary 180M (Deutsch, sehr schnell)',
+    description: 'NVIDIA Canary über sherpa-onnx: im Test etwa 4× schneller als Whisper small und mindestens so genau. '
+        'Ideal für flüssige Gespräche am Handy.',
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8.tar.bz2',
+    fileName: 'sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8.tar.bz2',
+    sizeBytes: 146 * _mb,
+    minClass: DeviceClass.s,
+    isArchive: true,
+  ),
+  CatalogEntry(
+    id: 'parakeet-v3',
+    kind: ModelKind.stt,
+    name: 'Parakeet TDT 0.6B v3 (sehr schnell, genau)',
+    description: 'NVIDIA Parakeet über sherpa-onnx (25 europäische Sprachen): schnell und sehr genau, aber größer. '
+        'Gut für Mac und starke Handys.',
+    url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2',
+    fileName: 'sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2',
+    sizeBytes: 464 * _mb,
+    minClass: DeviceClass.m,
+    isArchive: true,
+  ),
+  CatalogEntry(
     id: 'whisper-base',
     kind: ModelKind.stt,
     name: 'Whisper base (q5_1)',
@@ -182,7 +206,6 @@ const modelCatalog = <CatalogEntry>[
     fileName: 'ggml-base-q5_1.bin',
     sizeBytes: 57 * _mb,
     minClass: DeviceClass.s,
-    idealClass: DeviceClass.s,
   ),
   CatalogEntry(
     id: 'whisper-small',
@@ -372,8 +395,12 @@ List<Recommendation> recommendFor(ModelKind kind, DeviceProfile device,
   // Empfehlung: Eintrag mit idealClass == Geräteklasse; passt der nicht in den
   // Arbeitsspeicher, die Empfehlung der nächstkleineren Klasse; sonst der größte passende
   // Handy: für flüssige Gespräche Whisper small statt turbo (CPU-Encoder ist sonst zu langsam)
-  if (kind == ModelKind.stt && device.isMobile && device.deviceClass.index >= DeviceClass.m.index) {
-    best = entries.where((e) => e.id == 'whisper-small' && runs(e)).firstOrNull;
+  // Spracherkennung: Canary (Handy) bzw. Parakeet (Desktop) über sherpa-onnx sind ein Vielfaches
+  // schneller als Whisper bei gleicher Genauigkeit
+  if (kind == ModelKind.stt) {
+    final pref = device.isMobile ? 'canary-de' : 'parakeet-v3';
+    best = entries.where((e) => e.id == pref && runs(e)).firstOrNull ??
+        entries.where((e) => e.id == 'canary-de' && runs(e)).firstOrNull;
   }
   for (var c = device.deviceClass.index; c >= 0 && best == null; c--) {
     for (final e in entries) {

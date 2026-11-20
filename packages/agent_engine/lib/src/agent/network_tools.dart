@@ -505,7 +505,7 @@ bool isJunkLink(String link, String title) {
 /// Wortstämme einer Suchanfrage (für die Prüfung, ob ein Treffer passt).
 List<String> queryStems(String q) => [
       for (final w in q.toLowerCase().split(RegExp(r'[^a-z0-9äöüß]+')))
-        if (w.length >= 4 && !const {'eine', 'einen', 'einer', 'für', 'fuer', 'damit', 'gerne', 'soll', 'sein', 'mit', 'oder', 'von', 'auf', 'nach', 'link', 'links', 'amazon'}.contains(w))
+        if (w.length >= 4 && !const {'eine', 'einen', 'einer', 'für', 'fuer', 'damit', 'gerne', 'soll', 'sein', 'mit', 'oder', 'von', 'auf', 'nach', 'link', 'links', 'amazon', 'news', 'nachrichten', 'zeige', 'zeig', 'gehe', 'seite', 'bitte', 'welche', 'gibt', 'alle', 'aktuelle', 'neuesten'}.contains(w))
           w.length >= 8 ? w.substring(0, 4) : (w.length > 6 ? w.substring(0, 6) : w),
     ];
 

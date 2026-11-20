@@ -401,71 +401,6 @@ class ConversationMode {
     return null;
   }
 
-  int _cut = 0;
-  bool _decided = false;
-
-  static final _metaStart = RegExp(
-      r'^(thought\b|der (nutzer|benutzer|user)\b|die (nutzerin|benutzerin)\b|du fragst|du hast gefragt|du möchtest wissen|'
-      r'du willst wissen|sie fragen|sie möchten wissen|die frage (ist|lautet|war)|deine frage|zu deiner frage|'
-      r'ich soll\b|ich sollte\b|ich muss (jetzt )?(die|eine|kurz)|lass mich|okay[,.! ]|ok[,.! ]|alles klar[,.! ]|hmm|'
-      r'gut[,.] ich|also[,] (der|die) (nutzer|frage)|die antwort (ist|lautet)\s*:?\s*$)',
-      caseSensitive: false);
-
-  static Set<String> _words(String t) => {
-        for (final w in t.toLowerCase().split(RegExp(r'[^\p{L}\d]+', unicode: true)))
-          if (w.length > 2) w,
-      };
-
-  /// Wiederholt der Satz nur die Frage oder ist es lautes Denken?
-  static bool looksLikePreamble(String sentence, String question) {
-    final s = sentence.trim();
-    if (_metaStart.hasMatch(s)) return true;
-    final q = _words(question), w = _words(s);
-    if (q.length < 3 || w.isEmpty) return false;
-    final overlap = w.intersection(q).length;
-    // fast nur Wörter der Frage, z. B. „Wie wird das Wetter morgen in Wien?“ → „Das Wetter morgen in Wien.“
-    return overlap >= q.length * 0.6 && overlap >= w.length * 0.7;
-  }
-
-  /// Text ohne Vorspann; null = noch warten (erster Satz unklar).
-  String? _withoutPreamble(String full, String question, bool done) {
-    while (!_decided) {
-      final rest = full.substring(math.min(_cut, full.length));
-      final lead = rest.trimLeft();
-      final skip = rest.length - lead.length;
-      // „thought“-Zeile (Kanalname des Denkens)
-      if (RegExp(r'^thought\b', caseSensitive: false).hasMatch(lead)) {
-        final nl = lead.indexOf('\n');
-        if (nl < 0) {
-          if (!done) return null;
-          _decided = true;
-          break;
-        }
-        _cut += skip + nl + 1;
-        continue;
-      }
-      final m = RegExp(r'^[^.!?\n]*[.!?:\n]+(?=\s|$)').firstMatch(lead);
-      if (m == null) {
-        // erster Satz noch nicht fertig: bei unverdächtigem Anfang sofort sprechen
-        final words = lead.split(RegExp(r'\s+')).where((x) => x.isNotEmpty).length;
-        if (!done && (words < 5 || _metaStart.hasMatch(lead))) return null;
-        _decided = true;
-        break;
-      }
-      final sentence = m.group(0)!;
-      if (looksLikePreamble(sentence, question)) {
-        final more = lead.substring(sentence.length).trim().isNotEmpty;
-        if (more) {
-          _cut += skip + sentence.length;
-          continue;
-        }
-        if (!done) return null; // abwarten, ob noch etwas kommt
-      }
-      _decided = true;
-    }
-    return full.substring(math.min(_cut, full.length)).trimLeft();
-  }
-
   Future<void> _respond(String text, int myTurn, int sttMs, int audioMs) async {
     // Läuft noch eine andere Antwort (z. B. aus dem Chat)? Erst beenden.
     if (app.running) {
@@ -482,12 +417,10 @@ class ConversationMode {
     _speakingStarted = false;
     final sw = Stopwatch()..start();
     var firstMs = -1;
-    _cut = 0;
-    _decided = false;
     await app.send(text, voice: true, onAnswer: (raw, done) {
       if (myTurn != _turn) return;
       // Wiederholte Frage und lautes Denken nicht vorlesen
-      final full = _withoutPreamble(raw, text, done);
+      final full = stripAnswerPreamble(raw, text, done: done);
       if (full == null) return;
       if (firstMs < 0 && full.trim().isNotEmpty) {
         firstMs = sw.elapsedMilliseconds;
@@ -503,7 +436,7 @@ class ConversationMode {
     });
     voiceLog('Antwort: erste Worte nach ${firstMs < 0 ? '–' : _sec(firstMs)}, fertig nach ${_sec(sw.elapsedMilliseconds)}');
     final tips = <String>[
-      if (_sttSlow) 'Spracherkennung langsam → im Systemcheck „Whisper small“ laden',
+      if (_sttSlow) 'Spracherkennung langsam → im Systemcheck „Canary“ laden (viel schneller)',
       if (firstMs > 6000) 'Antwort langsam → kleineres Sprachmodell (z. B. Gemma 4 E2B)',
     ];
     if (tips.isNotEmpty) timing.value = '${timing.value}\nTipp: ${tips.join(' · ')}';

@@ -389,7 +389,7 @@ class VoiceService {
   final List<Float32List> _dictation = [];
   Timer? _timer;
 
-  SttEngine? _stt;
+  Transcriber? _stt;
   String? _sttPath;
 
   SileroClassifier? _silero;
@@ -404,11 +404,14 @@ class VoiceService {
     return _silero;
   }
 
-  Future<SttEngine> stt(String modelPath) async {
+  Future<Transcriber> stt(String modelPath) async {
     if (_stt != null && _sttPath == modelPath) return _stt!;
     await _stt?.dispose();
     _stt = null;
-    _stt = await SttEngine.load(modelPath);
+    // Ordner = sherpa-onnx-Modell (Canary, Parakeet), Datei = Whisper (whisper.cpp)
+    _stt = Directory(modelPath).existsSync()
+        ? await SherpaAsr.start(modelPath)
+        : _WhisperStt(await SttEngine.load(modelPath));
     _sttPath = modelPath;
     return _stt!;
   }
@@ -494,6 +497,137 @@ class VoiceService {
     await mic.dispose();
     await _stt?.dispose();
   }
+}
+
+// ===========================================================================
+// Spracherkennung: Whisper (whisper.cpp) oder sherpa-onnx (Canary, Parakeet)
+// ===========================================================================
+
+abstract class Transcriber {
+  Future<Transcript> transcribe(Float32List pcm16k, {String language = 'auto', int threads = 4});
+  Future<void> dispose();
+}
+
+class _WhisperStt implements Transcriber {
+  _WhisperStt(this._e);
+  final SttEngine _e;
+  @override
+  Future<Transcript> transcribe(Float32List pcm16k, {String language = 'auto', int threads = 4}) =>
+      _e.transcribe(pcm16k, language: language, threads: threads);
+  @override
+  Future<void> dispose() => _e.dispose();
+}
+
+/// Schnelle Offline-Erkenner über sherpa-onnx in einem eigenen Isolate.
+class SherpaAsr implements Transcriber {
+  SherpaAsr._(this._isolate, this._send, this._responses);
+  final Isolate _isolate;
+  final SendPort _send;
+  final Stream<dynamic> _responses;
+  int _id = 1;
+
+  static Future<SherpaAsr> start(String dir) async {
+    final rp = ReceivePort();
+    final errors = ReceivePort();
+    final iso = await Isolate.spawn(_asrMain, rp.sendPort, debugName: 'asr', onError: errors.sendPort);
+    final responses = rp.asBroadcastStream();
+    final crash = Completer<Map>();
+    errors.listen((e) {
+      if (!crash.isCompleted) crash.complete({'id': 0, 'ok': false, 'error': 'Absturz in der Spracherkennung: $e'});
+    });
+    final send = await Future.any([responses.first, crash.future.then((m) => throw Exception(m['error']))]) as SendPort;
+    final threads = math.max(2, math.min(4, Platform.numberOfProcessors ~/ 2));
+    send.send({'cmd': 'load', 'id': 0, 'dir': dir, 'threads': threads});
+    final r = await Future.any([
+      responses.firstWhere((m) => m is Map && m['id'] == 0).then((m) => m as Map),
+      crash.future,
+    ]).timeout(const Duration(seconds: 90));
+    if (r['ok'] != true) {
+      iso.kill(priority: Isolate.immediate);
+      throw Exception(r['error'] ?? 'Spracherkennung konnte nicht geladen werden');
+    }
+    return SherpaAsr._(iso, send, responses);
+  }
+
+  @override
+  Future<Transcript> transcribe(Float32List pcm16k, {String language = 'auto', int threads = 4}) async {
+    final id = _id++;
+    final sw = Stopwatch()..start();
+    final f = _responses.firstWhere((m) => m is Map && m['id'] == id);
+    _send.send({'cmd': 'run', 'id': id, 'pcm': TransferableTypedData.fromList([pcm16k])});
+    final r = await f.timeout(const Duration(seconds: 60)) as Map;
+    if (r['ok'] != true) throw Exception(r['error'] ?? 'Spracherkennung fehlgeschlagen');
+    return Transcript((r['text'] as String).trim(), language == 'auto' ? 'de' : language, sw.elapsed);
+  }
+
+  @override
+  Future<void> dispose() async {
+    _send.send({'cmd': 'dispose', 'id': -1});
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    _isolate.kill(priority: Isolate.beforeNextEvent);
+  }
+}
+
+void _asrMain(SendPort out) {
+  final inbox = ReceivePort();
+  out.send(inbox.sendPort);
+  sherpa.OfflineRecognizer? rec;
+  inbox.listen((dynamic msg) {
+    final m = msg as Map;
+    final id = m['id'];
+    try {
+      switch (m['cmd']) {
+        case 'load':
+          _initSherpa();
+          final dir = Directory(m['dir'] as String);
+          final files = dir.listSync(recursive: true).whereType<File>().map((f) => f.path).toList()..sort();
+          String? pick(String part) =>
+              files.where((f) => f.endsWith('.onnx') && f.split('/').last.contains(part)).firstOrNull;
+          final tokens = files.where((f) => f.endsWith('tokens.txt')).firstOrNull;
+          final enc = pick('encoder'), dec = pick('decoder'), join = pick('joiner');
+          if (tokens == null || enc == null || dec == null) {
+            out.send({'id': id, 'ok': false, 'error': 'Spracherkennung unvollständig (encoder/decoder/tokens fehlen)'});
+            return;
+          }
+          final threads = m['threads'] as int;
+          final name = dir.path.toLowerCase();
+          final model = join != null
+              ? sherpa.OfflineModelConfig(
+                  transducer: sherpa.OfflineTransducerModelConfig(encoder: enc, decoder: dec, joiner: join),
+                  modelType: 'nemo_transducer',
+                  tokens: tokens,
+                  numThreads: threads,
+                  debug: false)
+              : name.contains('canary')
+                  ? sherpa.OfflineModelConfig(
+                      canary: sherpa.OfflineCanaryModelConfig(encoder: enc, decoder: dec, srcLang: 'de', tgtLang: 'de'),
+                      tokens: tokens,
+                      numThreads: threads,
+                      debug: false)
+                  : sherpa.OfflineModelConfig(
+                      whisper: sherpa.OfflineWhisperModelConfig(encoder: enc, decoder: dec, language: 'de'),
+                      tokens: tokens,
+                      numThreads: threads,
+                      debug: false);
+          rec = sherpa.OfflineRecognizer(sherpa.OfflineRecognizerConfig(model: model));
+          out.send({'id': id, 'ok': true});
+        case 'run':
+          final pcm = (m['pcm'] as TransferableTypedData).materialize().asFloat32List();
+          final st = rec!.createStream();
+          st.acceptWaveform(samples: pcm, sampleRate: 16000);
+          rec!.decode(st);
+          final text = rec!.getResult(st).text;
+          st.free();
+          out.send({'id': id, 'ok': true, 'text': text});
+        case 'dispose':
+          rec?.free();
+          rec = null;
+          inbox.close();
+      }
+    } catch (e) {
+      out.send({'id': id, 'ok': false, 'error': e.toString()});
+    }
+  });
 }
 
 // ===========================================================================

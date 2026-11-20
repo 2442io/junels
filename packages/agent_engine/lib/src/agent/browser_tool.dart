@@ -169,6 +169,11 @@ class BrowserTool extends AgentTool {
     switch (action) {
       case 'open' || 'goto' || 'navigate':
         await d.open(_url(target));
+        await d.settle();
+        // text = worum es geht (z. B. „News zu Anthropic“): passende Einträge zuerst
+        final r = await _snapshot(d, focus: text.trim());
+        if (text.trim().isNotEmpty && parseResultCards(r).isNotEmpty) ctx.answerNow = true;
+        return r;
       case 'search':
         if (text.trim().isEmpty) throw ToolException('text (Suchbegriffe) fehlt');
         final r = await _search(d, target, text.trim());
@@ -278,10 +283,10 @@ class BrowserTool extends AgentTool {
     return _read(d);
   }
 
-  Future<String> _snapshot(BrowserDriver d, {String note = ''}) async {
+  Future<String> _snapshot(BrowserDriver d, {String note = '', String focus = ''}) async {
     var snap = await _read(d);
     if (snap['captcha'] == true) snap = await _captcha(d);
-    return _format(snap, note: note);
+    return _format(snap, note: note, focus: focus);
   }
 
   static Map<String, dynamic> _decode(String raw) {
@@ -301,7 +306,7 @@ class BrowserTool extends AgentTool {
   /// Seite als Text für das Modell; Karten nach dem Marker nur fürs Karussell.
   static String formatSnapshot(Map<String, dynamic> snap, {String note = ''}) => _format(snap, note: note);
 
-  static String _format(Map<String, dynamic> snap, {String note = ''}) {
+  static String _format(Map<String, dynamic> snap, {String note = '', String focus = ''}) {
     final b = StringBuffer();
     if (note.isNotEmpty) b.writeln(note);
     b.writeln('Seite: ${snap['title'] ?? ''} (${snap['url'] ?? ''})');
@@ -311,6 +316,15 @@ class BrowserTool extends AgentTool {
           PageItem((c['title'] ?? '').toString(), cleanLink((c['link'] ?? '').toString()), (c['image'] ?? '').toString(),
               summary: (c['price'] ?? '').toString().isEmpty ? '' : 'Preis: ${c['price']}'),
     ];
+    if (focus.isNotEmpty) {
+      // Passende Einträge nach vorne, der Rest danach (fürs Karussell)
+      final hit = relevantItems(cards, focus);
+      if (hit.isNotEmpty) {
+        cards
+          ..removeWhere(hit.contains)
+          ..insertAll(0, hit);
+      }
+    }
     if (cards.isNotEmpty) {
       b.writeln('Treffer (der Nutzer sieht sie als Karten):');
       b.write(formatCardItems(cards.take(5)));
@@ -330,7 +344,19 @@ class BrowserTool extends AgentTool {
     }
     if (snap['more'] == true) b.writeln('(weiter unten gibt es mehr – action scroll)');
     final text = (snap['text'] ?? '').toString();
-    if (text.isNotEmpty) b.writeln('Text: ${text.length > 600 ? '${text.substring(0, 600)}…' : text}');
+    final stems = focus.isEmpty ? const <String>[] : queryStems(focus);
+    if (stems.isNotEmpty) {
+      // Sätze der Seite, die zum Thema passen
+      final hits = [
+        for (final m in RegExp(r'[^.!?]{20,300}[.!?]?').allMatches(text))
+          if (stems.any(m.group(0)!.toLowerCase().contains)) m.group(0)!.trim(),
+      ];
+      b.writeln(hits.isEmpty
+          ? 'Zum Thema „$focus“ steht auf dieser Seite nichts im sichtbaren Teil (eventuell weiter unten – action scroll).'
+          : 'Passende Stellen: ${hits.take(6).join(' … ')}');
+    } else if (text.isNotEmpty) {
+      b.writeln('Text: ${text.length > 600 ? '${text.substring(0, 600)}…' : text}');
+    }
     b.writeln('Antworte, sobald du genug weißt; sonst nächste Aktion. Nenne Produkte mit Namen und Preis, '
         'aber schreib keine Adressen (URLs) in die Antwort – die Karten zeigen die Links. '
         'Bei Bestellung/Zahlung: der Nutzer macht das selbst.');

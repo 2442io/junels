@@ -274,13 +274,13 @@ Future<void> main() async {
     check(best(ModelKind.llm, l) == 'qwen3.5-9b', 'L → Qwen 3.5 9B');
     check(xl.deviceClass == DeviceClass.xl && xl.maxContext == 16384, 'XL bei 128 GB, 16K Context');
     check(best(ModelKind.llm, xl) == 'gemma-4-26b-a4b', 'XL → Gemma 4 26B A4B');
-    check(best(ModelKind.stt, xl) == 'whisper-turbo', 'XL → Whisper turbo voll');
-    check(best(ModelKind.stt, s) == 'whisper-base', 'S → Whisper base');
-    check(best(ModelKind.stt, m) == 'whisper-turbo-q5', 'M Desktop → Whisper turbo q5');
+    check(best(ModelKind.stt, xl) == 'parakeet-v3', 'XL → Parakeet');
+    check(best(ModelKind.stt, s) == 'canary-de', 'S → Canary');
+    check(best(ModelKind.stt, m) == 'parakeet-v3', 'M Desktop → Parakeet');
     final phone12 = DeviceProfile.detect(totalMemoryOverride: 12 * gb, cpuOverride: 8, mobileOverride: true);
-    check(best(ModelKind.stt, phone12) == 'whisper-small', 'Handy → Whisper small (schnell genug für Gespräche)');
+    check(best(ModelKind.stt, phone12) == 'canary-de', 'Handy → Canary (schnell für Gespräche)');
     // Rechner (Linux/macOS) gilt als Desktop → volle Präzision
-    check(best(ModelKind.stt, l) == 'whisper-turbo', 'L Desktop → Whisper turbo voll');
+    check(best(ModelKind.stt, l) == 'parakeet-v3', 'L Desktop → Parakeet');
     check(best(ModelKind.tts, m) == 'piper-de-thorsten', 'Stimme → Thorsten');
     final noSpace = recommendFor(ModelKind.llm, l, freeDiskBytes: 1 * gb);
     check(noSpace.firstWhere((r) => r.entry.id == 'qwen3.5-9b').suitability == Suitability.noSpace,
@@ -599,6 +599,18 @@ Future<void> main() async {
     final ws = WebSearchTool(fetcher: (u) async => u.host.contains('duckduckgo') ? throw ToolException('Captcha') : '');
     final r = await ws.run({'query': 'x'}, ToolContext(requestNetwork: (_) async => true));
     check(r.contains('DuckDuckGo: ') && r.contains('Captcha') && r.contains('Grund'), 'Websuche nennt den Grund');
+  });
+
+  await group('Antwort ohne Vorspann', () async {
+    const q = 'Wie wird das Wetter morgen in Wien?';
+    check(stripAnswerPreamble('Du fragst, wie das Wetter morgen in Wien wird. Morgen wird es sonnig.', q) == 'Morgen wird es sonnig.',
+        'wiederholte Frage entfernt');
+    check(stripAnswerPreamble('Der Nutzer möchte das Wetter wissen. Ich sollte nachsehen. Morgen 12 Grad.', q) == 'Morgen 12 Grad.',
+        'lautes Denken entfernt');
+    check(stripAnswerPreamble('Morgen wird es sonnig.', q) == 'Morgen wird es sonnig.', 'normale Antwort bleibt');
+    check(stripAnswerPreamble('Du fragst nach', q, done: false) == null, 'unklarer Anfang: warten');
+    check(stripAnswerPreamble('Die wichtigsten Sportnachrichten sind: Rapid gewinnt.', 'Welche Sportnews gibt es auf krone.at?') ==
+        'Die wichtigsten Sportnachrichten sind: Rapid gewinnt.', 'Einleitung mit neuer Info bleibt');
   });
 
   await group('Browser', () async {

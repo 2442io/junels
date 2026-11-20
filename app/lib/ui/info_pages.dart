@@ -10,6 +10,12 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.21.0', [
+    'Neue Spracherkennung: Canary (146 MB) und Parakeet (464 MB) über sherpa-onnx – im Test 4–5× schneller als Whisper small, mindestens so genau. Systemcheck → Spracherkennung',
+    'Text-Chat: wiederholte Frage und lautes Denken am Anfang der Antwort werden ausgeblendet (wie im Gespräch)',
+    'Browser: genannte Webseiten (z. B. „geh auf rtb.li/p/ainews …“, „Sportnews auf krone.at“, „auf anyai.fyi nach … suchen“) werden direkt geöffnet bzw. dort gesucht',
+    'Keine Wiederholungen mehr: dieselbe Suche wird nicht mehrmals abgeschickt; nach zwei erfolglosen Versuchen antwortet der Agent',
+  ]),
   ('1.20.3', [
     'Gespräch: Wiederholt der Agent deine Frage oder denkt laut („Der Nutzer möchte …“, „Du fragst …“), wird das nicht vorgelesen – nur die Antwort',
   ]),

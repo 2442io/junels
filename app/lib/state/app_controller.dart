@@ -621,7 +621,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final p = settings.installed[e.id];
     if (p == null) return null;
-    final exists = e.kind == ModelKind.tts ? Directory(p).existsSync() : File(p).existsSync();
+    final exists = e.isArchive ? Directory(p).existsSync() : File(p).existsSync();
     return exists ? p : null;
   }
 
@@ -668,7 +668,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           ));
           await storage.saveModels(models);
         case ModelKind.stt:
-          settings.installed[e.id] = file.path;
+          if (e.isArchive) {
+            // sherpa-onnx-Erkenner (Canary, Parakeet) kommen als Archiv
+            st.extracting = true;
+            notifyListeners();
+            await _extractInBackground(file.path, dir);
+            await file.delete();
+            settings.installed[e.id] = '$dir/${e.folderName}';
+          } else {
+            settings.installed[e.id] = file.path;
+          }
           settings.sttModelId ??= e.id;
           await storage.saveSettings(settings);
         case ModelKind.image:
@@ -730,7 +739,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final p = settings.installed.remove(e.id);
     if (p != null) {
       try {
-        if (e.kind == ModelKind.tts) {
+        if (e.isArchive) {
           await Directory(p).delete(recursive: true);
         } else {
           await File(p).delete();
@@ -750,7 +759,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final id = settings.sttModelId;
     if (id == null) return null;
     final p = settings.installed[id];
-    return p != null && File(p).existsSync() ? p : null;
+    return p != null && (File(p).existsSync() || Directory(p).existsSync()) ? p : null;
   }
 
   String? get ttsVoicePath {
@@ -1378,6 +1387,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           'Schreibe Inhalte vollständig und gut gegliedert. Die Dateien erscheinen automatisch im Chat – '
           'in der final_answer nur kurz sagen, was erstellt wurde.');
     }
+    if ((tools ?? activeTools).any((t) => t.name == 'browser')) {
+      system.write('\n\nBROWSER: Nennt der Nutzer eine Webseite oder Adresse, öffne sie mit browser '
+          '(action "open" oder "search") – nicht web_search. Wiederhole keine Suche, die schon nichts gefunden hat.');
+    }
     if (voice) {
       system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
           'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
@@ -1411,7 +1424,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// das Werkzeug zu sehen. Für „Hi“ oder normale Fragen gibt es gar keine Werkzeuge –
   /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
   static final _toolTriggers = <String, RegExp>{
-    'browser': RegExp(r'browser|öffne\w* .*(seite|webseite|website|\.(com|at|de)\b)|geh\w* auf|navigier|klick|surf|'
+    'browser': RegExp(r'browser|https?://|\b[a-z0-9-]+\.(at|de|com|ch|li|net|org|io|eu|info|fyi|app|dev|ai|co|shop)\b|öffne\w* .*(seite|webseite|website)|geh\w* auf|navigier|klick|surf|'
         r'amazon|ebay|willhaben|shop|bestell|anmelde|formular|auf der seite|im browser|such\w* (auf|bei) '),
     'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
     'site_search': RegExp(r'amazon|ebay|geizhals|idealo|willhaben|otto\.de|mediamarkt|thalia|chefkoch|wikipedia|'
@@ -1555,6 +1568,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (browser != null) return (browser, {'action': 'search', 'target': shop.$1, 'text': shop.$2});
       if (site != null) return (site, {'site': shop.$1, 'query': shop.$2});
     }
+    // Adresse genannt („geh auf rtb.li/p/ainews …“, „Sportnews auf krone.at“) → diese Seite öffnen
+    final page = pageAddressOf(input);
+    if (page != null) {
+      final browser = find('browser'), fetch = find('web_fetch');
+      final focus = input.replaceAll(page.$2, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (browser != null) return (browser, {'action': 'open', 'target': page.$1, 'text': focus});
+      if (fetch != null) return (fetch, {'url': page.$1});
+    }
     if (_otherIntent.hasMatch(input)) return null;
     final weather = find('weather'), news = find('news');
     bool isWeather(String t) => weather != null && _weatherIntent.hasMatch(t);
@@ -1570,7 +1591,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
-  static const _siteWord = r'([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:de|at|com|ch|net|org|eu|io)|amazon|ebay|willhaben|geizhals|idealo|'
+  static const _siteWord = r'([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:de|at|com|ch|net|org|eu|io|fyi|li|info|app|dev|ai|co|shop)|amazon|ebay|willhaben|geizhals|idealo|'
       r'otto|mediamarkt|thalia|chefkoch|wikipedia|youtube|ikea|zalando)';
 
   /// (Seite, Suchbegriffe) aus „suche auf X nach Y“ oder „such nach Y auf X“ – sonst null.
@@ -1589,6 +1610,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final b = RegExp('such\\w*\\s+(?:mir\\s+)?(?:nach\\s+)?(.{2,120}?)\\s+(?:auf|bei)\\s+$_siteWord\$', caseSensitive: false).firstMatch(t);
     if (b != null) return (b.group(2)!.toLowerCase(), q(b.group(1)!));
     return null;
+  }
+
+  /// (Adresse, gefundener Text) einer genannten Webseite – sonst null. E-Mail-Adressen zählen nicht.
+  static (String, String)? pageAddressOf(String input) {
+    final u = RegExp(r'https?://[^\s<>"]+', caseSensitive: false).firstMatch(input);
+    if (u != null) return (u.group(0)!.replaceAll(RegExp(r'[.,;:!?)]+$'), ''), u.group(0)!);
+    final d = RegExp(r'(?<![@\w.-])((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:at|de|com|ch|li|net|org|io|eu|info|fyi|app|dev|ai|co|shop)(?:/[^\s<>"]*)?)',
+            caseSensitive: false)
+        .firstMatch(input);
+    if (d == null) return null;
+    final addr = d.group(1)!.replaceAll(RegExp(r'[.,;:!?)]+$'), '');
+    return ('https://$addr', d.group(0)!);
   }
 
   /// Titel für eine Karte aus einer nackten Adresse: „amazon.de – Suche: brotdosen“.
@@ -2225,7 +2258,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               if (last != null) last.thought = liveThought;
             }
             if (liveAnswer != null) {
-              answer.text = liveAnswer;
+              // wiederholte Frage / lautes Denken am Anfang nicht anzeigen
+              answer.text = stripAnswerPreamble(liveAnswer, input, done: false) ?? '';
               onAnswer?.call(liveAnswer, false);
             }
           case ToolCalled(:final tool, :final args, thought: final callThought):
@@ -2250,7 +2284,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             answer.tokensPerSecond = lastTokensPerSecond;
           case FinalAnswer(:final text, :final truncated, thought: final finalThought):
             answer
-              ..text = text
+              ..text = stripAnswerPreamble(text, input) ?? text
               ..truncated = truncated;
             onAnswer?.call(text, true);
             final last = answer.steps.lastOrNull;
