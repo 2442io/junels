@@ -18,10 +18,10 @@ import onnx
 from huggingface_hub import hf_hub_download
 
 # Mögliche Quellen (die erste, die eine ONNX-Datei und eine Stimme hat, wird genommen)
+VOICE = (sys.argv[2] if len(sys.argv) > 2 else "martin").lower()
 CANDIDATES = [
-    "huggingFresse/Kokoro-82M-ONNX-German-Martin",
-    "prinzsimo/Kokoro-82M-German-Martin",
-    "kikiri-tts/kikiri-german-martin",
+    f"huggingFresse/Kokoro-82M-ONNX-German-{VOICE.capitalize()}",
+    f"prinzsimo/Kokoro-82M-German-{VOICE.capitalize()}",
 ]
 REPO = ""
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "kokoro-de-martin")
@@ -31,6 +31,17 @@ ESPEAK = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/esp
 def find_source():
     from huggingface_hub import HfApi
     api = HfApi()
+    # weitere Kandidaten über die Hugging-Face-Suche
+    try:
+        for m in api.list_models(search=f"kokoro german {VOICE}", limit=30):
+            if m.id not in CANDIDATES:
+                CANDIDATES.append(m.id)
+        for m in api.list_models(search=f"kokoro {VOICE} onnx", limit=30):
+            if m.id not in CANDIDATES:
+                CANDIDATES.append(m.id)
+    except Exception as e:
+        print("Suche fehlgeschlagen:", e)
+    print("Kandidaten:", CANDIDATES)
     for repo in CANDIDATES:
         try:
             files = api.list_repo_files(repo)
@@ -41,6 +52,8 @@ def find_source():
         onnx_files = [f for f in files if f.endswith(".onnx")]
         # unquantisiert bevorzugen
         onnx_files.sort(key=lambda f: (any(q in f.lower() for q in ("int8", "q8", "quant", "fp16", "uint8")), len(f)))
+        if "coreml" in repo.lower() or VOICE not in (repo + " ".join(files)).lower():
+            continue
         voice_files = [f for f in files if f.endswith((".npz", ".npy")) or (f.endswith(".bin") and "voice" in f.lower())
                        or (f.endswith(".pt") and "voice" in f.lower())]
         if onnx_files and voice_files:
@@ -53,12 +66,12 @@ def load_styles(path):
         npz = np.load(path)
         return list(npz.files), [np.asarray(npz[k], dtype=np.float32) for k in npz.files]
     if path.endswith(".npy"):
-        return ["martin"], [np.load(path).astype(np.float32)]
+        return [VOICE], [np.load(path).astype(np.float32)]
     if path.endswith(".pt"):
         import torch
-        return ["martin"], [torch.load(path, map_location="cpu", weights_only=True).numpy().astype(np.float32)]
+        return [VOICE], [torch.load(path, map_location="cpu", weights_only=True).numpy().astype(np.float32)]
     raw = np.fromfile(path, dtype=np.float32)
-    return ["martin"], [raw.reshape(-1, 1, 256)]
+    return [VOICE], [raw.reshape(-1, 1, 256)]
 
 
 def main():
@@ -130,7 +143,7 @@ def main():
         "n_speakers": len(names),
         "speaker_names": ",".join(names),
         "model_url": "https://huggingface.co/" + REPO,
-        "comment": "Kokoro-82M German fine-tune 'Martin' (Apache-2.0), packaged for sherpa-onnx by Junels",
+        "comment": f"Kokoro-82M German fine-tune '{VOICE}' (Apache-2.0), packaged for sherpa-onnx by Junels",
     }
     while len(model.metadata_props):
         model.metadata_props.pop()
@@ -149,7 +162,7 @@ def main():
         tmp.unlink()
 
     (OUT / "LICENSE").write_text(
-        "Kokoro-82M German 'Martin' – Apache License 2.0\n"
+        f"Kokoro-82M German '{VOICE}' – Apache License 2.0\n"
         "Quelle: https://huggingface.co/" + REPO + "\n"
         "Basis: https://huggingface.co/hexgrad/Kokoro-82M (Apache-2.0)\n"
         "espeak-ng-data: GPL-3.0 (https://github.com/espeak-ng/espeak-ng)\n",
