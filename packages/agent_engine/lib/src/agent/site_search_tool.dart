@@ -161,7 +161,7 @@ class SiteSearchTool extends AgentTool {
     b.write(formatCardItems(items.take(8)));
     b.writeln('\nDie Treffer sieht der Nutzer bereits als Karten mit Bild, Titel, Preis und Link. '
         'Fasse in 2–3 Sätzen zusammen und empfiehl die 2–3 passendsten (mit Preis). Keine vollständige Liste, '
-        'keine Bilder einbinden. Preise können sich ändern.');
+        'keine Bilder und keine Adressen (URLs) in die Antwort – die Karten zeigen die Links. Preise können sich ändern.');
     if (items.length > 8) {
       b
         ..write(moreCardsMarker)

@@ -91,7 +91,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   late final DeviceBridge deviceBridge = DeviceBridge(countryCodeOf: () => settings.countryCode);
 
   /// Eingebauter Browser, den der Agent bedient.
-  late final BrowserService browser = BrowserService(confirmer: (t, d) => deviceBridge.confirm(t, d));
+  late final BrowserService browser =
+      BrowserService(confirmer: (t, d) => deviceBridge.confirm(t, d), currentChat: () => current?.id);
 
   /// Schnellstart-Aktion (Startbildschirm-Knopf, Dock-Menü): "conversation", "newchat", "prompt:<id>"
   final pendingLaunch = ValueNotifier<String?>(null);
@@ -211,7 +212,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       prompts = await storage.loadPrompts();
       mcpServers = await storage.loadMcpServers();
       conversations = await storage.loadConversations();
-      current = conversations.isNotEmpty ? conversations.first : null;
+      // Nach längerer Pause mit neuem Chat starten, sonst im letzten weiterarbeiten
+      final last = conversations.isNotEmpty ? conversations.first : null;
+      current = last != null && DateTime.now().difference(last.updated) < idleNewChat ? last : null;
       _pollMemory();
       _memTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollMemory());
       initialized = true;
@@ -273,10 +276,25 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   // Android arbeitet dank Vordergrunddienst weiter; iPadOS würde die App einfrieren,
   // dort wird die Generierung sauber angehalten.
+  /// So lange ohne Nutzung → beim nächsten Öffnen ein neuer Chat.
+  static const idleNewChat = Duration(minutes: 30);
+  DateTime? _backgroundSince;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (Platform.isIOS && (state == AppLifecycleState.paused || state == AppLifecycleState.hidden)) {
       if (running) stop();
+    }
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _backgroundSince ??= DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final since = _backgroundSince;
+      _backgroundSince = null;
+      final c = current;
+      if (since != null && !running && c != null && c.entries.isNotEmpty &&
+          DateTime.now().difference(since) >= idleNewChat && DateTime.now().difference(c.updated) >= idleNewChat) {
+        newConversation();
+      }
     }
   }
 
@@ -1445,6 +1463,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   @Deprecated('toolsFor verwenden')
   List<AgentTool> voiceToolsFor(String input) => toolsFor(input);
 
+  /// Entfernt nackte Adressen und „(Quellen: …)“-Anhänge – die Karten zeigen die Links.
+  static String _stripCardLinks(String text) {
+    var t = text.replaceAll(RegExp(r'\s*\((Quellen?|Quelle|Links?):[^)]*https?://[^)]*\)', caseSensitive: false), '');
+    t = t.replaceAllMapped(RegExp(r'(?<!\]\()https?://[^\s<>()\[\]]{60,}'), (_) => '');
+    return t.replaceAll(RegExp(r'[ \t]+\n'), '\n').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+  }
+
   /// Reine Rechenfrage („Was ist 15 % von 2.340 €?“) sofort ausrechnen.
   static String? quickCalc(String input) {
     var e = input.trim().toLowerCase();
@@ -2095,11 +2120,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         for (final st in answer.steps)
           if (st.isError != true && const {'site_search', 'news', 'web_fetch', 'web_search', 'browser'}.contains(st.tool))
             for (final c in parseResultCards(st.observation ?? '')) c.toJson(),
+        // Links, die das Modell in die Antwort geschrieben hat, ebenfalls als Karte
+        for (final m in RegExp(r'https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\x27"]').allMatches(answer.text))
+          {'title': Uri.tryParse(cleanLink(m.group(0)!))?.host.replaceFirst('www.', '') ?? m.group(0)!, 'link': cleanLink(m.group(0)!)},
       ].fold<List<Map<String, String>>>([], (acc, c) {
-        // doppelte Links nur einmal
-        if (!acc.any((x) => x['link'] != null && x['link'] == c['link'])) acc.add(c);
+        // doppelte Links nur einmal (auch mit/ohne Tracking-Anhang)
+        final l = c['link'] == null ? null : cleanLink(c['link']!);
+        if (!acc.any((x) => x['link'] != null && cleanLink(x['link']!) == l)) acc.add(c);
         return acc;
       }).take(60).toList();
+      // Hat das Modell lange Adressen geschrieben, die schon als Karte da sind: aus dem Text nehmen
+      if (answer.cards.isNotEmpty) answer.text = _stripCardLinks(answer.text);
       if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));
       if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);

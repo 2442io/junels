@@ -3,6 +3,7 @@
 
 import 'dart:io';
 
+import 'package:agent_engine/agent_engine.dart' show cleanLink;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -167,7 +168,7 @@ class MarkdownLite extends StatelessWidget {
         final md = RegExp(r'^\[([^\]]+)\]\((\S+)\)$').firstMatch(tok);
         final url = md?.group(2) ?? tok;
         spans.add(TextSpan(
-          text: md?.group(1) ?? tok,
+          text: md?.group(1) ?? shortLinkLabel(tok),
           style: linkStyle,
           recognizer: TapGestureRecognizer()..onTap = () => openExternalLink(context, url),
         ));
@@ -414,4 +415,17 @@ class _MdImageState extends State<_MdImage> {
         Padding(padding: const EdgeInsets.only(top: 4), child: Text(widget.alt, style: t.bodySmall)),
     ]);
   }
+}
+
+
+/// Kurze Anzeige für nackte Links: „amazon.de › Brotkasten-XL“ statt der ganzen Adresse.
+String shortLinkLabel(String url) {
+  final u = Uri.tryParse(cleanLink(url));
+  if (u == null || u.host.isEmpty) return url;
+  final host = u.host.replaceFirst(RegExp(r'^www\.'), '');
+  final seg = u.pathSegments.where((p) => p.isNotEmpty && p != 'dp' && !RegExp(r'^[A-Z0-9]{10}$').hasMatch(p)).firstOrNull;
+  if (seg == null) return host;
+  var name = Uri.decodeComponent(seg).replaceAll(RegExp(r'[-_+]+'), ' ').replaceAll(RegExp(r'\.(html?|php|aspx?)$'), '');
+  if (name.length > 28) name = '${name.substring(0, 27)}…';
+  return '$host › $name';
 }

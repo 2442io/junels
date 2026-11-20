@@ -65,6 +65,8 @@ class ConversationMode {
   int _turn = 0; // erhöht sich bei jeder neuen Runde/Unterbrechung
   bool _speakingStarted = false;
   Future<void>? _turnFuture;
+  Timer? _watchdog;
+  bool _restartingMic = false;
 
   bool get active => state.value != ConvState.off;
 
@@ -108,11 +110,32 @@ class ConversationMode {
     unawaited(app.warmUp(voice: true));
     state.value = ConvState.listening;
     await app.voice.mic.start(_onFrame, echoCancel: true);
+    // Manche Android-Geräte beenden die Aufnahme, wenn die Sprachausgabe läuft → neu starten
+    _watchdog?.cancel();
+    _watchdog = Timer.periodic(const Duration(seconds: 1), (_) => _checkMic());
     voiceLog('Gespräch gestartet (Silero: ${smartVad.value}, Absender-Modus: ${manualEnd.value}, '
         'Pause: ${app.settings.voicePauseMs} ms, Sprache: $_language)');
   }
 
+  Future<void> _checkMic() async {
+    if (!active || _restartingMic) return;
+    final s = state.value;
+    if (s != ConvState.listening && s != ConvState.hearing && s != ConvState.speaking) return;
+    if (DateTime.now().difference(app.voice.mic.lastFrameAt).inMilliseconds < 2000) return;
+    _restartingMic = true;
+    voiceLog('Mikrofon liefert nichts mehr – starte neu');
+    try {
+      await app.voice.mic.start(_onFrame, echoCancel: true);
+    } catch (e) {
+      error.value = 'Mikrofon: $e';
+    } finally {
+      _restartingMic = false;
+    }
+  }
+
   Future<void> stop() async {
+    _watchdog?.cancel();
+    _watchdog = null;
     app.onConsentAsk = null;
     _turn++;
     state.value = ConvState.off;
@@ -248,6 +271,7 @@ class ConversationMode {
       _startListening();
       return;
     }
+    text = collapseRepeats(text);
     error.value = null;
     userText.value = text;
     agentText.value = '';
@@ -297,7 +321,8 @@ class ConversationMode {
       error.value = app.statusMessage ?? 'Keine Antwort erhalten – ist das Sprachmodell geladen?';
     }
     out.finish();
-    await out.done;
+    // Hängt die Sprachausgabe, trotzdem wieder zuhören
+    await out.done.timeout(const Duration(minutes: 3), onTimeout: () => out.stop());
     if (myTurn == _turn && active) {
       _speakingStarted = false;
       _startListening();
@@ -307,6 +332,18 @@ class ConversationMode {
         out.lastError.value = null;
       }
     }
+  }
+
+  /// Whisper wiederholt manchmal denselben Satz – Wiederholungen entfernen.
+  static String collapseRepeats(String t) {
+    final parts = RegExp(r'[^.!?]+[.!?]*').allMatches(t).map((m) => m.group(0)!.trim()).where((p) => p.isNotEmpty).toList();
+    final out = <String>[];
+    for (final p in parts) {
+      final k = p.toLowerCase().replaceAll(RegExp(r'[^\p{L}\d]', unicode: true), '');
+      if (out.any((o) => o.toLowerCase().replaceAll(RegExp(r'[^\p{L}\d]', unicode: true), '') == k)) continue;
+      out.add(p);
+    }
+    return out.join(' ');
   }
 
   static bool _isFiller(String t) {

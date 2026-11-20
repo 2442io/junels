@@ -552,6 +552,11 @@ Future<void> main() async {
     check(urls.first.startsWith('https://www.amazon.de/s?k=brotdose') && out.contains('blockiert') && out.contains('geizhals.at') &&
         out.contains('Wesco Brotkasten') && out.contains('59,90'), 'Amazon blockiert → automatisch Geizhals ($out)');
 
+    check(cleanLink('https://www.amazon.de/sspa/click?ie=UTF8&spc=MTo&url=%2FBlockh%C3%BCtte-Brotdose%2Fdp%2FB07SR49JCG%2Fref%3Dsr_1_1_sspa&x=1')
+            == 'https://www.amazon.de/Blockh%C3%BCtte-Brotdose/dp/B07SR49JCG' &&
+        cleanLink('https://www.amazon.de/Brotkasten-XL/dp/B0ABCDEFGH/ref=sr_1_2?keywords=x') == 'https://www.amazon.de/Brotkasten-XL/dp/B0ABCDEFGH' &&
+        cleanLink('https://geizhals.at/a1.html') == 'https://geizhals.at/a1.html', 'Werbe- und Tracking-Links gekürzt');
+
     // Fußzeile mit App-Store-Badges ist kein Suchergebnis
     const badges = '<html><body><main><p>Keine Treffer</p></main><footer>'
         '<a href="https://apps.apple.com/at/app/geizhals/id1"><img src="/apple.png" alt="App Store"></a>'

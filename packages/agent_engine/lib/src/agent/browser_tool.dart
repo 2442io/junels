@@ -72,7 +72,12 @@ const browserSnapshotJs = r'''
     if(t.length<8||b.querySelectorAll('img').length>8)continue;
     seen[a.href]=1;
     var m=txt(it(b)).match(/(ab\s*)?(€\s*\d[\d.]*,\d{2}|\d[\d.]*,\d{2}\s*€|EUR\s*\d[\d.]*,\d{2})/);
-    cards.push({title:t.slice(0,140),link:a.href,image:im.currentSrc||im.src||'',price:m?m[0]:''});
+    var src=im.getAttribute('data-src')||im.getAttribute('data-lazy-src')||im.currentSrc||im.src||'';
+    var ss=im.getAttribute('srcset')||im.getAttribute('data-srcset')||'';
+    if((!src||src.indexOf('data:')===0||/grey-pixel|transparent|spacer|1x1|blank\./i.test(src))&&ss)src=ss.split(',')[0].trim().split(' ')[0];
+    if(src.indexOf('data:')===0)src='';
+    try{if(src)src=new URL(src,location.href).href;}catch(x){}
+    cards.push({title:t.slice(0,140),link:a.href,image:src,price:m?m[0]:''});
   }
   var main=document.querySelector('main,[role=main],#content,#main')||document.body;
   var body=txt(it(main));
@@ -253,7 +258,12 @@ class BrowserTool extends AgentTool {
   List<Map<String, dynamic>> _lastEls = const [];
 
   Future<Map<String, dynamic>> _read(BrowserDriver d) async {
-    final snap = _decode(await d.eval(browserSnapshotJs));
+    var snap = _decode(await d.eval(browserSnapshotJs));
+    // Seite noch nicht fertig aufgebaut (oder Browser gerade erst erstellt) → kurz warten, nochmal
+    for (var i = 0; i < 3 && ((snap['els'] as List?) ?? const []).isEmpty && (snap['text'] ?? '').toString().length < 40; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      snap = _decode(await d.eval(browserSnapshotJs));
+    }
     _lastEls = ((snap['els'] as List?) ?? const []).cast<Map<String, dynamic>>();
     return snap;
   }
@@ -295,7 +305,7 @@ class BrowserTool extends AgentTool {
     final cards = [
       for (final c in ((snap['cards'] as List?) ?? const []).cast<Map<String, dynamic>>())
         if (!isJunkLink((c['link'] ?? '').toString(), (c['title'] ?? '').toString()))
-          PageItem((c['title'] ?? '').toString(), (c['link'] ?? '').toString(), (c['image'] ?? '').toString(),
+          PageItem((c['title'] ?? '').toString(), cleanLink((c['link'] ?? '').toString()), (c['image'] ?? '').toString(),
               summary: (c['price'] ?? '').toString().isEmpty ? '' : 'Preis: ${c['price']}'),
     ];
     if (cards.isNotEmpty) {
@@ -318,7 +328,9 @@ class BrowserTool extends AgentTool {
     if (snap['more'] == true) b.writeln('(weiter unten gibt es mehr – action scroll)');
     final text = (snap['text'] ?? '').toString();
     if (text.isNotEmpty) b.writeln('Text: ${text.length > 600 ? '${text.substring(0, 600)}…' : text}');
-    b.writeln('Antworte, sobald du genug weißt; sonst nächste Aktion. Bei Bestellung/Zahlung: der Nutzer macht das selbst.');
+    b.writeln('Antworte, sobald du genug weißt; sonst nächste Aktion. Nenne Produkte mit Namen und Preis, '
+        'aber schreib keine Adressen (URLs) in die Antwort – die Karten zeigen die Links. '
+        'Bei Bestellung/Zahlung: der Nutzer macht das selbst.');
     if (cards.length > 5) b..write(moreCardsMarker)..write(formatCardItems(cards.skip(5).take(35)));
     return b.toString().trim();
   }

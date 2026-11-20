@@ -10,12 +10,31 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'voice_service.dart' show appLog;
 
 class BrowserService extends ChangeNotifier implements BrowserDriver {
-  BrowserService({required this.confirmer});
+  BrowserService({required this.confirmer, required this.currentChat});
 
   final Future<bool> Function(String title, String detail) confirmer;
 
+  /// Id des gerade offenen Chats – der Browser gehört zu dem Chat, in dem er benutzt wurde.
+  final String? Function() currentChat;
+
   WebViewController? _c;
-  bool visible = false;
+
+  /// Chat, zu dem die Browser-Leiste gehört.
+  String? conversationId;
+
+  /// Seite aufgeklappt sichtbar (sonst nur die Leiste).
+  bool expanded = false;
+
+  /// Leiste für diesen Chat geschlossen.
+  bool dismissed = false;
+
+  /// Leiste sichtbar = Browser wurde in diesem Chat benutzt.
+  bool get visible => _c != null && !dismissed && conversationId != null && conversationId == currentChat();
+
+  bool get created => _c != null;
+
+  /// Was der Agent gerade tut (für die Leiste).
+  String activity = '';
   bool loading = false;
   int progress = 0;
   String url = '';
@@ -81,32 +100,35 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
 
   @override
   Future<void> show() async {
-    final first = !visible;
+    final first = _c == null;
     controller;
-    visible = true;
+    conversationId = currentChat();
+    dismissed = false;
     notifyListeners();
-    // Die Ansicht muss im Fenster hängen, bevor sie lädt
-    if (first) await Future<void>.delayed(const Duration(milliseconds: 350));
+    // Die Ansicht muss erst im Fenster hängen (und eine Größe haben), bevor sie lädt
+    if (first) await Future<void>.delayed(const Duration(milliseconds: 1200));
   }
 
   void hide() {
-    visible = false;
+    dismissed = true;
+    expanded = false;
     notifyListeners();
   }
 
-  void toggle() {
-    if (visible) {
-      hide();
-    } else {
-      controller;
-      visible = true;
-      notifyListeners();
-    }
+  void toggleExpanded() {
+    expanded = !expanded;
+    notifyListeners();
+  }
+
+  void setActivity(String a) {
+    activity = a;
+    notifyListeners();
   }
 
   @override
   Future<void> open(Uri u) async {
     appLog('Browser', 'öffne $u');
+    activity = 'öffnet ${u.host}';
     _loaded = Completer<void>();
     error = null;
     loading = true;
@@ -154,7 +176,9 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
 
   @override
   Future<bool> handOver(String message) async {
-    visible = true;
+    dismissed = false;
+    expanded = true;
+    conversationId ??= currentChat();
     handOverMessage = message;
     final c = _handOver = Completer<bool>();
     notifyListeners();

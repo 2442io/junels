@@ -55,6 +55,9 @@ class MicStream {
   int _rate = 16000;
   bool get running => _sub != null;
 
+  /// Zeitpunkt des letzten Audio-Blocks (zum Erkennen eines hängenden Mikrofons).
+  DateTime lastFrameAt = DateTime.now();
+
   final level = ValueNotifier<double>(0);
 
   Future<bool> hasPermission() async => (_rec ??= AudioRecorder()).hasPermission();
@@ -95,7 +98,9 @@ class MicStream {
       }
     }
     if (stream == null) throw Exception('Aufnahme konnte nicht gestartet werden: $lastError');
+    lastFrameAt = DateTime.now();
     _sub = stream.listen((chunk) {
+      lastFrameAt = DateTime.now();
       final bd = ByteData.sublistView(chunk);
       final n = chunk.length ~/ 2;
       final f = Float32List(n);

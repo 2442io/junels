@@ -110,7 +110,10 @@ class _ConversationPageState extends State<ConversationPage> {
                     Expanded(
                       child: Center(
                         child: GestureDetector(
-                          onTap: () => st == ConvState.hearing && conv.manualEnd.value ? conv.finishSpeaking() : conv.interrupt(),
+                          // Kreis = „Fertig – antworten“ beim Zuhören, „Unterbrechen“ beim Sprechen
+                          onTap: () => st == ConvState.hearing || st == ConvState.listening
+                              ? conv.finishSpeaking()
+                              : conv.interrupt(),
                           child: ValueListenableBuilder<double>(
                             valueListenable: conv.level,
                             builder: (context, lvl, _) => _Orb(state: st, level: lvl),
@@ -119,6 +122,12 @@ class _ConversationPageState extends State<ConversationPage> {
                       ),
                     ),
                     Text(st.label, style: t.titleMedium),
+                    if (st == ConvState.hearing)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('Tipp auf den Kreis, wenn du fertig bist',
+                            style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                      ),
                     ValueListenableBuilder<bool>(
                       valueListenable: conv.manualEnd,
                       builder: (context, manual, _) {
@@ -138,7 +147,7 @@ class _ConversationPageState extends State<ConversationPage> {
                                 FilledButton.icon(
                                   style: FilledButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18)),
-                                  onPressed: st == ConvState.hearing ? conv.finishSpeaking : null,
+                                  onPressed: conv.finishSpeaking,
                                   icon: const Icon(Icons.send),
                                   label: const Text('Fertig – antworten'),
                                 ),
@@ -319,14 +328,30 @@ void _showVoiceSettings(BuildContext context) {
   );
 }
 
-class _Orb extends StatelessWidget {
+class _Orb extends StatefulWidget {
   const _Orb({required this.state, required this.level});
   final ConvState state;
   final double level;
 
   @override
+  State<_Orb> createState() => _OrbState();
+}
+
+class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final state = widget.state;
+    final level = widget.level;
     final color = switch (state) {
       ConvState.listening => scheme.primary,
       ConvState.hearing => Colors.green,
@@ -334,37 +359,67 @@ class _Orb extends StatelessWidget {
       ConvState.speaking => scheme.tertiary,
       ConvState.off => scheme.outline,
     };
-    final active = state == ConvState.hearing || state == ConvState.listening;
-    final size = 150.0 + (active ? level * 70 : 0) + (state == ConvState.speaking ? 20 : 0);
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          width: size + 60,
-          height: size + 60,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.10)),
-        ),
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [color.withValues(alpha: 0.95), color.withValues(alpha: 0.55)]),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 40, spreadRadius: 4)],
+    final listening = state == ConvState.hearing || state == ConvState.listening;
+    // Spricht oder denkt der Agent, „atmet“ der Kreis und Wellen laufen nach außen
+    final animated = state == ConvState.speaking || state == ConvState.thinking || state == ConvState.transcribing;
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, _) {
+        final v = _pulse.value;
+        final breath = animated ? math.sin(v * 2 * math.pi) * (state == ConvState.speaking ? 14 : 6) : 0.0;
+        final size = 150.0 + (listening ? level * 70 : 0) + (state == ConvState.speaking ? 20 : 0) + breath;
+        return SizedBox(
+          width: 300,
+          height: 300,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (animated)
+                for (final off in const [0.0, 0.5])
+                  Builder(builder: (context) {
+                    final p = (v + off) % 1.0;
+                    return Container(
+                      width: size + 20 + p * 110,
+                      height: size + 20 + p * 110,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: color.withValues(alpha: (1 - p) * 0.45), width: 3),
+                      ),
+                    );
+                  })
+              else
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 140),
+                  width: size + 60,
+                  height: size + 60,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.10)),
+                ),
+              Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(colors: [color.withValues(alpha: 0.95), color.withValues(alpha: 0.55)]),
+                  boxShadow: [BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: 40, spreadRadius: 4)],
+                ),
+                child: Center(
+                  child: state == ConvState.thinking || state == ConvState.transcribing
+                      ? const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                      : Icon(
+                          state == ConvState.speaking
+                              ? Icons.graphic_eq
+                              : state == ConvState.hearing
+                                  ? Icons.send
+                                  : Icons.mic,
+                          size: 48 + math.min(level * 20, 20),
+                          color: Colors.white,
+                        ),
+                ),
+              ),
+            ],
           ),
-          child: Center(
-            child: state == ConvState.thinking || state == ConvState.transcribing
-                ? const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                : Icon(
-                    state == ConvState.speaking ? Icons.graphic_eq : Icons.mic,
-                    size: 48 + math.min(level * 20, 20),
-                    color: Colors.white,
-                  ),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

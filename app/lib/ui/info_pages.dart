@@ -10,6 +10,16 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.19.1', [
+    'Gespräch: hängt nach der ersten Antwort nicht mehr – das Mikrofon wird automatisch neu gestartet, wenn es nach dem Vorlesen verstummt',
+    'Gespräch: der Kreis pulsiert, während der Agent spricht oder denkt; Tippen auf den Kreis = „Fertig – antworten“ bzw. Unterbrechen',
+    'Spracherkennung wiederholt Sätze nicht mehr endlos',
+    'Browser: nur noch eine farbige Leiste über dem Chat – Seite bei Bedarf aufklappen, Leiste schließen; gilt nur für den Chat, in dem er benutzt wurde',
+    'Browser funktioniert schon beim ersten Mal (Seite wird im Hintergrund richtig aufgebaut)',
+    'Karussell erscheint zuverlässig, auch bei langen Ergebnissen; Produktbilder von Amazon werden geladen',
+    'Keine langen Adressen mehr im Text: Links als Karten bzw. kurz „amazon.de › Produkt“, Werbe-Weiterleitungen werden aufgelöst',
+    'Nach 30 Minuten ohne Nutzung startet die App mit einem neuen Chat',
+  ]),
   ('1.19.0', [
     'Eingebauter Browser: Der Agent öffnet Seiten, sucht über deren Suchfeld, klickt, tippt und scrollt – du schaust live zu',
     'Treffer aus dem Browser (z. B. Amazon-Produkte mit Bild und Preis) erscheinen im Karussell',

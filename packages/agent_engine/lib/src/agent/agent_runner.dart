@@ -398,10 +398,12 @@ class AgentRunner {
       var extra = cut < 0 ? '' : observation.substring(cut);
       if (cut >= 0) observation = observation.substring(0, cut);
       if (extra.length > 40000) extra = extra.substring(0, 40000);
+      // Die Oberfläche bekommt alles (Karten!), das Modell nur den gekürzten Teil
+      final shown = '$observation$extra';
       if (observation.length > observationLimit) {
         observation = '${observation.substring(0, observationLimit)}\n[… gekürzt]';
       }
-      emit(ToolResult(step, toolName, '$observation$extra', isError: isError, duration: sw.elapsed));
+      emit(ToolResult(step, toolName, shown, isError: isError, duration: sw.elapsed));
       scratch.add(ChatMessage('user', 'Beobachtung ($toolName):\n$observation'));
     }
     emit(AgentFinished(AgentStopReason.stepLimit,

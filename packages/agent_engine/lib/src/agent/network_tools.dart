@@ -460,7 +460,7 @@ List<PageItem> extractPageItems(String html, Uri base) {
     if (summary.length > 160) summary = '${summary.substring(0, 157)}…';
     final price = findPrice(b);
     if (price != null && !summary.contains(price)) summary = 'Preis: $price${summary.isEmpty ? '' : ' · $summary'}';
-    out.add(PageItem(title, link, _abs(base, _imgSrc(b)), summary: summary));
+    out.add(PageItem(title, cleanLink(link), _abs(base, _imgSrc(b)), summary: summary));
     if (out.length >= 30) break;
   }
   return out;
@@ -474,6 +474,25 @@ final _junkTitle = RegExp(
     r'^(app ?store|apple|google play|play store|huawei|appgallery|app gallery|facebook|instagram|youtube|tiktok|'
     r'impressum|datenschutz\w*|agb|kontakt|cookie\w*|anmelden|login|registrieren|newsletter|hilfe|karriere|presse)\b',
     caseSensitive: false);
+
+/// Lesbarer, kurzer Link: Werbe-Weiterleitungen auflösen, Tracking entfernen.
+String cleanLink(String link) {
+  final u = Uri.tryParse(link);
+  if (u == null || u.host.isEmpty) return link;
+  var r = u;
+  // Amazon „Gesponsert“: /sspa/click?…&url=/Produkt/dp/ASIN/…
+  final target = u.queryParameters['url'];
+  if (u.path.contains('/sspa/click') && target != null && target.startsWith('/')) {
+    r = u.resolve(target);
+  }
+  // Amazon-Produkt: nur /dp/ASIN behalten
+  final dp = RegExp(r'/dp/([A-Z0-9]{10})').firstMatch(r.path);
+  if (r.host.contains('amazon.') && dp != null) {
+    final name = RegExp(r'^/([^/]+)/dp/').firstMatch(r.path)?.group(1);
+    return 'https://${r.host}${name == null ? '' : '/$name'}/dp/${dp.group(1)}';
+  }
+  return r.toString();
+}
 
 /// Links, die keine Inhalte sind: App-Stores, soziale Netzwerke, Rechtliches, Konto.
 bool isJunkLink(String link, String title) {

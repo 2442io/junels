@@ -82,6 +82,11 @@ int32_t ae_stt_transcribe(ae_stt * s, const float * pcm, int32_t n_samples, cons
         if (ctx < 384) ctx = 384;
         if (ctx < 1500) p.audio_ctx = ctx;
     }
+    // Endlosschleifen („Ist es … Ist es …“) begrenzen: höchstens ~6 Tokens pro Sekunde Audio
+    {
+        int max_tok = (int) ((int64_t) n_samples * 6 / 16000) + 24;
+        if (max_tok < 224) p.max_tokens = max_tok;
+    }
     p.abort_callback   = stt_abort;
     p.abort_callback_user_data = s;
 
