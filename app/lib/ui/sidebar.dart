@@ -2,6 +2,7 @@
 
 import '../version.dart';
 import 'info_pages.dart';
+import 'conversation_page.dart';
 import 'device_page.dart';
 import 'sync_page.dart';
 import 'update_page.dart';
@@ -31,90 +32,139 @@ class Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final loaded = app.loadedModel;
+    final enabledTools = app.activeTools.length;
+    final voiceReady = app.sttModelPath != null;
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
         const UpdateBanner(),
-        _ModelSection(app: app),
-        const SizedBox(height: 20),
-        _PromptSection(app: app),
-        const SizedBox(height: 20),
-        _ProfileSection(app: app),
-        const SizedBox(height: 20),
-        _ToolSection(app: app),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.local_library_outlined),
-            title: const Text('Wissensbasis & Gedächtnis'),
-            subtitle: Text('${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => openKnowledge(context),
-          ),
+        _QuickHeader(app: app, onDone: () => _closeDrawer(context)),
+        const SizedBox(height: 8),
+
+        // ---- Täglich: Chats und Prompts
+        _Group(
+          id: 'chats',
+          icon: Icons.forum_outlined,
+          title: 'Chats',
+          summary: app.conversations.isEmpty ? 'Noch keine Chats' : '${app.conversations.length} Chats',
+          initiallyExpanded: true,
+          child: _ChatSection(app: app, onSelect: () => _closeDrawer(context)),
         ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.devices_other),
-            title: const Text('Gerät & Automatik'),
-            subtitle: const Text('Heimatort, Morgen-Übersicht, Schnellstart, Ordner'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => openDevicePage(context),
-          ),
+        _Group(
+          id: 'prompts',
+          icon: Icons.bolt_outlined,
+          title: 'Meine Prompts',
+          summary: app.prompts.isEmpty
+              ? 'Vorlagen & Zeitpläne'
+              : '${app.prompts.length} gespeichert · ${app.prompts.where((p) => p.schedule != ScheduleKind.off).length} geplant',
+          initiallyExpanded: true,
+          child: _PromptSection(app: app),
         ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.sync),
-            title: const Text('Abgleich Mac ↔ Handy'),
-            subtitle: Text(!app.sync.configured
-                ? 'Über eigenen Server oder WLAN'
-                : app.sync.lastSync == null
-                    ? 'Eingerichtet'
-                    : 'Zuletzt ${TimeOfDay.fromDateTime(app.sync.lastSync!).format(context)}'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => openSync(context),
-          ),
+
+        // ---- Wissen
+        _Group(
+          id: 'knowledge',
+          icon: Icons.local_library_outlined,
+          title: 'Wissen & Gedächtnis',
+          summary: '${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen',
+          onTap: () => openKnowledge(context),
         ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.hub_outlined),
-            title: const Text('MCP-Server'),
-            subtitle: Text(app.mcpServers.isEmpty
-                ? 'Weitere Tools anbinden'
-                : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Tools'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => openMcp(context),
-          ),
+
+        const _ClusterLabel('Einrichten'),
+        _Group(
+          id: 'model',
+          icon: Icons.memory,
+          title: 'Modell',
+          summary: loaded == null
+              ? 'Kein Modell geladen'
+              : '${loaded.displayName} · ${(app.engine?.contextSize ?? 0) ~/ 1024}K Context',
+          child: _ModelSection(app: app),
         ),
-        const SizedBox(height: 20),
-        _ChatSection(app: app, onSelect: () => _closeDrawer(context)),
-        const SizedBox(height: 20),
-        _VoiceSection(app: app),
-        const SizedBox(height: 20),
-        _SettingsSection(app: app),
-        const SizedBox(height: 12),
-        Card(
-          child: Column(children: [
-            ListTile(
-              leading: const Icon(Icons.receipt_long_outlined),
-              title: const Text('Protokoll'),
-              subtitle: const Text('Fehler und Zeiten einsehen'),
-              trailing: const Icon(Icons.chevron_right),
+        _Group(
+          id: 'agent',
+          icon: Icons.smart_toy_outlined,
+          title: 'Agent & Werkzeuge',
+          summary: 'Profil „${app.activeProfile.name}“ · $enabledTools Werkzeuge',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _ProfileSection(app: app),
+            const SizedBox(height: 12),
+            _ToolSection(app: app),
+            const SizedBox(height: 8),
+            _NavTile(
+              icon: Icons.hub_outlined,
+              title: 'MCP-Server',
+              subtitle: app.mcpServers.isEmpty
+                  ? 'Weitere Werkzeuge anbinden'
+                  : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Werkzeuge',
+              onTap: () => openMcp(context),
+            ),
+          ]),
+        ),
+        _Group(
+          id: 'voice',
+          icon: Icons.record_voice_over_outlined,
+          title: 'Sprache',
+          summary: voiceReady ? 'Spracheingabe bereit' : 'Noch nicht eingerichtet',
+          child: _VoiceSection(app: app),
+        ),
+        _Group(
+          id: 'device',
+          icon: Icons.devices_other,
+          title: 'Gerät & Verbindungen',
+          summary: [
+            if (app.settings.homeCity.isNotEmpty) app.settings.homeCity,
+            if (app.sync.configured) 'Abgleich aktiv',
+            if (app.settings.watchFolders.isNotEmpty) '${app.settings.watchFolders.length} Ordner',
+          ].join(' · ').ifEmpty('Automatik, Abgleich, Ordner'),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _NavTile(
+              icon: Icons.tune,
+              title: 'Gerät & Automatik',
+              subtitle: 'Heimatort, Morgen-Übersicht, Schnellstart, Ordner',
+              onTap: () => openDevicePage(context),
+            ),
+            _NavTile(
+              icon: Icons.sync,
+              title: 'Abgleich Mac ↔ Handy',
+              subtitle: !app.sync.configured
+                  ? 'Über eigenen Server oder WLAN'
+                  : app.sync.lastSync == null
+                      ? 'Eingerichtet'
+                      : 'Zuletzt ${TimeOfDay.fromDateTime(app.sync.lastSync!).format(context)}',
+              onTap: () => openSync(context),
+            ),
+          ]),
+        ),
+        _Group(
+          id: 'app',
+          icon: Icons.settings_outlined,
+          title: 'App',
+          summary: app.updates.available.value != null
+              ? 'Update ${app.updates.available.value!.version} verfügbar'
+              : 'Darstellung, Updates, Protokoll',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _SettingsSection(app: app),
+            const SizedBox(height: 4),
+            _NavTile(
+              icon: Icons.system_update_outlined,
+              title: 'Updates',
+              subtitle: app.updates.available.value != null
+                  ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
+                  : (app.updates.hasToken ? 'Automatische Prüfung aktiv' : 'In der App aktualisieren – einrichten'),
+              onTap: () => openUpdates(context),
+            ),
+            _NavTile(
+              icon: Icons.receipt_long_outlined,
+              title: 'Protokoll',
+              subtitle: 'Fehler und Zeiten einsehen',
               onTap: () => openLog(context),
             ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Versionsverlauf'),
-              trailing: const Icon(Icons.chevron_right),
+            _NavTile(
+              icon: Icons.history,
+              title: 'Versionsverlauf',
+              subtitle: 'Was ist neu?',
               onTap: () => openChangelog(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.system_update_outlined),
-              title: const Text('Updates'),
-              subtitle: Text(app.updates.available.value != null
-                  ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
-                  : (app.updates.hasToken ? 'Automatische Prüfung aktiv' : 'In der App aktualisieren – einrichten')),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => openUpdates(context),
             ),
           ]),
         ),
@@ -134,6 +184,169 @@ class Sidebar extends StatelessWidget {
       ],
     );
   }
+}
+
+extension on String {
+  String ifEmpty(String other) => isEmpty ? other : this;
+}
+
+// ------------------------------------------------------------- Bausteine
+
+/// Kopf: geladenes Modell und die zwei häufigsten Aktionen.
+class _QuickHeader extends StatelessWidget {
+  const _QuickHeader({required this.app, required this.onDone});
+  final AppController app;
+  final VoidCallback onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final m = app.loadedModel;
+    final (color, state) = switch (app.status) {
+      EngineStatus.ready => (Colors.green, 'bereit'),
+      EngineStatus.loading => (Colors.orange, 'lädt …'),
+      EngineStatus.error => (scheme.error, 'Fehler'),
+      _ => (scheme.outline, 'nicht geladen'),
+    };
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => openSystemCheck(context),
+            child: Row(children: [
+              Icon(Icons.circle, size: 10, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(m?.displayName ?? 'Kein Modell geladen', style: t.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(m == null ? 'Tippen zum Auswählen' : 'Modell $state', style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                ]),
+              ),
+              const Icon(Icons.chevron_right),
+            ]),
+          ),
+          if (app.status == EngineStatus.loading) ...[const SizedBox(height: 8), const LinearProgressIndicator()],
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: FilledButton.icon(
+                icon: const Icon(Icons.add_comment_outlined, size: 18),
+                label: const Text('Neuer Chat'),
+                onPressed: app.running
+                    ? null
+                    : () {
+                        app.newConversation();
+                        onDone();
+                      },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.tonalIcon(
+                icon: const Icon(Icons.record_voice_over_outlined, size: 18),
+                label: const Text('Gespräch'),
+                onPressed: app.engine == null
+                    ? null
+                    : () {
+                        onDone();
+                        openConversation(context);
+                      },
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ClusterLabel extends StatelessWidget {
+  const _ClusterLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(8, 18, 8, 6),
+        child: Text(text.toUpperCase(),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                letterSpacing: 1.2, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      );
+}
+
+/// Markiert Inhalte innerhalb einer Gruppe: Abschnittstitel werden dort nicht wiederholt.
+class _InGroup extends InheritedWidget {
+  const _InGroup({required super.child});
+  @override
+  bool updateShouldNotify(_InGroup oldWidget) => false;
+}
+
+/// Aufklappbare Gruppe (bzw. Verweis auf eine eigene Seite, wenn [onTap] gesetzt ist).
+class _Group extends StatelessWidget {
+  const _Group({
+    required this.id,
+    required this.icon,
+    required this.title,
+    required this.summary,
+    this.child,
+    this.onTap,
+    this.initiallyExpanded = false,
+  });
+  final String id;
+  final IconData icon;
+  final String title;
+  final String summary;
+  final Widget? child;
+  final VoidCallback? onTap;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final sub = Text(summary, maxLines: 1, overflow: TextOverflow.ellipsis,
+        style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant));
+    if (onTap != null) {
+      return Card(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(leading: Icon(icon), title: Text(title), subtitle: sub, trailing: const Icon(Icons.chevron_right), onTap: onTap),
+      );
+    }
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        key: PageStorageKey('sidebar-$id'),
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: sub,
+        initiallyExpanded: initiallyExpanded,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_InGroup(child: child ?? const SizedBox())],
+      ),
+    );
+  }
+}
+
+class _NavTile extends StatelessWidget {
+  const _NavTile({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      );
 }
 
 class _PromptSection extends StatelessWidget {
@@ -185,6 +398,14 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final inGroup = context.getInheritedWidgetOfExactType<_InGroup>() != null;
+    // In einer Gruppe steht der Titel schon im Kopf – nur Haupttitel weglassen,
+    // Unterabschnitte (z. B. „Werkzeuge“ im Agent-Bereich) bleiben sichtbar.
+    if (inGroup && const {'Chats', 'Meine Prompts', 'Modell', 'Sprache', 'Einstellungen'}.contains(text)) {
+      return trailing == null || text == 'Chats'
+          ? const SizedBox(height: 4)
+          : Align(alignment: Alignment.centerRight, child: trailing);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 0, 0, 8),
       child: Row(
@@ -530,8 +751,21 @@ class _ChatSection extends StatelessWidget {
             padding: const EdgeInsets.all(4),
             child: Text('Noch keine Chats.', style: TextStyle(color: scheme.onSurfaceVariant)),
           ),
-        for (final c in app.conversations.take(50))
-          ListTile(
+        for (final c in app.conversations.take(8)) _chatTile(context, c, scheme),
+        if (app.conversations.length > 8)
+          ExpansionTile(
+            key: const PageStorageKey('sidebar-older-chats'),
+            tilePadding: const EdgeInsets.only(left: 8, right: 4),
+            title: Text('Ältere Chats (${app.conversations.length - 8})', style: Theme.of(context).textTheme.bodyMedium),
+            shape: const Border(),
+            collapsedShape: const Border(),
+            children: [for (final c in app.conversations.skip(8).take(100)) _chatTile(context, c, scheme)],
+          ),
+      ],
+    );
+  }
+
+  Widget _chatTile(BuildContext context, Conversation c, ColorScheme scheme) => ListTile(
             dense: true,
             contentPadding: const EdgeInsets.only(left: 8),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -550,10 +784,7 @@ class _ChatSection extends StatelessWidget {
               icon: const Icon(Icons.delete_outline, size: 20),
               onPressed: app.running && app.current?.id == c.id ? null : () => app.deleteConversation(c),
             ),
-          ),
-      ],
-    );
-  }
+          );
 
   static String _date(DateTime d) {
     String two(int v) => v.toString().padLeft(2, '0');

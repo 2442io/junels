@@ -10,6 +10,12 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.15.0', [
+    'Menü neu geordnet: oben Modell-Status mit „Neuer Chat“ und „Gespräch“',
+    'Täglich gebraucht zuerst: Chats (die letzten 8, ältere aufklappbar) und Meine Prompts',
+    'Einrichten in aufklappbaren Gruppen: Modell · Agent & Werkzeuge · Sprache · Gerät & Verbindungen · App',
+    'Jede Gruppe zeigt zugeklappt eine Kurzinfo (z. B. geladenes Modell, aktive Werkzeuge)',
+  ]),
   ('1.14.0', [
     'E-Mail und WhatsApp vorbereiten, Anrufen – mit Empfängern aus dem Adressbuch; du sendest bzw. rufst selbst',
     'Kalender: Termine abfragen und eintragen',

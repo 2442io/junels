@@ -1,3 +1,3 @@
 // Automatisch aus pubspec.yaml erzeugt (scripts/patch_platforms.py).
-const appVersion = '1.14.0';
-const appBuild = '18';
+const appVersion = '1.15.0';
+const appBuild = '19';
