@@ -20,6 +20,7 @@ import 'prompt_editor.dart';
 import 'model_import.dart';
 import 'profile_editor.dart';
 import 'system_check.dart';
+import 'tasks_page.dart';
 
 class Sidebar extends StatelessWidget {
   const Sidebar({super.key, this.inDrawer = false});
@@ -62,12 +63,28 @@ class Sidebar extends StatelessWidget {
           child: _PromptSection(app: app),
         ),
 
+        _Group(
+          id: 'tasks',
+          icon: Icons.schedule,
+          title: 'Geplante Aufgaben',
+          summary: '${app.prompts.where((p) => p.schedule != ScheduleKind.off && p.enabled).length} aktiv',
+          onTap: () => openTasks(context),
+        ),
+        _Group(
+          id: 'activity',
+          icon: Icons.history,
+          title: 'Was hat der Agent getan?',
+          summary: app.activity.items.isEmpty ? 'Noch keine Aktionen' : '${app.activity.items.length} Aktionen · lokal, 0 €',
+          onTap: () => openActivity(context),
+        ),
+
         // ---- Wissen
         _Group(
           id: 'knowledge',
           icon: Icons.local_library_outlined,
           title: 'Wissen & Gedächtnis',
-          summary: '${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen',
+          summary: '${app.knowledge.sources.length} Quellen · ${app.memory.notes.length} Notizen'
+              '${app.memory.pending.isEmpty ? '' : ' · ${app.memory.pending.length} zu bestätigen'}',
           onTap: () => openKnowledge(context),
         ),
 
@@ -133,6 +150,12 @@ class Sidebar extends StatelessWidget {
                       ? 'Eingerichtet'
                       : 'Zuletzt ${TimeOfDay.fromDateTime(app.sync.lastSync!).format(context)}',
               onTap: () => openSync(context),
+            ),
+            _NavTile(
+              icon: Icons.lock_outline,
+              title: 'Tresor & Konten',
+              subtitle: app.settings.smtpReady ? 'Mail-Konto ${app.settings.smtpUser}' : 'Passwörter sicher, Mail direkt senden',
+              onTap: () => openVault(context),
             ),
           ]),
         ),

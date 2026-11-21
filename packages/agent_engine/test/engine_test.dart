@@ -493,7 +493,10 @@ Future<void> main() async {
 
   await group('Gedächtnis-Tools', () async {
     final saved = <String>[];
-    final r = await RememberTool((f) async => saved.add(f)).run({'fact': 'Nutzer heißt Christoph'}, ToolContext());
+    final r = await RememberTool((f, k) async {
+      saved.add(f);
+      return null;
+    }).run({'fact': 'Nutzer heißt Christoph', 'category': 'person'}, ToolContext());
     check(saved.single == 'Nutzer heißt Christoph' && r.startsWith('Gemerkt'), 'remember speichert');
     final convs = [
       (title: 'Urlaub', date: DateTime(2026, 11, 1), messages: [
@@ -739,6 +742,15 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
     check(dev.log.last == 'mail:anna@example.com|Treffen|Hallo Anna' && r.contains('Senden'), 'E-Mail an Kontakt per Name');
     await WhatsAppTool(dev).run({'to': 'Anna', 'text': 'Komme 10 min später'}, ctx);
     check(dev.log.last == 'wa:436641234567|Komme 10 min später', 'WhatsApp: Nummer international ($dev.log)');
+    // Mit Karten: Entwurf statt sofort öffnen
+    final proposed = <Map<String, String>>[];
+    final before = dev.log.length;
+    final pctx = ToolContext(propose: proposed.add);
+    r = await EmailTool(dev).run({'to': 'Anna', 'subject': 'Treffen', 'body': 'Hallo Anna'}, pctx);
+    await WhatsAppTool(dev).run({'to': 'Anna', 'text': 'Bin unterwegs'}, pctx);
+    check(dev.log.length == before && proposed.length == 2 && proposed[0]['to'] == 'anna@example.com' &&
+        proposed[0]['status'] == 'pending' && proposed[1]['to'] == '436641234567' && r.contains('Soll ich das senden') &&
+        pctx.answerNow, 'E-Mail/WhatsApp als Freigabe-Karte ($proposed)');
     await CallTool(dev).run({'to': '+43 1 234'}, ctx);
     check(dev.log.last == 'dial:+43 1 234', 'Anruf mit Nummer');
     var multi = '';

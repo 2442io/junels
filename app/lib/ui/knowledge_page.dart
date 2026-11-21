@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
+import '../state/memory_store.dart';
 
 Future<void> openKnowledge(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const KnowledgePage()));
@@ -196,18 +197,81 @@ class _KnowledgePageState extends State<KnowledgePage> {
                 ),
               ]),
               const SizedBox(height: 8),
-              for (final n in app.memory.notes.reversed)
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.bookmark_border, size: 20),
-                  title: Text(n.text),
-                  subtitle: Text(date(n.created)),
-                  trailing: IconButton(
-                    tooltip: 'Vergessen',
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => app.removeMemory(n),
+              // Neue Einträge warten auf Bestätigung
+              if (app.memory.pending.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Neu – bitte bestätigen (${app.memory.pending.length})',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(color: scheme.primary)),
+                for (final n in app.memory.pending.reversed)
+                  Card(
+                    color: scheme.primaryContainer.withValues(alpha: 0.4),
+                    child: ListTile(
+                      dense: true,
+                      title: Text(n.text),
+                      subtitle: Text('${MemoryNote.categories[n.category]} · ${date(n.created)}'),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                          tooltip: 'Bestätigen',
+                          icon: const Icon(Icons.check_circle_outline),
+                          onPressed: () => app.confirmMemory(n),
+                        ),
+                        IconButton(tooltip: 'Verwerfen', icon: const Icon(Icons.close), onPressed: () => app.removeMemory(n)),
+                      ]),
+                    ),
                   ),
-                ),
+              ],
+              for (final cat in MemoryNote.categories.entries)
+                if (app.memory.notes.any((n) => n.confirmed && n.category == cat.key)) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 2),
+                    child: Text(cat.value, style: Theme.of(context).textTheme.titleSmall),
+                  ),
+                  for (final n in app.memory.notes.reversed)
+                    if (n.confirmed && n.category == cat.key)
+                      ListTile(
+                        dense: true,
+                        leading: Icon(
+                            switch (n.category) {
+                              'vorliebe' => Icons.favorite_border,
+                              'person' => Icons.person_outline,
+                              'routine' => Icons.repeat,
+                              _ => Icons.bookmark_border,
+                            },
+                            size: 20),
+                        title: Text(n.text),
+                        subtitle: Text(date(n.created)),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          PopupMenuButton<String>(
+                            tooltip: 'Bereich ändern',
+                            icon: const Icon(Icons.label_outline, size: 18),
+                            onSelected: (k) => app.setMemoryCategory(n, k),
+                            itemBuilder: (_) => [
+                              for (final c in MemoryNote.categories.entries) PopupMenuItem(value: c.key, child: Text(c.value)),
+                            ],
+                          ),
+                          IconButton(
+                            tooltip: 'Vergessen',
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => app.removeMemory(n),
+                          ),
+                        ]),
+                      ),
+                ],
+              const Divider(height: 24),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Neue Einträge erst nach Bestätigung nutzen'),
+                subtitle: const Text('Was der Agent sich merken will, erscheint oben zum Bestätigen.'),
+                value: app.settings.memoryConfirm,
+                onChanged: (v) => app.setMemoryOptions(confirm: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Sensible Themen merken'),
+                subtitle: const Text('Gesundheit, Finanzen, Religion, Politik u. Ä. – standardmäßig aus.'),
+                value: app.settings.memorySensitive,
+                onChanged: (v) => app.setMemoryOptions(sensitive: v),
+              ),
               if (app.memory.notes.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(8),

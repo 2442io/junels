@@ -7,7 +7,9 @@ import 'tool.dart';
 /// Langfristige Notiz über den Nutzer speichern.
 class RememberTool extends AgentTool {
   RememberTool(this.save);
-  final Future<void> Function(String fact) save;
+
+  /// Liefert eine Meldung zurück (z. B. „wartet auf Bestätigung“ oder warum nicht gespeichert).
+  final Future<String?> Function(String fact, String category) save;
 
   @override
   String get name => 'remember';
@@ -17,14 +19,18 @@ class RememberTool extends AgentTool {
   String get description =>
       'Speichert dauerhaft eine wichtige Information über den Nutzer (Vorlieben, Fakten, Absprachen) für spätere Gespräche.';
   @override
-  List<ToolParam> get params => const [ToolParam('fact', ParamType.string, 'kurzer Satz, was gemerkt werden soll')];
+  List<ToolParam> get params => const [
+        ToolParam('fact', ParamType.string, 'kurzer Satz, was gemerkt werden soll'),
+        ToolParam('category', ParamType.enumeration, 'Bereich',
+            values: ['vorliebe', 'person', 'routine', 'sonstiges']),
+      ];
 
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final f = (args['fact'] ?? '').toString().trim();
     if (f.length < 3) throw ToolException('fact ist leer');
-    await save(f);
-    return 'Gemerkt: $f';
+    final note = await save(f, (args['category'] ?? 'sonstiges').toString());
+    return note ?? 'Gemerkt: $f';
   }
 }
 

@@ -59,6 +59,7 @@ class ToolContext {
     void Function(Artifact)? onArtifact,
     DateTime Function()? clock,
     this.requestNetwork,
+    this.propose,
   })  : onArtifact = onArtifact ?? ((_) {}),
         clock = clock ?? DateTime.now;
 
@@ -76,6 +77,10 @@ class ToolContext {
   }
 
   final List<Attachment> attachments;
+
+  /// Aktion als Entwurf vorschlagen (E-Mail, WhatsApp): Die App zeigt eine Karte mit „Senden“,
+  /// der Nutzer gibt mit einem Tipp frei. null = keine Karten möglich (dann direkt öffnen).
+  final void Function(Map<String, String> action)? propose;
 
   /// Ein Werkzeug setzt das, wenn sein Ergebnis für die Antwort reicht:
   /// Der Agent antwortet dann sofort, ohne weitere Werkzeuge (spart Zeit).

@@ -44,7 +44,10 @@ const browserSnapshotJs = r'''
   for(var i=0;i<near.length&&n<70;i++){
     var e=near[i],tag=e.tagName.toLowerCase(),type=(e.getAttribute('type')||'').toLowerCase();
     var img=e.querySelector&&e.querySelector('img');
-    var label=txt(e.getAttribute('aria-label'))||txt(it(e))||txt(e.getAttribute('placeholder'))||txt(e.getAttribute('title'))||txt(e.value)||(img?txt(img.alt):'')||txt(e.getAttribute('name'));
+    // Eingabefelder: nie den eingegebenen Wert lesen (Passwörter, persönliche Daten) – nur Beschriftungen
+    var isField=(tag==='input'&&!/^(submit|button|image|reset)$/.test(type))||tag==='textarea'||tag==='select';
+    var lab=e.id?document.querySelector('label[for="'+e.id+'"]'):null;
+    var label=txt(e.getAttribute('aria-label'))||(isField?'':txt(it(e)))||txt(lab?it(lab):'')||txt(e.getAttribute('placeholder'))||txt(e.getAttribute('title'))||(isField?'':txt(e.value))||(img?txt(img.alt):'')||txt(e.getAttribute('name'));
     if(!label&&tag!=='input'&&tag!=='textarea'&&tag!=='select')continue;
     n++;e.setAttribute('data-jid',String(n));
     var kind=tag==='a'?'link':(tag==='input'||tag==='textarea'||e.getAttribute('contenteditable')==='true'||e.getAttribute('role')==='searchbox')?'input':tag==='select'?'select':'button';
@@ -214,7 +217,8 @@ class BrowserTool extends AgentTool {
       case 'type' || 'fill':
         final el = await _element(d, target);
         if (el['secret'] == 1) {
-          await d.handOver('Bitte gib das selbst ein (Passwort oder Zahlungsdaten) und tippe dann auf „Weiter“.');
+          await d.handOver('🔒 Privat anmelden: Gib Passwort bzw. Zahlungsdaten selbst im Browser ein und tippe dann auf „Weiter“. '
+              'Junels liest diese Felder nie – die KI sieht dein Passwort nicht.');
           return _snapshot(d, note: 'Der Nutzer hat das Feld selbst ausgefüllt.');
         }
         await _act(d, _actJs(el['id'] as int, 'type', text, true));

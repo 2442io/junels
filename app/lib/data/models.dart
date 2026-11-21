@@ -208,8 +208,10 @@ class ChatEntry {
     this.viaVoice = false,
     List<SourceRef>? sources,
     List<String>? files,
+    List<Map<String, String>>? actions,
     DateTime? time,
   })  : steps = steps ?? [],
+        actions = actions ?? [],
         sources = sources ?? [],
         files = files ?? [],
         cards = cards ?? [],
@@ -229,6 +231,9 @@ class ChatEntry {
 
   /// Dateipfade: beim Nutzer angehängte Bilder, beim Agenten erzeugte Dateien.
   final List<String> files;
+
+  /// Vorgeschlagene Aktionen (E-Mail, WhatsApp) mit Status pending | sent | opened | discarded.
+  final List<Map<String, String>> actions;
   final DateTime time;
 
   Map<String, Object?> toJson() => {
@@ -244,6 +249,7 @@ class ChatEntry {
         'voice': viaVoice,
         if (sources.isNotEmpty) 'sources': sources.map((e) => e.toJson()).toList(),
         if (files.isNotEmpty) 'files': files,
+        if (actions.isNotEmpty) 'actions': actions,
         'time': time.toIso8601String(),
       };
 
@@ -254,6 +260,7 @@ class ChatEntry {
         attachments: (j['attachments'] as List? ?? const []).cast<String>(),
         sources: [for (final x in (j['sources'] as List? ?? const [])) SourceRef.fromJson((x as Map).cast())],
         files: (j['files'] as List? ?? const []).cast<String>(),
+        actions: [for (final a in (j['actions'] as List? ?? const [])) (a as Map).cast<String, String>()],
         error: j['error'] as String?,
         truncated: j['truncated'] as bool? ?? false,
         tokensPerSecond: (j['tps'] as num?)?.toDouble(),
@@ -326,6 +333,13 @@ class AppSettings {
     this.agentName = 'Junels',
     this.voiceWakeWord = true,
     this.voiceBargeIn = false,
+    this.memoryConfirm = true,
+    this.memorySensitive = false,
+    this.meetingFollowUp = true,
+    this.smtpHost = '',
+    this.smtpPort = 465,
+    this.smtpUser = '',
+    this.smtpFrom = '',
     this.voicePauseMs = 1200,
     this.voiceNearField = true,
     this.voiceSmartVad = true,
@@ -371,6 +385,15 @@ class AppSettings {
   String agentName; // Name, auf den der Agent im Gespräch hört
   bool voiceWakeWord; // Gesprächsmodus: nur reagieren, wenn der Name fällt
   bool voiceBargeIn; // Gesprächsmodus: Reinreden unterbricht die Antwort (sonst nur Tipp/Name)
+  bool memoryConfirm; // neue Gedächtnis-Einträge erst nach Bestätigung verwenden
+  bool memorySensitive; // Gesundheit, Finanzen, Religion … merken erlaubt
+  bool meetingFollowUp; // nach Terminen eine Folgemail vorschlagen (Push)
+  // Mailversand direkt aus Junels (Passwort liegt im Tresor, nicht hier)
+  String smtpHost;
+  int smtpPort;
+  String smtpUser;
+  String smtpFrom;
+  bool get smtpReady => smtpHost.isNotEmpty && smtpUser.isNotEmpty;
   int voicePauseMs; // Gesprächsmodus: so lange Pause beendet die Äußerung
   bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
   bool voiceSmartVad; // Gesprächsmodus: Silero-Spracherkennung statt nur Lautstärke
@@ -401,6 +424,13 @@ class AppSettings {
         'agentName': agentName,
         'voiceWakeWord': voiceWakeWord,
         'voiceBargeIn': voiceBargeIn,
+        'memoryConfirm': memoryConfirm,
+        'memorySensitive': memorySensitive,
+        'meetingFollowUp': meetingFollowUp,
+        'smtpHost': smtpHost,
+        'smtpPort': smtpPort,
+        'smtpUser': smtpUser,
+        'smtpFrom': smtpFrom,
         'voicePauseMs': voicePauseMs,
         'voiceNearField': voiceNearField,
         'voiceSmartVad': voiceSmartVad,
@@ -431,6 +461,13 @@ class AppSettings {
         agentName: (j['agentName'] as String?)?.trim().isNotEmpty == true ? (j['agentName'] as String).trim() : 'Junels',
         voiceWakeWord: j['voiceWakeWord'] as bool? ?? true,
         voiceBargeIn: j['voiceBargeIn'] as bool? ?? false,
+        memoryConfirm: j['memoryConfirm'] as bool? ?? true,
+        memorySensitive: j['memorySensitive'] as bool? ?? false,
+        meetingFollowUp: j['meetingFollowUp'] as bool? ?? true,
+        smtpHost: j['smtpHost'] as String? ?? '',
+        smtpPort: (j['smtpPort'] as num?)?.toInt() ?? 465,
+        smtpUser: j['smtpUser'] as String? ?? '',
+        smtpFrom: j['smtpFrom'] as String? ?? '',
         voicePauseMs: (j['voicePauseMs'] as num?)?.toInt() ?? 1200,
         voiceNearField: j['voiceNearField'] as bool? ?? true,
         voiceSmartVad: j['voiceSmartVad'] as bool? ?? true,
@@ -494,6 +531,7 @@ class SavedPrompt {
     this.allowInternet = false,
     this.notify = true,
     this.lastRun,
+    this.enabled = true,
   }) : id = id ?? newId();
 
   final String id;
@@ -507,6 +545,7 @@ class SavedPrompt {
   bool allowInternet; // automatisch ohne Nachfrage (für Läufe ohne Nutzer)
   bool notify;
   DateTime? lastRun;
+  bool enabled; // geplante Aufgabe an/aus (Zeitplan bleibt erhalten)
 
   static const weekdayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
@@ -528,7 +567,7 @@ class SavedPrompt {
 
   /// Nächster geplanter Zeitpunkt nach [from] (null = kein Zeitplan).
   DateTime? nextAfter(DateTime from) {
-    if (schedule == ScheduleKind.off) return null;
+    if (schedule == ScheduleKind.off || !enabled) return null;
     for (var i = 0; i < 8; i++) {
       final d = DateTime(from.year, from.month, from.day + i, hour, minute);
       if (d.isAfter(from) && _dayMatches(d)) return d;
@@ -548,6 +587,7 @@ class SavedPrompt {
 
   /// Fällig? Verpasste Läufe werden nachgeholt, aber nur am selben Tag.
   bool isDue(DateTime now) {
+    if (!enabled) return false;
     final due = lastDueBefore(now);
     if (due == null) return false;
     if (lastRun != null && !lastRun!.isBefore(due)) return false;
@@ -565,6 +605,7 @@ class SavedPrompt {
         'weekday': weekday,
         'allowInternet': allowInternet,
         'notify': notify,
+        if (!enabled) 'enabled': false,
         'lastRun': lastRun?.toIso8601String(),
       };
 
@@ -579,6 +620,7 @@ class SavedPrompt {
         weekday: (j['weekday'] as num?)?.toInt() ?? 1,
         allowInternet: j['allowInternet'] as bool? ?? false,
         notify: j['notify'] as bool? ?? true,
+        enabled: j['enabled'] as bool? ?? true,
         lastRun: DateTime.tryParse(j['lastRun'] as String? ?? ''),
       );
 }

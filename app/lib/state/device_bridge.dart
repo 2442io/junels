@@ -121,6 +121,7 @@ class DeviceBridge implements DeviceActions {
           DateTime.fromMillisecondsSinceEpoch((m['end'] as num).toInt()),
           allDay: m['allDay'] == true,
           location: m['location'] as String? ?? '',
+          notes: m['notes'] as String? ?? '',
           calendar: m['calendar'] as String? ?? '',
         ),
     ];

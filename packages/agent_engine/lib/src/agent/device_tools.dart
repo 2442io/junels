@@ -174,6 +174,15 @@ class EmailTool extends _DeviceTool {
     final (addr, who) = await resolve((args['to'] ?? '').toString(), email: true);
     final subject = (args['subject'] ?? '').toString();
     final body = (args['body'] ?? '').toString();
+    final propose = ctx.propose;
+    if (propose != null) {
+      // Entwurf als Karte im Chat – gesendet wird erst nach dem Tipp auf „Senden“
+      propose({'type': 'email', 'to': addr ?? '', 'name': who, 'subject': subject, 'body': body, 'status': 'pending'});
+      ctx.answerNow = true;
+      return 'Entwurf liegt als Karte im Chat${addr == null ? ' (Empfänger fehlt noch)' : ' an $who <$addr>'}, Betreff „$subject“. '
+          'Der Nutzer sendet mit einem Tipp auf „Senden“. Sag nur kurz, an wen es geht, und frag „Soll ich das senden?“ – '
+          'wiederhole den Text nicht.';
+    }
     await device.composeEmail(addr ?? '', subject, body);
     return 'Mail-App geöffnet mit Entwurf${addr == null ? '' : ' an $who <$addr>'}, Betreff „$subject“. '
         'Der Nutzer muss nur noch auf Senden tippen. Sag ihm das kurz und zeig den Text.';
@@ -198,6 +207,19 @@ class WhatsAppTool extends _DeviceTool {
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final (nr, who) = await resolve((args['to'] ?? '').toString(), email: false);
     final text = (args['text'] ?? '').toString();
+    final propose = ctx.propose;
+    if (propose != null) {
+      propose({
+        'type': 'whatsapp',
+        'to': nr == null ? '' : normalizePhone(nr, device.countryCode),
+        'name': who,
+        'body': text,
+        'status': 'pending',
+      });
+      ctx.answerNow = true;
+      return 'Entwurf liegt als Karte im Chat${nr == null ? '' : ' an $who'}. Mit „Senden“ öffnet sich WhatsApp mit dem Text. '
+          'Sag kurz, an wen es geht, und frag „Soll ich das senden?“ – wiederhole den Text nicht.';
+    }
     await device.whatsapp(nr == null ? '' : normalizePhone(nr, device.countryCode), text);
     return 'WhatsApp geöffnet${nr == null ? ' (Kontakt dort wählen)' : ' mit $who ($nr)'} und der Nachricht. '
         'Der Nutzer muss nur noch auf Senden tippen.';

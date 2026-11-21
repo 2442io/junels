@@ -23,7 +23,10 @@ import 'sync_service.dart';
 import 'update_service.dart';
 import '../tools/chart_render.dart';
 import '../tools/save_prompt_tool.dart';
+import 'activity_log.dart';
 import 'memory_store.dart';
+import 'smtp.dart';
+import 'vault.dart';
 import 'native_files.dart';
 import 'voice_service.dart';
 
@@ -76,6 +79,66 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   // Gedächtnis & Wissensbasis
   late final MemoryStore memory;
+
+  // ------------------------------------------------------------- Tresor für MCP-Anmeldungen
+
+  static const _mcpSecretKeys = {'access_token', 'refresh_token', 'client_secret', 'id_token'};
+
+  /// Anmelde-Tokens und Schlüssel-Header liegen im Tresor, nicht in mcp.json.
+  Future<void> _saveMcp() async {
+    final stripped = <McpServerConfig>[];
+    for (final m in mcpServers) {
+      final secrets = <String, String>{
+        for (final e in m.oauth.entries)
+          if (_mcpSecretKeys.contains(e.key)) e.key: e.value,
+        for (final e in m.headers.entries) 'header:${e.key}': e.value,
+      };
+      try {
+        await Vault.write('mcp:${m.id}', secrets.isEmpty ? null : jsonEncode(secrets));
+      } catch (e) {
+        appLog('Tresor', 'MCP ${m.name}: $e', error: true);
+        stripped.add(m); // Tresor nicht verfügbar: lieber wie bisher speichern als Anmeldung verlieren
+        continue;
+      }
+      final copy = McpServerConfig.fromJson(m.toJson());
+      copy.oauth.removeWhere((k, _) => _mcpSecretKeys.contains(k));
+      copy.headers.clear();
+      if (secrets.isNotEmpty) copy.oauth['in_vault'] = '1';
+      stripped.add(copy);
+    }
+    await storage.saveMcpServers(stripped);
+  }
+
+  Future<void> _loadMcpSecrets() async {
+    var migrate = false;
+    for (final m in mcpServers) {
+      final raw = await Vault.read('mcp:${m.id}');
+      if (raw != null) {
+        try {
+          final j = (jsonDecode(raw) as Map).cast<String, String>();
+          for (final e in j.entries) {
+            if (e.key.startsWith('header:')) {
+              m.headers[e.key.substring(7)] = e.value;
+            } else {
+              m.oauth[e.key] = e.value;
+            }
+          }
+        } catch (_) {}
+      } else if (m.headers.isNotEmpty || m.oauth.keys.any(_mcpSecretKeys.contains)) {
+        migrate = true; // alte Installation: Geheimnisse noch in mcp.json → in den Tresor
+      }
+      m.oauth.remove('in_vault');
+    }
+    if (migrate) await _saveMcp();
+  }
+
+  /// „Was hat der Agent getan?“
+  late final ActivityLog activity;
+
+  Future<void> logActivity(Activity a) async {
+    await activity.add(a);
+    notifyListeners();
+  }
   late final KnowledgeBase knowledge;
   String? knowledgeProgress; // Statuszeile beim Laden von Quellen
   CancelToken? _knowledgeCancel;
@@ -170,6 +233,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       voice = VoiceService(await getTemporaryDirectory());
       memory = MemoryStore(File('${storage.root.path}/memory.json'));
       await memory.load();
+      activity = ActivityLog(File('${storage.root.path}/activity.json'));
+      await activity.load();
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
       await knowledge.load();
       outputsDir = Directory('${storage.documentsDir.path}/Ausgaben')..createSync(recursive: true);
@@ -181,9 +246,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       tools = [
         ...builtinTools(),
         ...networkTools(),
-        RememberTool((f) async {
-          await memory.add(f);
+        RememberTool((f, category) async {
+          // Sensible Themen nur, wenn ausdrücklich erlaubt
+          if (!settings.memorySensitive && MemoryNote.sensitive.hasMatch(f)) {
+            return 'Nicht gespeichert: sensibles Thema (Gesundheit, Finanzen, Religion, Politik …). '
+                'Der Nutzer kann das in „Wissen & Gedächtnis“ erlauben.';
+          }
+          await memory.add(f, category: category, confirmed: !settings.memoryConfirm);
+          unawaited(logActivity(Activity(kind: 'memory', title: 'Notiz fürs Gedächtnis', detail: f,
+              approval: settings.memoryConfirm ? 'Wartet auf deine Bestätigung' : 'Automatisch (Bestätigung aus)')));
           notifyListeners();
+          return settings.memoryConfirm
+              ? 'Vorgemerkt: „$f“ – der Nutzer bestätigt es unter Wissen & Gedächtnis, dann gilt es.'
+              : 'Gemerkt: $f';
         }),
         HistorySearchTool(_searchHistory),
         KnowledgeSearchTool(knowledge),
@@ -222,6 +297,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       models = await storage.loadModels();
       prompts = await storage.loadPrompts();
       mcpServers = await storage.loadMcpServers();
+      await _loadMcpSecrets();
       conversations = await storage.loadConversations();
       // Nach längerer Pause mit neuem Chat starten, sonst im letzten weiterarbeiten
       final last = conversations.isNotEmpty ? conversations.first : null;
@@ -245,12 +321,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         }));
         unawaited(_syncAlarms());
         Future<void>.delayed(const Duration(seconds: 5), _checkSchedule);
+        Future<void>.delayed(const Duration(seconds: 8), _planFollowUps);
       }
 
       if (!headless) unawaited(sync.init());
       if (!headless) unawaited(updates.init());
       if (!headless) unawaited(_initDevice());
-      McpOAuth.onTokens = (_) => unawaited(storage.saveMcpServers(mcpServers));
+      McpOAuth.onTokens = (_) => unawaited(_saveMcp());
 
       if (!headless && settings.autoLoadLastModel && settings.lastModelId != null) {
         final m = models.where((x) => x.id == settings.lastModelId).firstOrNull;
@@ -361,14 +438,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       mcpServers.add(srv);
     }
     await _mcpClients.remove(srv.id)?.close();
-    await storage.saveMcpServers(mcpServers);
+    await _saveMcp();
     notifyListeners();
   }
 
   Future<void> removeMcpServer(McpServerConfig srv) async {
     mcpServers.removeWhere((x) => x.id == srv.id);
     await _mcpClients.remove(srv.id)?.close();
-    await storage.saveMcpServers(mcpServers);
+    await _saveMcp();
     notifyListeners();
   }
 
@@ -383,7 +460,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           wwwAuthenticate: mcpNeedsLogin[srv.id], openBrowser: (u) => NativeFiles.openUrl(u.toString()));
       mcpNeedsLogin.remove(srv.id);
       appLog('MCP', '${srv.name}: angemeldet');
-      await storage.saveMcpServers(mcpServers);
+      await _saveMcp();
       return await syncMcpServer(srv);
     } catch (e) {
       appLog('MCP', '${srv.name}: Anmeldung fehlgeschlagen: $e', error: true);
@@ -397,7 +474,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> logoutMcpServer(McpServerConfig srv) async {
     McpOAuth.logout(srv);
     await _mcpClients.remove(srv.id)?.close();
-    await storage.saveMcpServers(mcpServers);
+    await _saveMcp();
     notifyListeners();
   }
 
@@ -896,6 +973,24 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  Future<void> confirmMemory(MemoryNote n) async {
+    await memory.confirm(n);
+    unawaited(logActivity(Activity(kind: 'memory', title: 'Gedächtnis-Eintrag bestätigt', detail: n.text, approval: 'Von dir bestätigt')));
+    notifyListeners();
+  }
+
+  Future<void> setMemoryCategory(MemoryNote n, String category) async {
+    await memory.setCategory(n, category);
+    notifyListeners();
+  }
+
+  Future<void> setMemoryOptions({bool? confirm, bool? sensitive}) async {
+    if (confirm != null) settings.memoryConfirm = confirm;
+    if (sensitive != null) settings.memorySensitive = sensitive;
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
   Future<void> removeMemory(MemoryNote n) async {
     await memory.remove(n);
     notifyListeners();
@@ -1000,6 +1095,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         _turnInternetAllowed = true;
         return true;
       case NetworkChoice.chat:
+        unawaited(logActivity(Activity(kind: 'internet', title: 'Internet für einen Chat freigegeben', detail: purpose,
+            approval: voiceAsk != null ? 'Du hast im Gespräch „Ja“ gesagt' : 'Du hast „Für diesen Chat“ gewählt',
+            conversationId: conv.id)));
         conv.internetAllowed = true;
         await storage.saveConversation(conv);
         notifyListeners();
@@ -1560,6 +1658,241 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   @Deprecated('toolsFor verwenden')
   List<AgentTool> voiceToolsFor(String input) => toolsFor(input);
 
+  // ---------------------------------------------------------------- Freigabe-Karten
+
+  /// Mail-Konto für den Direktversand (Passwort aus dem Tresor).
+  Future<SmtpAccount?> smtpAccount() async {
+    if (!settings.smtpReady) return null;
+    final pw = await Vault.read('smtp:${settings.smtpUser}');
+    if (pw == null || pw.isEmpty) return null;
+    return SmtpAccount(
+        host: settings.smtpHost, port: settings.smtpPort, user: settings.smtpUser, password: pw, from: settings.smtpFrom);
+  }
+
+  Future<void> saveSmtp({required String host, required int port, required String user, required String password, String from = ''}) async {
+    if (settings.smtpUser.isNotEmpty && settings.smtpUser != user) await Vault.delete('smtp:${settings.smtpUser}');
+    settings
+      ..smtpHost = host.trim()
+      ..smtpPort = port
+      ..smtpUser = user.trim()
+      ..smtpFrom = from.trim();
+    if (password.isNotEmpty) await Vault.write('smtp:${user.trim()}', password);
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> removeSmtp() async {
+    if (settings.smtpUser.isNotEmpty) await Vault.delete('smtp:${settings.smtpUser}');
+    settings
+      ..smtpHost = ''
+      ..smtpUser = ''
+      ..smtpFrom = '';
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  /// Freigegebene Aktion ausführen (Tipp auf „Senden“ oder „Ja“ im Gespräch).
+  /// Liefert eine kurze Meldung für die Oberfläche.
+  Future<String> runAction(ChatEntry entry, int index, {String approval = 'Du hast „Senden“ getippt'}) async {
+    final a = entry.actions[index];
+    if (a['status'] != 'pending') return 'Schon erledigt';
+    final conv = conversations.where((c) => c.entries.contains(entry)).firstOrNull;
+    final who = (a['name'] ?? '').isNotEmpty ? a['name']! : (a['to'] ?? '');
+    String msg;
+    try {
+      if (a['type'] == 'email') {
+        final acc = await smtpAccount();
+        if (acc != null && (a['to'] ?? '').contains('@')) {
+          await sendMail(acc, to: a['to']!, subject: a['subject'] ?? '', body: a['body'] ?? '');
+          a['status'] = 'sent';
+          msg = 'E-Mail an $who gesendet';
+          unawaited(logActivity(Activity(kind: 'mail', title: 'E-Mail an $who gesendet', detail: a['subject'] ?? '',
+              approval: approval, conversationId: conv?.id)));
+        } else {
+          await deviceBridge.composeEmail(a['to'] ?? '', a['subject'] ?? '', a['body'] ?? '');
+          a['status'] = 'opened';
+          msg = acc == null ? 'Mail-App geöffnet – dort nur noch senden' : 'Mail-App geöffnet (Empfänger fehlt)';
+          unawaited(logActivity(Activity(kind: 'mail', title: 'E-Mail an $who in der Mail-App geöffnet',
+              detail: a['subject'] ?? '', approval: approval, conversationId: conv?.id)));
+        }
+      } else {
+        await deviceBridge.whatsapp(a['to'] ?? '', a['body'] ?? '');
+        a['status'] = 'opened';
+        msg = 'WhatsApp geöffnet – dort nur noch senden';
+        unawaited(logActivity(Activity(kind: 'whatsapp', title: 'WhatsApp an $who geöffnet', detail: a['body'] ?? '',
+            approval: approval, conversationId: conv?.id)));
+      }
+    } on SmtpException catch (e) {
+      msg = 'Nicht gesendet: ${e.message}';
+      a['error'] = e.message;
+    } catch (e) {
+      msg = 'Fehler: $e';
+      a['error'] = '$e';
+    }
+    if (conv != null) await storage.saveConversation(conv);
+    notifyListeners();
+    return msg;
+  }
+
+  Future<void> updateAction(ChatEntry entry, int index, Map<String, String> changes) async {
+    entry.actions[index].addAll(changes);
+    final conv = conversations.where((c) => c.entries.contains(entry)).firstOrNull;
+    if (conv != null) await storage.saveConversation(conv);
+    notifyListeners();
+  }
+
+  /// Offene Aktion der letzten Antwort im aktuellen Chat (für „Ja“ im Gespräch).
+  (ChatEntry, int)? get pendingAction {
+    final e = current?.entries.lastOrNull;
+    if (e == null || e.role != 'assistant') return null;
+    final i = e.actions.indexWhere((a) => a['status'] == 'pending');
+    return i < 0 ? null : (e, i);
+  }
+
+  // ------------------------------------------------------- Termin-Vorbereitung & Nachbereitung
+
+  static const meetingPrepId = 'builtin-meeting-prep';
+
+  /// Geplante Aufgabe „Termine vorbereiten“ anlegen (läuft wie andere geplante Prompts).
+  Future<SavedPrompt> createMeetingPrep({int hour = 7, int minute = 30}) async {
+    final existing = prompts.where((p) => p.id == meetingPrepId).firstOrNull;
+    final p = SavedPrompt(
+      id: meetingPrepId,
+      title: 'Termine vorbereiten',
+      text: 'Bereite meine heutigen Termine vor: pro Termin eine einseitige Notiz mit Infos zu Firma und Webseite.',
+      schedule: ScheduleKind.weekdays,
+      hour: hour,
+      minute: minute,
+      allowInternet: true,
+      notify: true,
+      lastRun: existing?.lastRun,
+    );
+    await savePrompt(p);
+    return p;
+  }
+
+  static final _urlInText = RegExp(r'https?://[^\s<>"]+|\b(?:www\.)?[a-z0-9-]+\.(?:at|de|com|ch|io|net|org|eu|studio|ai|co)\b(?:/[^\s<>"]*)?',
+      caseSensitive: false);
+  static const _freeMail = {'gmail.com', 'gmx.at', 'gmx.net', 'gmx.de', 'outlook.com', 'hotmail.com', 'icloud.com', 'yahoo.com', 'web.de', 'aon.at', 'a1.net'};
+
+  /// Webseite eines Termins: Link in Notizen/Ort, sonst Firmen-Domain einer E-Mail-Adresse.
+  static String? meetingWebsite(CalendarEvent e) {
+    final text = '${e.notes} ${e.location} ${e.title}';
+    for (final m in RegExp(r'[\w.+-]+@([\w-]+\.[\w.-]+)').allMatches(text)) {
+      final d = m.group(1)!.toLowerCase();
+      if (!_freeMail.contains(d)) return 'https://$d';
+    }
+    final u = _urlInText.firstMatch(text.replaceAll(RegExp(r'[\w.+-]+@[\w.-]+'), ' '))?.group(0);
+    if (u == null) return null;
+    if (RegExp(r'(zoom\.us|teams\.microsoft|meet\.google|webex)', caseSensitive: false).hasMatch(u)) return null;
+    return u.startsWith('http') ? u : 'https://$u';
+  }
+
+  /// Für jeden heutigen Termin eine einseitige Notiz (Dokument-Karte) im Chat „Termine …“.
+  Future<Conversation?> prepareMeetings({bool automated = false}) async {
+    if (!DeviceBridge.supported) return null;
+    final now = DateTime.now();
+    final events = (await deviceBridge.calendarList(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1)))
+        .where((e) => !e.allDay && e.end.isAfter(now))
+        .take(6)
+        .toList();
+    scheduleFollowUps(events);
+    if (!await _ensureEngine()) return null;
+    final conv = Conversation(id: newId(), title: 'Termine ${now.day}.${now.month}.');
+    conversations.insert(0, conv);
+    if (!automated) current = conv;
+    if (events.isEmpty) {
+      conv.entries.add(ChatEntry(role: 'assistant', text: 'Heute stehen keine Termine im Kalender – nichts vorzubereiten.'));
+      await storage.saveConversation(conv);
+      notifyListeners();
+      return conv;
+    }
+    conv.internetAllowed = true; // geplante Aufgabe: Internet für die Firmen-Webseiten freigegeben
+    final fetch = tools.whereType<WebFetchTool>().firstOrNull;
+    for (final e in events) {
+      final site = meetingWebsite(e);
+      var page = '';
+      if (site != null && fetch != null) {
+        try {
+          final r = await fetch.run({'url': site}, ToolContext(requestNetwork: (_) async => true));
+          final cut = r.indexOf(moreCardsMarker);
+          page = (cut < 0 ? r : r.substring(0, cut));
+          if (page.length > 2500) page = page.substring(0, 2500);
+        } catch (err) {
+          page = '(Webseite nicht erreichbar: $err)';
+        }
+      }
+      final time = '${e.begin.hour.toString().padLeft(2, '0')}:${e.begin.minute.toString().padLeft(2, '0')}';
+      final prompt = 'Schreib eine einseitige Vorbereitung (Markdown, Stichpunkte) für meinen Termin heute um $time: „${e.title}“'
+          '${e.location.isEmpty ? '' : ', Ort: ${e.location}'}.\n'
+          '${e.notes.trim().isEmpty ? '' : 'Notizen zum Termin: ${e.notes.trim()}\n'}'
+          '${page.isEmpty ? 'Keine Webseite bekannt – arbeite nur mit den Termin-Infos.\n' : 'Inhalt der Webseite $site:\n$page\n'}'
+          'Gliederung: ## Worum es geht · ## Wer/Was ist die Firma · ## Mögliche Fragen · ## Ziele für das Gespräch. '
+          'Erfinde nichts, was nicht in den Infos steht.';
+      final text = await _generateText(prompt);
+      final file = File('${outputsDir.path}/Vorbereitung ${e.title.replaceAll(RegExp(r'[^\w äöüÄÖÜß-]'), '').trim()} '
+          '${now.day}.${now.month}.md');
+      await file.writeAsString('# ${e.title} – $time\n\n$text\n');
+      conv.entries.add(ChatEntry(
+        role: 'assistant',
+        text: '**$time ${e.title}**${site == null ? '' : ' · $site'}\n\n${text.split('\n').where((l) => l.trim().isNotEmpty).take(6).join('\n')}',
+        files: [file.path],
+      ));
+      await storage.saveConversation(conv);
+      notifyListeners();
+    }
+    unawaited(logActivity(Activity(kind: 'calendar', title: '${events.length} Termin(e) vorbereitet', conversationId: conv.id,
+        approval: automated ? 'Geplante Aufgabe „Termine vorbereiten“' : 'Von dir gestartet')));
+    if (automated) {
+      unawaited(BackgroundWork.notify('Deine Termine sind vorbereitet', events.map((e) => e.title).join(' · '),
+          conversationId: conv.id));
+    }
+    return conv;
+  }
+
+  /// Text ohne Werkzeuge erzeugen (für Hintergrund-Aufgaben).
+  Future<String> _generateText(String prompt) async {
+    final eng = engine;
+    if (eng == null) return '';
+    final r = _makeRunner(eng, _systemText(voice: false, tools: const []), tools: const []);
+    var out = '';
+    await for (final ev in r.run(history: const [], userInput: prompt, context: ToolContext())) {
+      if (ev is FinalAnswer) out = ev.text;
+    }
+    return cleanModelText(out).trim();
+  }
+
+  /// Nach jedem Termin (Ende + 2 min) eine Push-Nachricht: „Folgemail entwerfen?“
+  void scheduleFollowUps(List<CalendarEvent> events) {
+    if (!settings.meetingFollowUp) return;
+    final now = DateTime.now();
+    for (final e in events) {
+      if (e.allDay || !e.end.isAfter(now)) continue;
+      final id = 'followup:${base64Url.encode(utf8.encode(e.title)).replaceAll('=', '')}:${e.end.millisecondsSinceEpoch}';
+      unawaited(BackgroundWork.notify('Termin vorbei: ${e.title}', 'Soll ich eine Folgemail mit den Zusagen entwerfen?',
+          conversationId: id, at: e.end.add(const Duration(minutes: 2))));
+    }
+  }
+
+  Future<void> setMeetingFollowUp(bool v) async {
+    settings.meetingFollowUp = v;
+    await storage.saveSettings(settings);
+    notifyListeners();
+    if (v) unawaited(_planFollowUps());
+  }
+
+  /// Termine von heute holen und Folgemail-Erinnerungen setzen (beim Start, ohne Rückfrage).
+  Future<void> _planFollowUps() async {
+    if (!settings.meetingFollowUp || !DeviceBridge.supported) return;
+    // Nur wenn der Kalender schon freigegeben wurde (Morgen-Übersicht oder Termin-Vorbereitung) – beim Start nicht fragen
+    if (!prompts.any((p) => p.id == meetingPrepId || p.title == 'Morgen-Übersicht')) return;
+    try {
+      final now = DateTime.now();
+      final ev = await deviceBridge.calendarList(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1));
+      scheduleFollowUps(ev);
+    } catch (_) {}
+  }
+
   /// Kurze Nachfrage („wien“, „und morgen?“, „nein, Sport“) – keine neue, eigenständige Frage.
   static bool looksLikeFollowUp(String input) {
     final w = input.trim().split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
@@ -2058,6 +2391,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (automated && !_promptQueue.contains(p.id)) _promptQueue.add(p.id);
       return null;
     }
+    if (p.id == meetingPrepId) {
+      p.lastRun = DateTime.now();
+      await storage.savePrompts(prompts);
+      return prepareMeetings(automated: automated);
+    }
     p.lastRun = DateTime.now();
     await storage.savePrompts(prompts);
     unawaited(_syncAlarms());
@@ -2093,6 +2431,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void openConversationById(String id) {
+    if (id.startsWith('followup:')) {
+      // Push „Termin vorbei“ angetippt → neuer Chat mit vorbereiteter Bitte
+      final parts = id.split(':');
+      var title = '';
+      try {
+        title = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      } catch (_) {}
+      current = null;
+      pendingInput.value = 'Schreib eine kurze Folgemail zum Termin „$title“. Zusagen und nächste Schritte: ';
+      notifyListeners();
+      return;
+    }
     final c = conversations.where((x) => x.id == id).firstOrNull;
     if (c != null && !running) {
       current = c;
@@ -2264,9 +2614,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
 
     _turnInternetAllowed = false;
+    void propose(Map<String, String> a) {
+      answer.actions.add(a);
+      notifyListeners();
+    }
+
     final ctx = ToolContext(
       attachments: docs,
       requestNetwork: (purpose) => _requestNetwork(conv, purpose),
+      propose: propose,
       onArtifact: (a) {
         conv.artifacts.add(a.toJson());
         if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) {
@@ -2352,6 +2708,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       attachments: docs,
       requestNetwork: ctx.requestNetwork,
       onArtifact: ctx.onArtifact,
+      propose: propose,
     );
 
     try {
@@ -2377,13 +2734,31 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
                 ..args = args
                 ..thought = callThought;
             }
-          case ToolResult(:final output, :final isError, :final duration):
+          case ToolResult(:final output, :final isError, :final duration, :final tool):
             final last = answer.steps.lastOrNull;
             if (last != null) {
               last
                 ..observation = output
                 ..isError = isError
                 ..durationMs = duration.inMilliseconds;
+            }
+            // Aktionen mit Wirkung im Verlauf festhalten
+            const acts = {
+              'calendar_add': ('calendar', 'Termin eingetragen'),
+              'call_phone': ('call', 'Anruf gestartet'),
+              'file_rename': ('file', 'Datei umbenannt'),
+              'file_move': ('file', 'Datei verschoben'),
+              'browser': ('browser', 'Im Browser gearbeitet'),
+            };
+            final act = acts[tool];
+            if (act != null && !isError) {
+              final detail = output.split('\n').first;
+              unawaited(logActivity(Activity(
+                  kind: act.$1,
+                  title: act.$2,
+                  detail: detail.length > 160 ? '${detail.substring(0, 160)}…' : detail,
+                  approval: tool == 'browser' ? 'Im Chat beauftragt' : 'Im Chat beauftragt, auf dem Gerät bestätigt',
+                  conversationId: conv.id)));
             }
           case MetricsUpdate(:final stats):
             lastStats = stats;

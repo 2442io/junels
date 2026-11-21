@@ -229,10 +229,13 @@ class _ConversationPageState extends State<ConversationPage> {
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
                                 child: Column(children: [
-                                  Text('Internet erlauben? Sag „Ja“ oder „Nein“.',
-                                      style: t.titleSmall?.copyWith(color: scheme.onTertiaryContainer)),
-                                  const SizedBox(height: 2),
-                                  Text(purpose,
+                                  ValueListenableBuilder<String>(
+                                    valueListenable: conv.askTitle,
+                                    builder: (context, title, _) =>
+                                        Text(title, style: t.titleSmall?.copyWith(color: scheme.onTertiaryContainer)),
+                                  ),
+                                  if (purpose.isNotEmpty) const SizedBox(height: 2),
+                                  if (purpose.isNotEmpty) Text(purpose,
                                       style: t.bodySmall?.copyWith(color: scheme.onTertiaryContainer),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,

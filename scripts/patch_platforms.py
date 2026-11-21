@@ -327,7 +327,7 @@ def patch_macos():
         s = re.sub(r"(RegisterGeneratedPlugins\(registry: flutterViewController\))",
                    r"\1\n    JunelsFiles.register(flutterViewController)\n    JunelsDevice.register(flutterViewController)"
                    r"\n    self.isReleasedWhenClosed = false", s, count=1)
-        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications\nimport EventKit\nimport Contacts", 1)
+        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications\nimport EventKit\nimport Contacts\nimport Security", 1)
         return (s + (ROOT / "scripts/macos/JunelsFiles.swift").read_text()
                 + (ROOT / "scripts/macos/JunelsDevice.swift").read_text())
 

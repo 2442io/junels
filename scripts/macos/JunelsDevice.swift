@@ -15,6 +15,47 @@ enum JunelsDevice {
     ch.setMethodCallHandler { call, result in
       let a = call.arguments as? [String: Any] ?? [:]
       switch call.method {
+      // Tresor: Geheimnisse im macOS-Schlüsselbund (nicht in den App-Dateien)
+      case "vaultSet":
+        let key = a["key"] as? String ?? ""
+        let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                   kSecAttrService as String: "io.junels.vault",
+                                   kSecAttrAccount as String: key]
+        SecItemDelete(base as CFDictionary)
+        if let v = a["value"] as? String {
+          var add = base
+          add[kSecValueData as String] = Data(v.utf8)
+          add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+          let st = SecItemAdd(add as CFDictionary, nil)
+          if st != errSecSuccess {
+            result(FlutterError(code: "vault", message: "Schlüsselbund: Fehler \(st)", details: nil))
+            return
+          }
+        }
+        result(true)
+      case "vaultGet":
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                kSecAttrService as String: "io.junels.vault",
+                                kSecAttrAccount as String: a["key"] as? String ?? "",
+                                kSecReturnData as String: true,
+                                kSecMatchLimit as String: kSecMatchLimitOne]
+        var out: AnyObject?
+        if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data {
+          result(String(data: d, encoding: .utf8))
+        } else {
+          result(nil)
+        }
+      case "vaultKeys":
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                kSecAttrService as String: "io.junels.vault",
+                                kSecReturnAttributes as String: true,
+                                kSecMatchLimit as String: kSecMatchLimitAll]
+        var out: AnyObject?
+        if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let items = out as? [[String: Any]] {
+          result(items.compactMap { $0[kSecAttrAccount as String] as? String })
+        } else {
+          result([String]())
+        }
       case "takeLaunch":
         let files = pendingOpen
         pendingOpen = []
@@ -89,7 +130,8 @@ enum JunelsDevice {
             let list = events.events(matching: pred).sorted { $0.startDate < $1.startDate }.prefix(100).map { e -> [String: Any] in
               ["title": e.title ?? "", "begin": Int(e.startDate.timeIntervalSince1970 * 1000),
                "end": Int(e.endDate.timeIntervalSince1970 * 1000), "allDay": e.isAllDay,
-               "location": e.location ?? "", "calendar": e.calendar?.title ?? ""]
+               "location": e.location ?? "", "calendar": e.calendar?.title ?? "",
+               "notes": (e.notes ?? "") + ((e.attendees ?? []).map { "\nTeilnehmer: " + $0.url.absoluteString.replacingOccurrences(of: "mailto:", with: "") }.joined())]
             }
             result(Array(list))
           }

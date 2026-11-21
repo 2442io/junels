@@ -12,6 +12,8 @@ import 'package:flutter/services.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import '../state/smtp.dart';
+import '../state/vault.dart';
 import '../state/voice_service.dart';
 import 'conversation_page.dart';
 import 'file_views.dart';
@@ -505,6 +507,7 @@ class _AssistantMessage extends StatelessWidget {
               child: MarkdownLite(entry.text.contains("channel|>") || entry.text.contains("<think>") ? cleanModelText(entry.text) : entry.text,
                   selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
             ),
+          for (var i = 0; i < entry.actions.length; i++) ActionCard(entry: entry, index: i),
           if (entry.cards.isNotEmpty)
             ResultCarousel(
               cards: entry.cards,
@@ -1192,4 +1195,230 @@ class _InputBarState extends State<_InputBar> {
       ),
     );
   }
+}
+
+
+/// Freigabe-Karte: Entwurf (E-Mail, WhatsApp) mit „Senden“, „Bearbeiten“, „Verwerfen“.
+class ActionCard extends StatefulWidget {
+  const ActionCard({super.key, required this.entry, required this.index});
+  final ChatEntry entry;
+  final int index;
+
+  @override
+  State<ActionCard> createState() => _ActionCardState();
+}
+
+class _ActionCardState extends State<ActionCard> {
+  bool _busy = false;
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final a = widget.entry.actions[widget.index];
+    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final mail = a['type'] == 'email';
+    final who = (a['name'] ?? '').isNotEmpty ? a['name']! : ((a['to'] ?? '').isEmpty ? 'Empfänger fehlt' : a['to']!);
+    final status = a['status'] ?? 'pending';
+    final pending = status == 'pending';
+    final direct = mail && app.settings.smtpReady && (a['to'] ?? '').contains('@');
+    final body = a['body'] ?? '';
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      decoration: BoxDecoration(
+        color: pending ? scheme.secondaryContainer.withValues(alpha: 0.55) : scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: pending ? scheme.secondary.withValues(alpha: 0.5) : scheme.outlineVariant),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(mail ? Icons.mail_outline : Icons.chat_outlined, size: 20, color: scheme.onSecondaryContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('${mail ? 'E-Mail' : 'WhatsApp'} an $who', style: t.titleSmall, overflow: TextOverflow.ellipsis),
+            ),
+            if (!pending)
+              Chip(
+                visualDensity: VisualDensity.compact,
+                label: Text(switch (status) {
+                  'sent' => 'Gesendet ✓',
+                  'opened' => mail ? 'In Mail-App geöffnet' : 'In WhatsApp geöffnet',
+                  'discarded' => 'Verworfen',
+                  _ => status,
+                }),
+              ),
+          ]),
+          if (mail && (a['subject'] ?? '').isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Betreff: ${a['subject']}', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+          ],
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => setState(() => _open = !_open),
+            child: Text(body, style: t.bodyMedium, maxLines: _open ? null : 4, overflow: _open ? null : TextOverflow.ellipsis),
+          ),
+          if ((a['error'] ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(a['error']!, style: t.bodySmall?.copyWith(color: scheme.error)),
+            ),
+          if (pending) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              FilledButton.icon(
+                onPressed: _busy
+                    ? null
+                    : () async {
+                        setState(() => _busy = true);
+                        final msg = await app.runAction(widget.entry, widget.index);
+                        if (!context.mounted) return;
+                        setState(() => _busy = false);
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                      },
+                icon: _busy
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(direct ? Icons.send : Icons.open_in_new, size: 18),
+                label: Text(direct ? 'Senden' : (mail ? 'In Mail-App öffnen' : 'In WhatsApp öffnen')),
+              ),
+              OutlinedButton(onPressed: _busy ? null : () => _edit(context, app, a), child: const Text('Bearbeiten')),
+              TextButton(
+                onPressed: _busy ? null : () => app.updateAction(widget.entry, widget.index, {'status': 'discarded'}),
+                child: const Text('Verwerfen'),
+              ),
+            ]),
+            if (mail && !app.settings.smtpReady)
+              TextButton(
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                onPressed: () => showMailAccountDialog(context),
+                child: const Text('Direkt aus Junels senden einrichten'),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _edit(BuildContext context, AppController app, Map<String, String> a) async {
+    final to = TextEditingController(text: a['to']);
+    final subject = TextEditingController(text: a['subject']);
+    final body = TextEditingController(text: a['body']);
+    final mail = a['type'] == 'email';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(mail ? 'E-Mail bearbeiten' : 'Nachricht bearbeiten'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: to, decoration: InputDecoration(labelText: mail ? 'An (E-Mail-Adresse)' : 'An (Nummer)')),
+              if (mail) TextField(controller: subject, decoration: const InputDecoration(labelText: 'Betreff')),
+              const SizedBox(height: 8),
+              TextField(controller: body, maxLines: 10, minLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Übernehmen')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await app.updateAction(widget.entry, widget.index, {
+        'to': to.text.trim(),
+        if (to.text.trim() != (a['to'] ?? '')) 'name': '',
+        'subject': subject.text,
+        'body': body.text,
+        'error': '',
+      });
+    }
+  }
+}
+
+/// Mail-Konto für den Direktversand einrichten. Das Passwort landet im Tresor.
+Future<void> showMailAccountDialog(BuildContext context) async {
+  final app = AppScope.read(context);
+  final st = app.settings;
+  final user = TextEditingController(text: st.smtpUser);
+  final pw = TextEditingController();
+  final host = TextEditingController(text: st.smtpHost);
+  final port = TextEditingController(text: '${st.smtpPort}');
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+      void guess(String v) {
+        final g = SmtpAccount.guessServer(v);
+        if (g != null && host.text.isEmpty) {
+          host.text = g.$1;
+          port.text = '${g.$2}';
+        }
+      }
+
+      return AlertDialog(
+        title: const Text('E-Mails direkt senden'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Mit deinem Mail-Konto schickt Junels freigegebene E-Mails selbst ab – nur nach deinem Tipp auf „Senden“.'),
+              const SizedBox(height: 8),
+              TextField(controller: user, decoration: const InputDecoration(labelText: 'Deine E-Mail-Adresse'), onChanged: guess),
+              TextField(
+                controller: pw,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: st.smtpUser.isEmpty ? 'Passwort bzw. App-Passwort' : 'Neues Passwort (leer = behalten)',
+                  helperText: 'Gmail, iCloud, Yahoo: App-Passwort im Konto erstellen (bei 2-Faktor-Anmeldung nötig).',
+                  helperMaxLines: 2,
+                ),
+              ),
+              Row(children: [
+                Expanded(flex: 3, child: TextField(controller: host, decoration: const InputDecoration(labelText: 'Postausgang (SMTP)'))),
+                const SizedBox(width: 8),
+                Expanded(child: TextField(controller: port, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number)),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                const Icon(Icons.lock_outline, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                      Vault.secure
+                          ? 'Das Passwort liegt verschlüsselt im Tresor des Geräts (${Platform.isMacOS ? 'Schlüsselbund' : 'Android-Keystore'}). '
+                              'Der Agent kann es nicht lesen.'
+                          : 'Auf diesem System gibt es keinen Tresor – das Passwort gilt nur bis zum Beenden.',
+                      style: Theme.of(ctx).textTheme.bodySmall),
+                ),
+              ]),
+            ]),
+          ),
+        ),
+        actions: [
+          if (st.smtpReady)
+            TextButton(
+              onPressed: () async {
+                await app.removeSmtp();
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Entfernen'),
+            ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          FilledButton(
+            onPressed: () async {
+              if (user.text.trim().isEmpty || host.text.trim().isEmpty) return;
+              await app.saveSmtp(
+                  host: host.text, port: int.tryParse(port.text) ?? 465, user: user.text, password: pw.text, from: user.text);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      );
+    }),
+  );
 }

@@ -93,6 +93,13 @@ object JunelsDevice {
     fun handle(ctx: Context, activity: Activity?, call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
+                // Tresor: Geheimnisse (Passwörter, Tokens) mit einem Schlüssel aus dem Android-Keystore verschlüsselt
+                "vaultSet" -> {
+                    Vault.put(ctx, call.argument<String>("key") ?: "", call.argument<String>("value"))
+                    result.success(true)
+                }
+                "vaultGet" -> result.success(Vault.get(ctx, call.argument<String>("key") ?: ""))
+                "vaultKeys" -> result.success(Vault.keys(ctx))
                 "composeEmail" -> {
                     val to = call.argument<String>("to") ?: ""
                     val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
@@ -138,7 +145,8 @@ object JunelsDevice {
                                 arrayOf(
                                     CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
                                     CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY,
-                                    CalendarContract.Instances.EVENT_LOCATION, CalendarContract.Instances.CALENDAR_DISPLAY_NAME
+                                    CalendarContract.Instances.EVENT_LOCATION, CalendarContract.Instances.CALENDAR_DISPLAY_NAME,
+                                    CalendarContract.Instances.DESCRIPTION, CalendarContract.Instances.ORGANIZER
                                 ),
                                 null, null, CalendarContract.Instances.BEGIN + " ASC"
                             )?.use { c ->
@@ -146,7 +154,8 @@ object JunelsDevice {
                                     out.add(mapOf(
                                         "title" to (c.getString(0) ?: ""), "begin" to c.getLong(1), "end" to c.getLong(2),
                                         "allDay" to (c.getInt(3) == 1), "location" to (c.getString(4) ?: ""),
-                                        "calendar" to (c.getString(5) ?: "")
+                                        "calendar" to (c.getString(5) ?: ""),
+                                        "notes" to ((c.getString(6) ?: "") + (if (c.getString(7).isNullOrBlank()) "" else "\nOrganisator: " + c.getString(7)))
                                     ))
                                 }
                             }
@@ -341,4 +350,55 @@ object JunelsDevice {
         if (text.isBlank() && files.isEmpty()) return null
         return mapOf("text" to text, "files" to files)
     }
+}
+
+
+/** Tresor: AES-GCM mit Schlüssel im Android-Keystore (verlässt die Hardware nicht), Daten in SharedPreferences. */
+object Vault {
+    private const val ALIAS = "junels_vault"
+    private const val PREFS = "junels_vault"
+
+    private fun key(): javax.crypto.SecretKey {
+        val ks = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getEntry(ALIAS, null) as? java.security.KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        val gen = javax.crypto.KeyGenerator.getInstance(android.security.keystore.KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        gen.init(
+            android.security.keystore.KeyGenParameterSpec.Builder(
+                ALIAS,
+                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return gen.generateKey()
+    }
+
+    fun put(ctx: Context, k: String, v: String?) {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (v == null) {
+            prefs.edit().remove(k).apply()
+            return
+        }
+        val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(javax.crypto.Cipher.ENCRYPT_MODE, key())
+        val enc = c.doFinal(v.toByteArray(Charsets.UTF_8))
+        val blob = android.util.Base64.encodeToString(c.iv + enc, android.util.Base64.NO_WRAP)
+        prefs.edit().putString(k, blob).apply()
+    }
+
+    fun get(ctx: Context, k: String): String? {
+        val blob = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(k, null) ?: return null
+        return try {
+            val raw = android.util.Base64.decode(blob, android.util.Base64.NO_WRAP)
+            val c = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(javax.crypto.Cipher.DECRYPT_MODE, key(), javax.crypto.spec.GCMParameterSpec(128, raw, 0, 12))
+            String(c.doFinal(raw, 12, raw.size - 12), Charsets.UTF_8)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun keys(ctx: Context): List<String> = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all.keys.toList()
 }

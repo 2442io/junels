@@ -170,11 +170,33 @@ class ConversationMode {
 
   /// Wofür der Agent gerade Internet möchte (Anzeige mit Knöpfen) – null = keine Frage offen.
   final consentPrompt = ValueNotifier<String?>(null);
+
+  /// Überschrift der offenen Frage (Internet oder „Senden?“).
+  final askTitle = ValueNotifier<String>('Internet erlauben? Sag „Ja“ oder „Nein“.');
+  Completer<bool?>? _yesNo;
+
+  /// Ja/Nein per Stimme oder Knopf; null = keine Antwort.
+  Future<bool?> _askYesNo(String spoken, String title) async {
+    final c = _yesNo = Completer<bool?>();
+    askTitle.value = '$title Sag „Ja“ oder „Nein“.';
+    consentPrompt.value = '';
+    _consentSpokenUntil = DateTime.now().add(Duration(milliseconds: 600 + spoken.length * 75));
+    final o = app.voice.output;
+    o.begin();
+    o.add(spoken);
+    o.finish();
+    state.value = ConvState.listening;
+    final r = await c.future.timeout(const Duration(seconds: 30), onTimeout: () => null);
+    _yesNo = null;
+    consentPrompt.value = null;
+    return r;
+  }
   Completer<NetworkChoice>? _consent;
   DateTime _consentSpokenUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<NetworkChoice> _askConsentByVoice(String purpose) async {
     final c = _consent = Completer<NetworkChoice>();
+    askTitle.value = 'Internet erlauben? Sag „Ja“ oder „Nein“.';
     consentPrompt.value = purpose;
     const msg = 'Dafür brauche ich das Internet. Darf ich? Sag ja oder nein.';
     // ungefähre Sprechdauer: so lange gilt Gehörtes als Echo der eigenen Frage
@@ -192,6 +214,11 @@ class ConversationMode {
 
   /// Antwort per Knopf (oder Stimme).
   void answerConsent(NetworkChoice choice) {
+    final y = _yesNo;
+    if (y != null && !y.isCompleted) {
+      y.complete(choice != NetworkChoice.deny);
+      return;
+    }
     final c = _consent;
     if (c != null && !c.isCompleted) c.complete(choice);
   }
@@ -202,7 +229,7 @@ class ConversationMode {
       final stt = await app.voice.stt(app.sttModelPath!);
       final text = (await stt.transcribe(pcm, language: _language, threads: app.device.threads)).text.trim().toLowerCase();
       // eigenes Echo („Darf ich? Sag ja oder nein“) nicht als Antwort werten
-      if (text.isEmpty || text.contains('darf ich') || (text.contains(' ja') && text.contains('nein'))) return;
+      if (text.isEmpty || text.contains('darf ich') || text.contains('soll ich') || (text.contains(' ja') && text.contains('nein'))) return;
       final no = RegExp(r'\b(nein|nee|ne|nicht|lieber nicht|lass|stopp?|abbrechen|kein)\b').hasMatch(text);
       final yes = RegExp(r'\b(ja|jo|jep|jawohl|klar|gern|gerne|okay|ok|erlaub\w*|mach|darfst|passt|sicher|bitte)\b').hasMatch(text);
       voiceLog('Antwort auf Internet-Frage: "$text"');
@@ -287,8 +314,8 @@ class ConversationMode {
     }
 
     final busy = s == ConvState.speaking || s == ConvState.thinking;
-    if (_consent != null) {
-      // Internet-Frage offen: Gesprochenes ist die Antwort darauf
+    if (_consent != null || _yesNo != null) {
+      // Frage offen (Internet / Senden): Gesprochenes ist die Antwort darauf
       if (ev == VadEvent.speechEnd) unawaited(_consentFromSpeech(_vad.takeUtterance()));
       return;
     }
@@ -512,6 +539,22 @@ class ConversationMode {
     out.finish();
     // Hängt die Sprachausgabe, trotzdem wieder zuhören
     await out.done.timeout(const Duration(minutes: 3), onTimeout: () => out.stop());
+    // Entwurf (E-Mail, WhatsApp) wartet auf Freigabe → per Stimme fragen
+    final pa = app.pendingAction;
+    if (pa != null && myTurn == _turn && active) {
+      final yes = await _askYesNo('Soll ich das senden? Sag ja oder nein.', 'Senden?');
+      if (myTurn == _turn && active) {
+        final o = app.voice.output..begin();
+        if (yes == true) {
+          final msg = await app.runAction(pa.$1, pa.$2, approval: 'Du hast im Gespräch „Ja“ gesagt');
+          o.add('$msg.');
+        } else if (yes == false) {
+          o.add('Okay, nicht gesendet. Der Entwurf bleibt im Chat.');
+        }
+        o.finish();
+        await o.done.timeout(const Duration(seconds: 30), onTimeout: () => o.stop());
+      }
+    }
     // Kurz danach geht eine Folgefrage auch ohne Namen
     _followUntil = DateTime.now().add(const Duration(seconds: 20));
     if (myTurn == _turn && active) {

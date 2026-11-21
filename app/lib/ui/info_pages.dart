@@ -10,6 +10,17 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.23.0', [
+    'Freigabe-Karten: E-Mail- und WhatsApp-Entwürfe erscheinen als Karte mit „Senden“, „Bearbeiten“, „Verwerfen“ – im Gespräch genügt „Ja“',
+    'E-Mails direkt aus Junels senden (eigenes Mail-Konto, Passwort im Tresor) – sonst öffnet „Senden“ die Mail-App',
+    'Geplante Aufgaben: eigene Seite mit Schaltern, „Jetzt ausführen“ und Vorlagen',
+    'Termine vorbereiten: pro Termin eine einseitige Notiz (Firma, Webseite, Fragen, Ziele) als Dokument im Chat',
+    'Nach Terminen: Push-Nachricht „Folgemail entwerfen?“ – ein Tipp öffnet den Entwurf',
+    '„Was hat der Agent getan?“: Verlauf aller Aktionen mit deiner Freigabe – lokal, 0 €',
+    'Tresor: Passwörter und MCP-Anmeldungen liegen im Android-Keystore bzw. macOS-Schlüsselbund, nicht mehr in den App-Dateien',
+    'Browser: Privat anmelden – Junels liest Eingabefelder nie aus (Passwörter blieben vorher nicht in jedem Fall verborgen)',
+    'Gedächtnis: Bereiche (Vorlieben, Personen, Routinen), neue Einträge erst nach deiner Bestätigung, sensible Themen standardmäßig aus',
+  ]),
   ('1.22.0', [
     'Systemcheck: „Schnell einrichten“ mit zwei Knöpfen – Handy- oder Desktop-Set (Sprachmodell, Spracherkennung, Stimme), nur Modelle, die auf diesem Gerät laufen',
     'Gespräch: Internet-Freigabe wird zuerst gesprochen und per „Ja“/„Nein“ beantwortet – oder per Knopf am Gesprächsbildschirm, kein Dialog mehr',
