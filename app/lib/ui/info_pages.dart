@@ -10,6 +10,12 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.21.2', [
+    'Gespräch: „Regenbogen“, „Windows“ & Co. lösen keine Wetterabfrage mehr aus (die Antwort kam deshalb erst nach 25 s)',
+    'Gespräch: Die erste Frage nach dem Öffnen geht ohne Namen; nach jeder Antwort 20 s Zeit für Nachfragen ohne Namen',
+    'Gespräch: Wird etwas ohne Namen ignoriert, steht jetzt am Bildschirm, was gehört wurde und warum nichts passiert',
+    'Wetter: „Heimatort“ als Ort wird als dein eingestellter Heimatort verstanden',
+  ]),
   ('1.21.1', [
     'Push-Nachricht, wenn der Agent fertig ist und du nicht dabei bist (App im Hintergrund oder anderer Chat offen)',
     'Während der Agent arbeitet, kannst du andere Chats öffnen und neue anlegen; Nachrichten dort warten und werden danach beantwortet',

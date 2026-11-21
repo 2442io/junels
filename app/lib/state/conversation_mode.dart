@@ -123,7 +123,9 @@ class ConversationMode {
     };
     // Gesprächs-Prompt vorrechnen → erste Antwort ohne Wartezeit
     unawaited(app.warmUp(voice: true));
-    needsName.value = _wake;
+    // Wer das Gespräch gerade geöffnet hat, meint den Agenten – erste Frage ohne Namen
+    _followUntil = DateTime.now().add(const Duration(seconds: 30));
+    needsName.value = false;
     state.value = ConvState.listening;
     await app.voice.mic.start(_onFrame, echoCancel: true);
     // Manche Android-Geräte beenden die Aufnahme, wenn die Sprachausgabe läuft → neu starten
@@ -300,12 +302,16 @@ class ConversationMode {
       _startListening();
       return;
     }
-    text = collapseRepeats(text);
+    text = collapseRepeats(text)
+        // „Regenbogen ? ? ?“ → „Regenbogen?“
+        .replaceAllMapped(RegExp(r'\s*([?!.])(?:\s*[?!.])+'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp(r'\s+([?!.,])'), (m) => m.group(1)!);
     if (_wake) {
       final rest = stripWakeName(text, agentName);
       if (rest == null && !_followOpen) {
         voiceLog('Ohne „$agentName“ – ignoriert: "$text"');
-        error.value = null;
+        // sichtbar machen, warum nichts passiert
+        error.value = 'Gehört: „$text“ – sag „$agentName, …“ davor oder tipp auf den Kreis';
         _startListening();
         return;
       }
@@ -453,7 +459,7 @@ class ConversationMode {
     // Hängt die Sprachausgabe, trotzdem wieder zuhören
     await out.done.timeout(const Duration(minutes: 3), onTimeout: () => out.stop());
     // Kurz danach geht eine Folgefrage auch ohne Namen
-    _followUntil = DateTime.now().add(const Duration(seconds: 10));
+    _followUntil = DateTime.now().add(const Duration(seconds: 20));
     if (myTurn == _turn && active) {
       _speakingStarted = false;
       _startListening();

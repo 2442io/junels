@@ -45,6 +45,12 @@ class WeatherTool extends AgentTool {
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     var loc = (args['location'] ?? '').toString().trim();
+    // Platzhalter des Modells („Heimatort“, „hier“, „mein Ort“) = Heimatort
+    if (RegExp(r'^(heimat\w*|hier|zuhause|zu hause|mein(em)? ort|aktuelle[rn]? ort|standort|unbekannt|none|null)$',
+            caseSensitive: false)
+        .hasMatch(loc)) {
+      loc = '';
+    }
     if (loc.isEmpty) loc = _defaultLocation().trim();
     if (loc.isEmpty) throw ToolException('Kein Ort angegeben und kein Heimatort eingestellt – frag nach dem Ort.');
     // Immer mindestens eine Woche – „Wetter am Dienstag“ soll ohne zweiten Aufruf gehen

@@ -1443,7 +1443,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal|mir)|such mir|finde (mir|im)|recherch|'
         r'angebot|kaufen|empfehl\w* .*(produkt|marke)|vergleich|test(sieger|bericht)|'
         r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
-    'weather': RegExp(r'wetter|regen|regnet|temperatur|grad\b|schnee|sonnig|wind|gewitter|schirm|jacke|vorhersage'),
+    // Wortgrenzen: „Regenbogen“, „Windows“, „Jackett“ sind keine Wetterfragen
+    'weather': RegExp(r'wetter|\bregen\b|regnet|regenschirm|temperatur|\d+\s*grad\b|\bgrad (wird|hat|haben)|\bschnee\b|schneit|sonnig|'
+        r'\bwind(ig)?\b|gewitter|\bschirm\b|\bjacke\b|vorhersage'),
     'news': RegExp(r'news|nachrichten|schlagzeilen|neuigkeiten|neues (zu|von|aus|über|bei|in)|was gibt.s neues|was gibt es neues|meldungen|presse|morgen-übersicht'),
     'contacts_search': RegExp(r'nummer von|telefonnummer|handynummer|e-?mail-?adresse von|adresse von|kontakt'),
     'compose_email': RegExp(r'e-?mail|\bmail\b|mail an|mailen'),
@@ -1522,7 +1524,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       r'präsentation|folien|bild|foto|erinner|und dann|außerdem',
       caseSensitive: false);
   static final _weatherIntent = RegExp(
-      r'wetter|regen|regnet|schnee|schneit|temperatur|grad\b|sonnig|gewitter|schirm|wird es (warm|kalt|heiß)|vorhersage',
+      r'wetter|\bregen\b|regnet|\bschnee\b|schneit|temperatur|\d+\s*grad\b|sonnig|gewitter|\bschirm\b|wird es (warm|kalt|heiß)|vorhersage',
       caseSensitive: false);
   static final _newsIntent =
       RegExp(r'\b(nachrichten|news|schlagzeilen|meldungen|neuigkeiten|was gibt.s neues)\b', caseSensitive: false);
