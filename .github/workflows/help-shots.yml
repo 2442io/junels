@@ -4,6 +4,8 @@ name: Hilfe-Bildschirmfotos
 # Der eigentliche App-Build erzeugt sie bei jedem Lauf selbst.
 on:
   workflow_dispatch:
+  push:
+    branches: [redesign]
 
 jobs:
   shots:
