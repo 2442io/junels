@@ -1,0 +1,21 @@
+name: Namen prüfen
+
+# Prüft, welche .ai-Domains noch frei sind (RDAP-Abfrage beim Registry-Betreiber).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/names/**', '.github/workflows/names.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: RDAP
+        run: |
+          for n in $(cat scripts/names/candidates.txt); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://rdap.identitydigital.services/rdap/domain/$n.ai")
+            if [ "$code" = "404" ]; then echo "FREI     $n.ai"; elif [ "$code" = "200" ]; then echo "vergeben $n.ai"; else echo "?($code)  $n.ai"; fi
+            sleep 1.2
+          done

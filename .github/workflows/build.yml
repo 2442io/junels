@@ -9,7 +9,7 @@ on:
     branches: [main]
     tags: ['v*']
     # Reine Stimmen-Pakete brauchen keinen App-Build
-    paths-ignore: ['scripts/voices/**', '.github/workflows/voices.yml']
+    paths-ignore: ['scripts/voices/**', '.github/workflows/voices.yml', 'scripts/names/**', '.github/workflows/names.yml']
   workflow_dispatch:
 
 # Ein neuerer Push bricht ältere Builds ab – sonst könnte ein älterer, später fertiger
