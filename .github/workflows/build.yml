@@ -83,7 +83,7 @@ jobs:
           echo "JUNELS_KEY_PASSWORD=$PW" >> "$GITHUB_ENV"
       - name: APK bauen
         run: bash scripts/build_android.sh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: OfflineAgent-android
           path: dist/*.apk
@@ -158,7 +158,7 @@ jobs:
           rm -f "$RUNNER_TEMP/c.p12"
       - name: DMG bauen
         run: bash scripts/build_macos.sh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: OfflineAgent-macos
           path: dist/*.dmg
@@ -243,7 +243,7 @@ jobs:
       - name: Download-Adressen prüfen
         working-directory: packages/agent_engine
         run: dart run tool/check_catalog.dart
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: Engine-Test-Ausgaben

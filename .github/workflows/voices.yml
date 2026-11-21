@@ -42,7 +42,7 @@ jobs:
           tar -cjf kokoro-de-${{ matrix.voice }}.tar.bz2 kokoro-de-${{ matrix.voice }}
           ls -la kokoro-de-${{ matrix.voice }}.tar.bz2
       - name: Hörprobe aufheben
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: hoerprobe-${{ matrix.voice }}
           path: probe.wav
