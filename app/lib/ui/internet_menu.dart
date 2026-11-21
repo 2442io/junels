@@ -7,7 +7,8 @@ import '../state/app_scope.dart';
 import 'theme.dart';
 
 class InternetMenu extends StatelessWidget {
-  const InternetMenu({super.key});
+  const InternetMenu({super.key, this.compact = false});
+  final bool compact;
 
   static IconData iconFor(InternetMode m) => switch (m) {
         InternetMode.off => Icons.public_off,
@@ -30,16 +31,18 @@ class InternetMenu extends StatelessWidget {
       tooltip: 'Internet: ${mode.label}',
       child: Container(
         height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        width: compact ? 38 : null,
+        padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12),
         decoration: BoxDecoration(
           color: mode == InternetMode.allowed ? c.amberSoft : scheme.surface,
           borderRadius: BorderRadius.circular(99),
           border: Border.all(color: mode == InternetMode.allowed ? c.amber.withValues(alpha: 0.5) : c.border),
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
+        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(iconFor(mode), size: 18, color: color),
-          const SizedBox(width: 6),
-          Text(switch (mode) {
+          if (!compact) const SizedBox(width: 6),
+          if (!compact)
+            Text(switch (mode) {
             InternetMode.off => 'Offline',
             InternetMode.ask => 'Fragen',
             InternetMode.allowed => 'Online',

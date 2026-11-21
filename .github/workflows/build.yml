@@ -60,6 +60,12 @@ jobs:
           flutter create --platforms=android --org io.t24 --project-name offline_agent --no-pub .
           python3 ../scripts/patch_platforms.py .
           flutter pub get
+      - name: Hilfe-Bilder rendern
+        working-directory: app
+        continue-on-error: true
+        run: |
+          flutter test test/help_screenshots_test.dart --update-goldens 2>&1 | grep -E "^Bild|Fertig|init-Fehler|Some tests" || true
+          ls assets/help
       - name: Signatur-Schlüssel
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
@@ -136,6 +142,12 @@ jobs:
           AE_APPLE_TARGETS: macos
           AE_REUSE_FRAMEWORK: '1'
         run: bash scripts/setup.sh
+      - name: Hilfe-Bilder rendern
+        working-directory: app
+        continue-on-error: true
+        run: |
+          flutter test test/help_screenshots_test.dart --update-goldens 2>&1 | grep -E "^Bild|Fertig|init-Fehler|Some tests" || true
+          ls assets/help
       - name: Signatur-Zertifikat
         env:
           P12: ${{ secrets.MACOS_CERT_P12_B64 }}

@@ -3,6 +3,7 @@
 // und liegen unter assets/help/<shot>.png – fehlt eines, wird es einfach weggelassen.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'markdown_lite.dart';
 import 'nav.dart';
@@ -730,12 +731,26 @@ class HelpArticleView extends StatelessWidget {
   }
 }
 
+/// Welche Hilfe-Bilder in der App stecken (einmal gelesen).
+final Future<Set<String>> _helpAssets = AssetManifest.loadFromAssetBundle(rootBundle)
+    .then((m) => m.listAssets().where((a) => a.startsWith('assets/help/')).toSet())
+    .catchError((_) => <String>{});
+
 class _Screenshot extends StatelessWidget {
   const _Screenshot({required this.name});
   final String name;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FutureBuilder<Set<String>>(
+        future: _helpAssets,
+        builder: (context, snap) {
+          final have = snap.data ?? const {};
+          if (!have.contains('assets/help/$name.png')) return const SizedBox.shrink();
+          return _frame(context);
+        },
+      );
+
+  Widget _frame(BuildContext context) {
     final c = AppColors.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
     final file = 'assets/help/$name${dark ? '' : '_light'}.png';

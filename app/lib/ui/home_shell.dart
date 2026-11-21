@@ -200,7 +200,7 @@ class _HomeShellState extends State<HomeShell> {
 
       final actions = <Widget>[
         if (!_focus) ...[
-          const InternetMenu(),
+          InternetMenu(compact: compact),
           const SizedBox(width: 6),
           PillIconButton(
             icon: Icons.graphic_eq,
@@ -278,28 +278,24 @@ class _HomeShellState extends State<HomeShell> {
         go: _go,
         child: Scaffold(
           key: _scaffold,
-          appBar: onChat ? appBar : null,
           drawer: desktop || _focus
               ? null
               : Drawer(width: drawerWidth, child: const SafeArea(child: Sidebar(inDrawer: true))),
           endDrawer: compact && !_focus
               ? Drawer(width: (w * 0.92).clamp(280.0, 420.0), child: const SafeArea(child: InspectorPanel()))
               : null,
-          body: SafeArea(
-            top: !onChat,
-            child: Row(
-              children: [
-                if (desktop && !_focus) ...[
-                  const SizedBox(width: 284, child: Sidebar()),
-                  divider,
-                ],
-                Expanded(
-                  child: onChat
-                      ? chatArea
-                      : KeyedSubtree(key: ValueKey(section), child: pageFor(section)),
-                ),
+          body: Row(
+            children: [
+              if (desktop && !_focus) ...[
+                const SizedBox(width: 284, child: SafeArea(right: false, child: Sidebar())),
+                divider,
               ],
-            ),
+              Expanded(
+                child: onChat
+                    ? Scaffold(appBar: appBar, body: SafeArea(top: false, child: chatArea))
+                    : KeyedSubtree(key: ValueKey(section), child: pageFor(section)),
+              ),
+            ],
           ),
         ),
       );

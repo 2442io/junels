@@ -424,10 +424,10 @@ class _FlowEditorState extends State<FlowEditor> {
                 });
               }
               return Stack(children: [
+                Positioned.fill(child: ColoredBox(color: c.canvas, child: CustomPaint(painter: _GridPainter(c.dots, _tc.value)))),
                 Positioned.fill(
                   child: Container(
                     key: _viewKey,
-                    color: c.canvas,
                     child: InteractiveViewer(
                       transformationController: _tc,
                       constrained: false,
@@ -442,7 +442,6 @@ class _FlowEditorState extends State<FlowEditor> {
                           behavior: HitTestBehavior.opaque,
                           onTap: () => setState(() => _selected = null),
                           child: Stack(clipBehavior: Clip.none, children: [
-                            Positioned.fill(child: CustomPaint(painter: _GridPainter(c.dots))),
                             Positioned.fill(
                               child: CustomPaint(
                                 painter: _EdgePainter(
@@ -774,22 +773,31 @@ class _Port extends StatelessWidget {
       );
 }
 
+/// Punktraster im Bildschirmraum – folgt Verschieben und Zoom, reicht aber immer bis zum Rand.
 class _GridPainter extends CustomPainter {
-  _GridPainter(this.color);
+  _GridPainter(this.color, this.m);
   final Color color;
+  final Matrix4 m;
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()..color = color;
-    const step = 26.0;
-    for (var x = 0.0; x < size.width; x += step) {
-      for (var y = 0.0; y < size.height; y += step) {
-        canvas.drawCircle(Offset(x, y), 1.1, p);
+    final s = m.getMaxScaleOnAxis();
+    var step = 26.0 * s;
+    while (step < 12) {
+      step *= 2;
+    }
+    final ox = m.getTranslation().x % step;
+    final oy = m.getTranslation().y % step;
+    final r = (1.1 * s).clamp(0.7, 1.6);
+    for (var x = ox; x < size.width; x += step) {
+      for (var y = oy; y < size.height; y += step) {
+        canvas.drawCircle(Offset(x, y), r, p);
       }
     }
   }
 
   @override
-  bool shouldRepaint(_GridPainter old) => old.color != color;
+  bool shouldRepaint(_GridPainter old) => true;
 }
 
 class _EdgePainter extends CustomPainter {

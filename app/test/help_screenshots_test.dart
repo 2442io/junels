@@ -202,6 +202,21 @@ void main() {
       Directory('${tmp.path}/$d').createSync(recursive: true);
     }
     PathProviderPlatform.instance = _Paths(tmp.path);
+    // Plugins ohne Test-Implementierung stumm schalten
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    for (final ch in [
+      'xyz.luan/audioplayers',
+      'xyz.luan/audioplayers.global',
+      'xyz.luan/audioplayers.global/events',
+      'junels/background',
+      'junels/files',
+      'junels/device',
+      'flutter_tts',
+      'com.llfbandit.record/messages',
+      'dev.fluttercommunity.plus/wakelock',
+    ]) {
+      messenger.setMockMethodCallHandler(MethodChannel(ch), (call) async => null);
+    }
     await _font('Inter', [for (final w in ['Regular', 'Medium', 'SemiBold', 'Bold']) 'assets/fonts/Inter-$w.ttf']);
     await _font('JetBrainsMono', ['assets/fonts/JetBrainsMono-Regular.ttf', 'assets/fonts/JetBrainsMono-Medium.ttf']);
     final root = _flutterRoot();
