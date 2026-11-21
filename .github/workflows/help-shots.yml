@@ -1,0 +1,30 @@
+name: Hilfe-Bildschirmfotos
+
+# Rendert die Hilfe-Bilder (app/assets/help/*.png) mit Beispieldaten – zum Prüfen als Artefakt.
+# Der eigentliche App-Build erzeugt sie bei jedem Lauf selbst.
+on:
+  workflow_dispatch:
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Bilder rendern
+        working-directory: app
+        run: |
+          flutter config --no-analytics
+          flutter pub get
+          flutter test test/help_screenshots_test.dart --update-goldens --reporter expanded 2>&1 | tail -80
+          ls -la assets/help
+      - uses: actions/upload-artifact@v6
+        with:
+          name: hilfe-bilder
+          path: app/assets/help/*.png
+          if-no-files-found: warn
+          retention-days: 7

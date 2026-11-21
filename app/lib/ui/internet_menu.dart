@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'theme.dart';
 
 class InternetMenu extends StatelessWidget {
   const InternetMenu({super.key});
@@ -18,15 +19,33 @@ class InternetMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final mode = app.internetMode;
+    final c = AppColors.of(context);
     final scheme = Theme.of(context).colorScheme;
     final color = switch (mode) {
-      InternetMode.off => scheme.outline,
-      InternetMode.ask => null,
-      InternetMode.allowed => Colors.orange,
+      InternetMode.off => c.faint,
+      InternetMode.ask => scheme.onSurface,
+      InternetMode.allowed => c.amber,
     };
     return PopupMenuButton<InternetMode>(
       tooltip: 'Internet: ${mode.label}',
-      icon: Icon(iconFor(mode), color: color),
+      child: Container(
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: mode == InternetMode.allowed ? c.amberSoft : scheme.surface,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: mode == InternetMode.allowed ? c.amber.withValues(alpha: 0.5) : c.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(iconFor(mode), size: 18, color: color),
+          const SizedBox(width: 6),
+          Text(switch (mode) {
+            InternetMode.off => 'Offline',
+            InternetMode.ask => 'Fragen',
+            InternetMode.allowed => 'Online',
+          }, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+        ]),
+      ),
       initialValue: mode,
       onSelected: (m) async {
         if (m == InternetMode.allowed) {
@@ -54,7 +73,7 @@ class InternetMenu extends StatelessWidget {
             child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(iconFor(m), color: m == InternetMode.allowed ? Colors.orange : null),
+              leading: Icon(iconFor(m), color: m == InternetMode.allowed ? c.amber : null),
               title: Text(m.label),
               subtitle: Text(switch (m) {
                 InternetMode.off => 'Keine Websuche, keine Webseiten',

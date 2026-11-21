@@ -18,6 +18,7 @@ import '../state/voice_service.dart';
 import 'conversation_page.dart';
 import 'file_views.dart';
 import 'markdown_lite.dart';
+import 'theme.dart';
 import 'prompt_editor.dart';
 import 'system_check.dart';
 
@@ -304,54 +305,76 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.app});
   final AppController app;
 
+  static const _ideas = <(IconData, String, String)>[
+    (Icons.wb_sunny_outlined, 'Wetter', 'Wie wird das Wetter morgen in Wien?'),
+    (Icons.newspaper, 'Nachrichten', 'Was sind die wichtigsten Tech-News heute?'),
+    (Icons.slideshow_outlined, 'Präsentation', 'Erstelle eine Präsentation mit 5 Folien über die Vorteile lokaler KI.'),
+    (Icons.travel_explore, 'Im Web suchen', 'Such auf geizhals.at nach einem leisen Staubsauger-Roboter.'),
+    (Icons.calculate_outlined, 'Rechnen', 'Was sind 15 % von 2.340 €?'),
+    (Icons.schedule, 'Automatisieren', 'Schick mir jeden Montag um 8 Uhr eine Wochenvorschau meiner Termine.'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final noModel = app.models.isEmpty;
+    final c = AppColors.of(context);
+    final noModel = app.models.isEmpty && !app.canChat;
+    final hour = DateTime.now().hour;
+    final greet = hour < 11 ? 'Guten Morgen' : (hour < 18 ? 'Hallo' : 'Guten Abend');
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
+          constraints: const BoxConstraints(maxWidth: 720),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.smart_toy_outlined, size: 56, color: scheme.primary),
-              const SizedBox(height: 12),
-              Text('Offline Agent', style: t.headlineSmall),
+              const BrandMark(size: 52),
+              const SizedBox(height: 18),
+              Text(noModel ? 'Willkommen bei Junels' : '$greet! Woran arbeiten wir?',
+                  style: t.headlineSmall?.copyWith(fontSize: 26), textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text(
                 noModel
-                    ? 'Läuft vollständig auf diesem Gerät – ohne KI-API. '
-                        'Der Systemcheck prüft dein Gerät und lädt das passende Modell.'
-                    : app.status == EngineStatus.ready
-                        ? 'Stell eine Frage oder hänge eine Datei an. Der Agent nutzt die aktiven lokalen Tools.'
-                        : 'Wähle links ein Modell aus, um zu starten.',
+                    ? 'Dein KI-Agent läuft auf diesem Gerät. Der Systemcheck prüft dein Gerät und lädt das passende Modell – '
+                        'oder du bindest einen eigenen Server bzw. Cloud-Anbieter an.'
+                    : app.canChat
+                        ? 'Frag etwas, häng eine Datei an oder gib einen Auftrag. ${app.routingLabel == null ? 'Alles läuft lokal.' : app.routingLabel!}'
+                        : 'Wähle ein Modell, um zu starten.',
                 textAlign: TextAlign.center,
-                style: t.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                style: t.bodyLarge?.copyWith(color: c.muted),
               ),
-              const SizedBox(height: 20),
-              if (noModel)
-                FilledButton.icon(
-                  onPressed: () => openSystemCheck(context),
-                  icon: const Icon(Icons.speed_outlined),
-                  label: const Text('Systemcheck & Modell laden'),
-                )
-              else if (app.status == EngineStatus.ready)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    for (final s in const [
-                      'Welcher Wochentag ist heute?',
-                      'Was ist 15 % von 2.340 €?',
-                      'Erkläre mir in 3 Sätzen, was ein Agent ist.',
-                    ])
-                      ActionChip(label: Text(s), onPressed: () => app.send(s)),
-                  ],
-                ),
+              const SizedBox(height: 26),
+              if (noModel || !app.canChat)
+                Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: [
+                  FilledButton.icon(
+                    onPressed: () => openSystemCheck(context),
+                    icon: const Icon(Icons.speed_outlined, size: 18),
+                    label: const Text('Systemcheck & Modell laden'),
+                  ),
+                ])
+              else
+                LayoutBuilder(builder: (context, box) {
+                  final cols = box.maxWidth >= 560 ? 3 : 2;
+                  final w = (box.maxWidth - (cols - 1) * 10) / cols;
+                  return Wrap(spacing: 10, runSpacing: 10, children: [
+                    for (final (icon, title, text) in _ideas)
+                      SizedBox(
+                        width: w,
+                        child: Panel(
+                          padding: const EdgeInsets.all(14),
+                          onTap: () => app.send(text),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Icon(icon, size: 20, color: c.mint),
+                            const SizedBox(height: 10),
+                            Text(title, style: t.titleSmall),
+                            const SizedBox(height: 4),
+                            Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodySmall),
+                          ]),
+                        ),
+                      ),
+                  ]);
+                }),
             ],
           ),
         ),
@@ -445,10 +468,11 @@ class _UserBubble extends StatelessWidget {
                 ),
               ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
               decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(16).copyWith(bottomRight: const Radius.circular(4)),
+                color: AppColors.of(context).raised,
+                border: Border.all(color: AppColors.of(context).border),
+                borderRadius: BorderRadius.circular(18).copyWith(bottomRight: const Radius.circular(6)),
               ),
               child: Text.rich(TextSpan(children: [
                 if (entry.viaVoice)
@@ -456,16 +480,16 @@ class _UserBubble extends StatelessWidget {
                     alignment: PlaceholderAlignment.middle,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 6),
-                      child: Icon(Icons.mic, size: 14, color: scheme.onPrimaryContainer.withValues(alpha: 0.7)),
+                      child: Icon(Icons.mic, size: 14, color: scheme.onSurfaceVariant),
                     ),
                   ),
                 TextSpan(text: entry.text),
                 if (app.isQueued(entry))
                   TextSpan(
                     text: '\n⏳ wartet auf die laufende Antwort',
-                    style: TextStyle(fontSize: 12, color: scheme.onPrimaryContainer.withValues(alpha: 0.7)),
+                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
                   ),
-              ]), style: TextStyle(color: scheme.onPrimaryContainer)),
+              ]), style: Theme.of(context).textTheme.bodyLarge),
             ),
             actions,
           ],
@@ -520,21 +544,41 @@ class _AssistantMessage extends StatelessWidget {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: scheme.errorContainer,
-                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: scheme.error.withValues(alpha: 0.35)),
+                borderRadius: BorderRadius.circular(Ui.r),
               ),
               child: Row(children: [
-                Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 20),
+                Icon(Icons.error_outline, color: scheme.error, size: 20),
                 const SizedBox(width: 8),
                 Expanded(child: Text(entry.error!, style: TextStyle(color: scheme.onErrorContainer))),
               ]),
             ),
           if (entry.files.isNotEmpty) FileGallery(entry.files),
           if (!live && entry.sources.isNotEmpty) _Sources(entry.sources),
+          if (!live && entry.cloudOffer && entry.via == null && AppScope.of(context).cloudProvider != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: AppScope.of(context).running ? null : () => AppScope.read(context).answerWithCloud(index),
+                  icon: Icon(Icons.cloud_upload_outlined, size: 18, color: AppColors.of(context).blue),
+                  label: Text('Mit ${AppScope.of(context).cloudProvider!.name} beantworten'),
+                ),
+              ),
+            ),
           if (!live && (entry.text.isNotEmpty || entry.tokensPerSecond != null || entry.error != null))
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(
                 children: [
+                  if (entry.via != null) ...[
+                    StatusChip(entry.via!.split(' · ').take(2).join(' · '),
+                        color: entry.via!.startsWith('Cloud') ? AppColors.of(context).blue : AppColors.of(context).violet,
+                        icon: entry.via!.startsWith('Cloud') ? Icons.cloud_outlined : Icons.dns_outlined,
+                        dense: true),
+                    const SizedBox(width: 8),
+                  ],
                   if (entry.truncated)
                     Text('gekürzt · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
                   if (entry.durationMs != null) ...[
@@ -676,6 +720,8 @@ class _ThoughtLog extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final tools = steps.where((s) => s.tool != null).length;
     return Card(
+      color: AppColors.of(context).panel,
+      clipBehavior: Clip.antiAlias,
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -687,7 +733,7 @@ class _ThoughtLog extends StatelessWidget {
           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           leading: live
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : Icon(Icons.psychology_alt_outlined, color: scheme.primary),
+              : Icon(Icons.account_tree_outlined, color: scheme.primary, size: 20),
           title: Text(
             live
                 ? 'Denkt nach … Schritt ${steps.length}'
@@ -712,9 +758,9 @@ class _StepTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final mono = TextStyle(
-      fontFamily: 'monospace',
+      fontFamily: Ui.mono,
       fontFamilyFallback: const ['Menlo', 'Courier'],
-      fontSize: 12,
+      fontSize: 11.5,
       color: scheme.onSurfaceVariant,
     );
     return Padding(
@@ -992,14 +1038,13 @@ class _InputBarState extends State<_InputBar> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    final ready = app.status == EngineStatus.ready;
+    final ready = app.canChat;
     return Material(
-      color: scheme.surface,
+      color: Colors.transparent,
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 820),
@@ -1134,57 +1179,83 @@ class _InputBarState extends State<_InputBar> {
                         onPressed: ready && !app.running ? () => openConversation(context) : null,
                       ),
                     ];
+                    final c = AppColors.of(context);
                     final field = TextField(
                       controller: _ctrl,
                       focusNode: _focus,
                       minLines: 1,
-                      maxLines: 6,
+                      maxLines: 8,
                       enabled: ready,
                       textInputAction: TextInputAction.newline,
+                      style: Theme.of(context).textTheme.bodyLarge,
                       decoration: InputDecoration(
                         hintText: !ready
-                            ? 'Zuerst ein Modell laden'
-                            : (app.warming ? 'Modell wird vorbereitet … (du kannst schon schreiben)' : 'Nachricht an den Agenten …'),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            ? 'Zuerst ein Modell laden oder einen Anbieter einrichten'
+                            : (app.warming ? 'Modell wird vorbereitet … (du kannst schon schreiben)' : 'Frag Junels oder gib einen Auftrag …'),
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
                       ),
                     );
                     final sendButton = SizedBox(
-                      width: 48,
-                      height: 48,
+                      width: 40,
+                      height: 40,
                       child: app.runningHere
                           ? IconButton.filledTonal(
                               tooltip: 'Stopp',
-                              icon: const Icon(Icons.stop_rounded),
+                              icon: const Icon(Icons.stop_rounded, size: 20),
                               onPressed: app.stop,
                             )
-                          : IconButton.filled(
-                              tooltip: 'Senden',
-                              icon: const Icon(Icons.arrow_upward_rounded),
-                              onPressed: ready ? _send : null,
+                          : ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _ctrl,
+                              builder: (context, v, _) => IconButton.filled(
+                                tooltip: 'Senden',
+                                icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+                                onPressed: ready && (v.text.trim().isNotEmpty || app.attachments.isNotEmpty) ? _send : null,
+                              ),
                             ),
                     );
-                    final inputRow = Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [Expanded(child: field), const SizedBox(width: 8), sendButton],
-                    );
-                    // Schmale Bildschirme (Handy): Icons in eigener Zeile über einer durchgehenden Eingabe
-                    if (box.maxWidth < 640) {
-                      return Column(
+                    final route = app.routingLabel;
+                    return AnimatedBuilder(
+                      animation: _focus,
+                      builder: (context, child) => Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                              color: _focus.hasFocus ? c.mint.withValues(alpha: 0.55) : c.borderStrong, width: _focus.hasFocus ? 1.4 : 1),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.25 : 0.06),
+                                blurRadius: 18,
+                                offset: const Offset(0, 6)),
+                          ],
+                        ),
+                        child: child,
+                      ),
+                      child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Row(children: [
-                            for (final w in tools)
-                              IconTheme.merge(data: const IconThemeData(size: 22), child: w),
-                          ]),
-                          const SizedBox(height: 2),
-                          inputRow,
+                          field,
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 0, 6, 6),
+                            child: Row(children: [
+                              for (final w in tools) IconTheme.merge(data: const IconThemeData(size: 21), child: w),
+                              const Spacer(),
+                              if (route != null && box.maxWidth >= 480)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: MonoText(route, size: 10.5, color: c.faint),
+                                ),
+                              sendButton,
+                            ]),
+                          ),
                         ],
-                      );
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [...tools, const SizedBox(width: 4), Expanded(child: inputRow)],
+                      ),
                     );
                   }),
                 ],

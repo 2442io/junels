@@ -194,6 +194,215 @@ Future<void> main() async {
     check(streamed.isNotEmpty && streamed.first.thought!.length < 'Ich rechne.'.length, 'Gedanke wird live gestreamt');
   });
 
+  await group('Anbieter-API: OpenAI-kompatibel, Anthropic, Gemini', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final bodies = <Map<String, dynamic>>[];
+    final headers = <String, String>{};
+    var script = <String>[];
+    server.listen((req) async {
+      final body = await utf8.decoder.bind(req).join();
+      if (req.method == 'GET') {
+        req.response.headers.contentType = ContentType.json;
+        req.response.write(req.uri.path.contains('/gem/')
+            ? jsonEncode({'models': [{'name': 'models/gemini-x', 'supportedGenerationMethods': ['generateContent']}, {'name': 'models/embed', 'supportedGenerationMethods': ['embedContent']}]})
+            : jsonEncode({'data': [{'id': 'b-model'}, {'id': 'a-model'}]}));
+        await req.response.close();
+        return;
+      }
+      bodies.add(jsonDecode(body) as Map<String, dynamic>);
+      headers['auth'] = req.headers.value('authorization') ?? req.headers.value('x-api-key') ?? req.headers.value('x-goog-api-key') ?? '';
+      if (req.uri.path.contains('/bad/')) {
+        req.response.statusCode = 401;
+        req.response.write(jsonEncode({'error': {'message': 'Invalid API key'}}));
+        await req.response.close();
+        return;
+      }
+      final next = script.isEmpty ? 'OK' : script.removeAt(0);
+      req.response.headers.contentType = ContentType('text', 'event-stream');
+      final pieces = <String>[];
+      for (var i = 0; i < next.length; i += 7) {
+        pieces.add(next.substring(i, math.min(i + 7, next.length)));
+      }
+      if (req.uri.path.contains('/ant/')) {
+        req.response.write('event: message_start\ndata: ${jsonEncode({'type': 'message_start', 'message': {'usage': {'input_tokens': 42}}})}\n\n');
+        for (final p in pieces) {
+          req.response.write('data: ${jsonEncode({'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': p}})}\n\n');
+        }
+        req.response.write('data: ${jsonEncode({'type': 'message_delta', 'usage': {'output_tokens': 9}})}\n\n');
+      } else if (req.uri.path.contains('/gem/')) {
+        for (final p in pieces) {
+          req.response.write('data: ${jsonEncode({'candidates': [{'content': {'parts': [{'text': p}]}}]})}\n\n');
+        }
+      } else {
+        for (final p in pieces) {
+          req.response.write('data: ${jsonEncode({'choices': [{'delta': {'content': p}}]})}\n\n');
+        }
+        req.response.write('data: [DONE]\n\n');
+      }
+      await req.response.close();
+    });
+    final base = 'http://127.0.0.1:${server.port}';
+    Future<(String, DoneEvent)> gen(RemoteBackend b, List<ChatMessage> m, {String? grammar}) async {
+      final buf = StringBuffer();
+      DoneEvent? d;
+      await for (final ev in b.generate(await b.formatChat(m), grammar: grammar)) {
+        if (ev is TokenEvent) buf.write(ev.text);
+        if (ev is DoneEvent) d = ev;
+      }
+      return (buf.toString(), d!);
+    }
+
+    final oa = RemoteBackend(ProviderConfig(id: 'o', kind: ProviderKind.compatible, name: 'Server', baseUrl: '$base/v1', model: 'qwen'), apiKey: 'k1');
+    script = ['Hallo aus dem Server'];
+    var (txt, done) = await gen(oa, const [ChatMessage('system', 'Sys'), ChatMessage('user', 'Hi')]);
+    check(txt == 'Hallo aus dem Server' && done.reason == FinishReason.done, 'OpenAI-Stil: Text gestreamt');
+    check(bodies.last['messages'][0]['role'] == 'system' && bodies.last['model'] == 'qwen' && headers['auth'] == 'Bearer k1',
+        'OpenAI-Stil: System, Modell, Schlüssel');
+    check(oa.contextSize == 32768 && oa.config.onPrem, 'On-Prem: Standard-Context 32K');
+
+    // JSON-Modus: Codeblock und Text drumherum werden entfernt
+    script = ['Gern!\n```json\n{"thought": "a {b}", "final_answer": "Text mit \\" und }"}\n```\nFertig.'];
+    (txt, done) = await gen(oa, const [ChatMessage('user', 'x')], grammar: AgentGrammar.build(const []));
+    final j = jsonDecode(txt) as Map;
+    check(j['final_answer'] == 'Text mit " und }', 'JSON-Filter: nur das Objekt, Klammern in Strings ok');
+    check((bodies.last['messages'][0]['content'] as String).contains('JSON-Objekt'), 'JSON-Hinweis im System-Prompt');
+
+    // Kein JSON geliefert → als final_answer verpackt
+    script = ['Einfach nur Text'];
+    (txt, done) = await gen(oa, const [ChatMessage('user', 'x')], grammar: AgentGrammar.build(const []));
+    check((jsonDecode(txt) as Map)['final_answer'] == 'Einfach nur Text', 'Ohne JSON: Text wird Endantwort');
+
+    // Anthropic: Rollen zusammenführen, Nutzung
+    final an = RemoteBackend(ProviderConfig(id: 'a', kind: ProviderKind.anthropic, name: 'Claude', baseUrl: '$base/ant/v1', model: 'claude-x'), apiKey: 'sk-ant');
+    script = ['Antwort von Claude'];
+    (txt, done) = await gen(an, const [
+      ChatMessage('system', 'S'),
+      ChatMessage('assistant', 'früher'),
+      ChatMessage('user', 'a'),
+      ChatMessage('user', 'b'),
+    ]);
+    final ab = bodies.last;
+    final msgs = ab['messages'] as List;
+    check(txt == 'Antwort von Claude' && ab['system'] == 'S', 'Anthropic: Text und System');
+    check(msgs.first['role'] == 'user' && msgs.last['content'] == 'a\n\nb' && headers['auth'] == 'sk-ant',
+        'Anthropic: beginnt mit user, gleiche Rollen zusammengeführt, x-api-key');
+    check(done.stats.promptTokens == 42 && done.stats.generatedTokens == 9, 'Anthropic: Token-Zahlen aus der API');
+
+    // Gemini
+    final ge = RemoteBackend(ProviderConfig(id: 'g', kind: ProviderKind.gemini, name: 'Gemini', baseUrl: '$base/gem/v1beta', model: 'gemini-x'), apiKey: 'gk');
+    script = ['Gemini sagt hallo'];
+    (txt, done) = await gen(ge, const [ChatMessage('user', 'Hi'), ChatMessage('assistant', 'Hallo'), ChatMessage('user', 'Und?')]);
+    final gb = bodies.last;
+    check(txt == 'Gemini sagt hallo' && (gb['contents'] as List)[1]['role'] == 'model' && headers['auth'] == 'gk',
+        'Gemini: Text, Rolle model, Schlüssel');
+    check((await ge.listModels()).join(',') == 'gemini-x', 'Gemini: nur Modelle mit generateContent');
+    check((await oa.listModels()).join(',') == 'a-model,b-model', 'Modellliste sortiert');
+
+    // Fehler
+    final bad = RemoteBackend(ProviderConfig(id: 'b', kind: ProviderKind.openai, name: 'OpenAI', baseUrl: '$base/bad/v1', model: 'm'), apiKey: 'x');
+    (txt, done) = await gen(bad, const [ChatMessage('user', 'x')]);
+    check(done.reason == FinishReason.error && done.error!.contains('401') && done.error!.contains('Invalid API key'),
+        'HTTP-Fehler mit Meldung (${done.error})');
+    final gone = RemoteBackend(ProviderConfig(id: 'z', kind: ProviderKind.ollama, name: 'Ollama', baseUrl: 'http://127.0.0.1:1/v1', model: 'm'));
+    (txt, done) = await gen(gone, const [ChatMessage('user', 'x')]);
+    check(done.reason == FinishReason.error && done.error!.contains('nicht erreichbar'), 'Server aus: verständliche Meldung');
+
+    // Agenten-Schleife über die API: Werkzeug, dann Antwort
+    script = [
+      '```json\n{"thought": "rechnen", "action": "calculator", "args": {"expression": "6*7"}}\n```',
+      '{"thought": "fertig", "final_answer": "Das sind 42."}',
+    ];
+    final runner = AgentRunner(engine: oa, systemPrompt: 'Test', tools: builtinTools(), maxSteps: 4);
+    final events = await runner.run(history: const [], userInput: '6*7?', context: ToolContext()).toList();
+    check(events.whereType<ToolResult>().first.output == '6*7 = 42', 'Agent über API ruft Werkzeug auf');
+    check(events.whereType<FinalAnswer>().single.text == 'Das sind 42.', 'Agent über API antwortet');
+    final ser = ProviderConfig.fromJson(oa.config.toJson());
+    check(ser.kind == ProviderKind.compatible && ser.baseUrl == '$base/v1' && ser.onPrem, 'Konfiguration speichern/laden');
+    await server.close(force: true);
+  });
+
+  await group('Watchlist: Seiten und Themen', () async {
+    var page = '<html><body><h1>Jobs</h1><p>Stand 10:15 Uhr</p><ul>'
+        '<li><a href="/job/1"><h3>Entwickler Flutter</h3></a></li>'
+        '<li><a href="/job/2"><h3>Designerin UI</h3></a></li></ul></body></html>';
+    var rss = '<rss><channel><item><title>Anthropic stellt neues Modell vor</title><link>https://news.example/a</link></item></channel></rss>';
+    final checker = WatchChecker(fetcher: (u) async {
+      if (u.host == 'news.google.com') return rss;
+      if (u.host.contains('duckduckgo') || u.host.contains('bing') || u.host.contains('mojeek')) return '<html></html>';
+      return page;
+    });
+    final item = WatchItem(id: 'w1', kind: WatchKind.page, title: 'Jobs', target: 'example.com/jobs');
+    var r = await checker.check(item, now: DateTime(2026, 11, 21, 10));
+    check(r.first && r.event == null && item.fingerprint != null, 'Seite: erster Stand ohne Meldung');
+    page = page.replaceFirst('10:15', '11:40');
+    r = await checker.check(item, now: DateTime(2026, 11, 21, 11));
+    check(r.event == null && r.error == null, 'Seite: nur Uhrzeit geändert → nichts Neues');
+    page = page.replaceFirst('</ul>', '<li><a href="/job/3"><h3>Data Scientist Wien</h3></a></li></ul>');
+    r = await checker.check(item, now: DateTime(2026, 11, 21, 12));
+    check(r.event != null && r.event!.detail.contains('Data Scientist Wien'), 'Seite: neuer Eintrag erkannt (${r.event?.title})');
+    check(item.events.length == 1 && item.unseen == 1, 'Ereignis gespeichert, ungelesen');
+    check(!item.due(DateTime(2026, 11, 21, 13)) && item.due(DateTime(2026, 11, 21, 18, 1)), 'Fälligkeit nach Intervall (6 h)');
+    final back = WatchItem.fromJson(jsonDecode(jsonEncode(item.toJson())) as Map<String, dynamic>);
+    check(back.events.single.title == item.events.single.title && back.fingerprint == item.fingerprint, 'Speichern/Laden');
+
+    final topic = WatchItem(id: 't1', kind: WatchKind.topic, title: 'Anthropic', target: 'Anthropic');
+    r = await checker.check(topic);
+    check(r.first && topic.seenLinks.isNotEmpty, 'Thema: erste Treffer gemerkt');
+    r = await checker.check(topic);
+    check(r.event == null, 'Thema: keine neuen Treffer');
+    rss = rss.replaceFirst('</channel>', '<item><title>Claude kann jetzt mehr</title><link>https://news.example/b</link></item></channel>');
+    r = await checker.check(topic);
+    check(r.event != null && r.event!.links.single['link'] == 'https://news.example/b', 'Thema: neuer Treffer gemeldet');
+    final broken = WatchChecker(fetcher: (u) async => throw Exception('offline'));
+    r = await broken.check(WatchItem(id: 'x', kind: WatchKind.page, title: 'x', target: 'https://x.y'));
+    check(r.error != null, 'Fehler wird gemeldet statt zu werfen');
+  });
+
+  await group('Prozesse: Modell, Reihenfolge, Erzeugen', () async {
+    final wf = Workflow(id: 'f1', name: 'Test');
+    wf.nodes.addAll([
+      FlowNode(id: 'a', type: FlowNodeType.trigger, title: 'Start', config: {'mode': 'schedule', 'hour': 7, 'minute': 30, 'days': 'weekdays'}),
+      FlowNode(id: 'b', type: FlowNodeType.agent, title: 'News', config: {'prompt': 'Suche News'}),
+      FlowNode(id: 'c', type: FlowNodeType.condition, title: 'Wichtig?', config: {'contains': 'KI'}),
+      FlowNode(id: 'd', type: FlowNodeType.notify, title: 'Push'),
+    ]);
+    wf.connect('a', 'b');
+    wf.connect('b', 'c');
+    wf.connect('c', 'd');
+    wf.connect('d', 'a'); // Kreis wird verhindert
+    check(wf.edges.length == 3, 'Kreise werden nicht verbunden');
+    check(wf.order().map((n) => n.id).join() == 'abcd', 'Reihenfolge ab Auslöser');
+    check(wf.problems(const {}).isEmpty, 'keine Lücken');
+    check(wf.dueAt(DateTime(2026, 11, 23, 7, 31)) && !wf.dueAt(DateTime(2026, 11, 22, 7, 31)) && !wf.dueAt(DateTime(2026, 11, 23, 7, 0)),
+        'Zeitplan Mo–Fr 7:30 fällig');
+    wf.lastRun = DateTime(2026, 11, 23, 7, 31);
+    check(!wf.dueAt(DateTime(2026, 11, 23, 8)) && wf.dueAt(DateTime(2026, 11, 24, 7, 35)), 'nur einmal pro Tag');
+    check(Workflow.fill('A {{vorher}} B {{ datum }} {{x}}', {'vorher': '1', 'datum': '2'}) == 'A 1 B 2 ', 'Platzhalter');
+    final back = Workflow.fromJson(jsonDecode(jsonEncode(wf.toJson())) as Map<String, dynamic>);
+    check(back.nodes.length == 4 && back.edges.length == 3 && back.trigger!.summary == 'Mo–Fr 07:30', 'Speichern/Laden, Kurztext');
+
+    const modelOut = 'Hier ist der Prozess:\n```json\n'
+        '{"name": "Tech-News", "nodes": ['
+        '{"id": "s", "type": "schedule", "title": "Jeden Morgen", "hour": "7"},'
+        '{"id": "x", "type": "tool", "title": "News", "config": {"tool": "news", "args": {"section": "tech"}}},'
+        '{"id": "y", "type": "llm", "title": "Zusammenfassen", "prompt": "Fasse {{vorher}} zusammen"},'
+        '{"id": "z", "type": "push", "title": "Senden", "config": {"text": "{{vorher}}"}}]}\n```';
+    final gen = Workflow.fromModelJson(modelOut, id: 'g', toolNames: {'news', 'weather'});
+    check(gen != null && gen.nodes.length == 4, 'Modell-JSON gelesen (Codeblock, Varianten)');
+    check(gen!.trigger!.config['mode'] == 'schedule' && gen.trigger!.config['hour'] == 7, 'Auslöser mit Uhrzeit');
+    check(gen.nodes[2].type == FlowNodeType.agent && gen.nodes[2].str('prompt').contains('{{vorher}}'), 'llm → agent mit prompt');
+    check(gen.edges.length == 3 && gen.order().last.type == FlowNodeType.notify, 'ohne Kanten der Reihe nach verbunden');
+    check(gen.nodes.map((n) => n.x).toSet().length == 4, 'automatisch angeordnet');
+    final unknown = Workflow.fromModelJson('{"nodes": [{"type": "tool", "config": {"tool": "fax"}}]}', id: 'u', toolNames: {'news'});
+    check(unknown!.trigger != null && unknown.nodes.last.type == FlowNodeType.agent, 'unbekanntes Werkzeug → Agent, Auslöser ergänzt');
+    check(Workflow.fromModelJson('kein json', id: 'q') == null, 'ungültig → null');
+
+    final h = Workflow.fromDescription('Jeden Morgen um 6:45 die Wetterlage für Wien prüfen und mir schicken', id: 'h');
+    check(h.trigger!.config['hour'] == 6 && h.trigger!.config['minute'] == 45 && h.nodes.length == 3, 'Ohne Modell: Zeitplan erkannt (${h.trigger!.config})');
+    check(Workflow.scheduleOf('werktags um 8 Uhr')!.$3 == 'weekdays' && Workflow.scheduleOf('jeden Abend')!.$1 == 19 &&
+        Workflow.scheduleOf('Fasse den Artikel zusammen') == null, 'Zeitangaben');
+  });
+
   await group('Agent: Schrittlimit erzwingt Endantwort', () async {
     final backend = ScriptedBackend([
       for (var i = 0; i < 3; i++) '{"thought": "t", "action": "datetime", "args": {}}',
@@ -1174,6 +1383,7 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
       check(err == null, 'Grammatik gültig für ${subset.map((t) => t.name).join(',')} ${err ?? ''}');
     }
     check(await engine.validateGrammar(AgentGrammar.plainTextNoCjk()) == null, 'Chat-Grammatik ohne CJK gültig');
+    check(await engine.validateGrammar(Workflow.jsonGrammar) == null, 'JSON-Grammatik für Prozesse gültig');
     // Zufallsmodell mit Llama-3-Vokabular erzeugt sonst häufig CJK-Zeichen
     final p = await engine.formatChat(const [ChatMessage('user', 'Schreib etwas.')]);
     final out = StringBuffer();

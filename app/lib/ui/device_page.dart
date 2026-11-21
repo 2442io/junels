@@ -1,4 +1,4 @@
-// Gerät & Automatik: Heimatort, Morgen-Übersicht, Schnellstart-Knöpfe,
+// Gerät & Automatik: Heimatort, Schnellstart-Knöpfe,
 // überwachte Ordner und (Mac) freigegebene Ordner für die Dateihilfe.
 
 import 'dart:io';
@@ -88,7 +88,6 @@ class _DevicePageState extends State<DevicePage> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final t = Theme.of(context).textTheme;
-    final hasBriefing = app.prompts.any((p) => p.title == 'Morgen-Übersicht');
 
     Widget card(String title, IconData icon, List<Widget> children) => Card(
           margin: const EdgeInsets.only(bottom: 14),
@@ -130,17 +129,6 @@ class _DevicePageState extends State<DevicePage> {
                 },
                 child: const Text('Speichern'),
               ),
-            ),
-          ]),
-          card('Morgen-Übersicht', Icons.wb_twilight, [
-            Text(hasBriefing
-                ? 'Eingerichtet – unter „Meine Prompts“ änderst du Uhrzeit und Inhalt.'
-                : 'Jeden Morgen Termine, Wetter und Nachrichten als Push-Nachricht.'),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              icon: const Icon(Icons.wb_twilight),
-              label: Text(hasBriefing ? 'Neu einrichten' : 'Einrichten'),
-              onPressed: () => setupMorningBriefing(context),
             ),
           ]),
           if (DeviceBridge.supported)
@@ -257,15 +245,3 @@ class _DevicePageState extends State<DevicePage> {
   }
 }
 
-/// Für Listen: Hinweis-Kachel unter „Meine Prompts“.
-Widget morningBriefingTile(BuildContext context, AppController app) {
-  if (app.prompts.any((p) => p.title == 'Morgen-Übersicht')) return const SizedBox.shrink();
-  return ListTile(
-    dense: true,
-    contentPadding: const EdgeInsets.only(left: 4),
-    leading: const Icon(Icons.wb_twilight, size: 20),
-    title: const Text('Morgen-Übersicht einrichten'),
-    subtitle: const Text('Termine, Wetter, News als Push'),
-    onTap: () => setupMorningBriefing(context),
-  );
-}

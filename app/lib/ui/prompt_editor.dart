@@ -8,9 +8,9 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 
-Future<void> editPrompt(BuildContext context, {SavedPrompt? prompt, String? initialText}) =>
+Future<void> editPrompt(BuildContext context, {SavedPrompt? prompt, String? initialText, bool scheduled = false}) =>
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => PromptEditor(prompt: prompt, initialText: initialText),
+      builder: (_) => PromptEditor(prompt: prompt, initialText: initialText, scheduled: scheduled),
     ));
 
 /// Startet einen Prompt und schließt ggf. die Seitenleiste.
@@ -25,9 +25,10 @@ Future<void> runSavedPrompt(BuildContext context, AppController app, SavedPrompt
 }
 
 class PromptEditor extends StatefulWidget {
-  const PromptEditor({super.key, this.prompt, this.initialText});
+  const PromptEditor({super.key, this.prompt, this.initialText, this.scheduled = false});
   final SavedPrompt? prompt;
   final String? initialText;
+  final bool scheduled;
 
   @override
   State<PromptEditor> createState() => _PromptEditorState();
@@ -36,7 +37,10 @@ class PromptEditor extends StatefulWidget {
 class _PromptEditorState extends State<PromptEditor> {
   late final SavedPrompt p = widget.prompt != null
       ? SavedPrompt.fromJson(widget.prompt!.toJson())
-      : SavedPrompt(title: '', text: widget.initialText ?? '');
+      : SavedPrompt(
+          title: '',
+          text: widget.initialText ?? '',
+          schedule: widget.scheduled ? ScheduleKind.daily : ScheduleKind.off);
   late final _title = TextEditingController(text: p.title);
   late final _text = TextEditingController(text: p.text);
 
