@@ -359,6 +359,7 @@ class ActivityPage extends StatelessWidget {
         'memory' => Icons.bookmark_border,
         'internet' => Icons.public,
         'call' => Icons.call_outlined,
+        'flow' => Icons.account_tree_outlined,
         _ => Icons.task_alt,
       };
 
@@ -393,7 +394,7 @@ class ActivityPage extends StatelessWidget {
           if (a.approval.isNotEmpty) a.approval,
           if (a.detail.isNotEmpty) a.detail.replaceAll('\n', ' '),
         ].join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
-        trailing: Text('lokal · 0 €', style: t.labelSmall?.copyWith(color: scheme.primary)),
+        trailing: Text('lokal', style: t.labelSmall?.copyWith(color: scheme.primary)),
         onTap: a.conversationId == null
             ? null
             : () {
@@ -422,8 +423,8 @@ class ActivityPage extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Text(
-                'Alles läuft auf diesem Gerät – keine Cloud-KI, keine Kosten. '
-                '${items.length} Aktion${items.length == 1 ? '' : 'en'} im Verlauf, Kosten: 0 €.',
+                '${app.settings.routing == 'local' ? 'Alles läuft auf diesem Gerät – keine Cloud-KI, keine Kosten. ' : 'Antworten kommen ${app.routingLabel ?? 'lokal'}; alle Aktionen bleiben hier protokolliert. '}'
+                '${items.length} Aktion${items.length == 1 ? '' : 'en'} im Verlauf.',
                 style: t.bodyMedium,
               ),
             ),

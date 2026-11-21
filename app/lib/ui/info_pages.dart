@@ -10,6 +10,17 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.24.0', [
+    'Neues Design: Graphit und Mint, Schrift Inter, ruhige Karten mit feinen Rändern, Statuschips – hell und dunkel',
+    'Menü neu geordnet: Automatik (Geplante Aufgaben, Prozesse, Watchlist), Arbeitsbereich (Prompt-Vorlagen, Wissen, Aktivitäten), Chats mit Suche; Einstellungen und Hilfe unten',
+    'Auf dem Mac öffnen sich Bereiche rechts neben der Seitenleiste statt als eigene Seite',
+    'Geplante Aufgaben: alle Aufträge mit Zeitplan an einem Ort (auch Morgen-Übersicht und Morning Briefing), Vorlagen zum Anlegen',
+    'Einstellungen an einem Ort: Lokale Modelle, KI-Anbieter, Agent & Werkzeuge, Sprache, Gerät & Verbindungen, Darstellung',
+    'Hilfe: alle Funktionen mit Erklärung, Bildschirmfoto und Suche',
+    'KI-Anbieter: eigener Server (Ollama, LM Studio, vLLM …) oder Cloud (OpenAI, Anthropic, Gemini, Mistral, OpenRouter); nur lokal, nur On-Prem, nur Cloud oder „lokal zuerst, Cloud nach Freigabe“ (Einmal / Ganzer Chat); Schlüssel im Tresor',
+    'Watchlist: Webseiten und Themen beobachten, Änderungen zusammenfassen und per Push melden',
+    'Prozesse: Abläufe aus Bausteinen auf einem Canvas bauen (Auslöser, Agent, Werkzeug, Bedingung, Push, Speichern) – oder per Prompt erzeugen lassen; nach Zeitplan, bei Watchlist-Änderungen oder per Klick',
+  ]),
   ('1.23.0', [
     'Freigabe-Karten: E-Mail- und WhatsApp-Entwürfe erscheinen als Karte mit „Senden“, „Bearbeiten“, „Verwerfen“ – im Gespräch genügt „Ja“',
     'E-Mails direkt aus Junels senden (eigenes Mail-Konto, Passwort im Tresor) – sonst öffnet „Senden“ die Mail-App',

@@ -24,6 +24,7 @@ jobs:
           flutter pub get
           flutter test test/help_screenshots_test.dart --update-goldens --reporter expanded 2>&1 | tail -80
           ls -la assets/help
+          for f in assets/help/*.png; do echo "IMG-BEGIN $(basename $f)"; base64 -w0 "$f"; echo; echo "IMG-END"; done
       - uses: actions/upload-artifact@v6
         with:
           name: hilfe-bilder

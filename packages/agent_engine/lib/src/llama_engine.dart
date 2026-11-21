@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'bindings.dart';
@@ -332,9 +333,27 @@ class LlamaEngine implements AgentBackend {
   }
 
   // Speicherabfragen sind thread-sicher und dürfen aus dem UI-Isolate kommen.
-  static int totalMemory() => NativeEngine.instance.totalMemory();
-  static int availableMemory() => NativeEngine.instance.availableMemory();
-  static int processMemory() => NativeEngine.instance.processMemory();
+  /// Ohne native Bibliothek (Tests, Bildschirmfotos) gelten Schätzwerte.
+  static int totalMemory() => _safe(() => NativeEngine.instance.totalMemory(), _procMem('MemTotal') ?? 8 << 30);
+  static int availableMemory() => _safe(() => NativeEngine.instance.availableMemory(), _procMem('MemAvailable') ?? 4 << 30);
+  static int processMemory() => _safe(() => NativeEngine.instance.processMemory(), 0);
+
+  static int _safe(int Function() f, int fallback) {
+    try {
+      return f();
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  static int? _procMem(String key) {
+    try {
+      final line = File('/proc/meminfo').readAsLinesSync().firstWhere((l) => l.startsWith(key));
+      return int.parse(RegExp(r'(\d+)').firstMatch(line)!.group(1)!) * 1024;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
