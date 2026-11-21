@@ -10,6 +10,14 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.21.1', [
+    'Push-Nachricht, wenn der Agent fertig ist und du nicht dabei bist (App im Hintergrund oder anderer Chat offen)',
+    'Während der Agent arbeitet, kannst du andere Chats öffnen und neue anlegen; Nachrichten dort warten und werden danach beantwortet',
+    'Gespräch: Der Agent spricht zu Ende – unterbrechen nur per Tipp auf den Kreis oder mit seinem Namen (Reinreden einschaltbar). Jede Unterbrechung steht im Log',
+    'Browser: wartet auf nachgeladene Inhalte, erkennt Einträge auch ohne Bilder, Themenfilter nur wenn genannt („… zu Anthropic“)',
+    'Nachfragen zu einer Webseite landen nicht mehr im News-Feed',
+    'Denkschritte bleiben eingeklappt (wurden manchmal von einer anderen Nachricht aufgeklappt übernommen)',
+  ]),
   ('1.21.0', [
     'Neue Spracherkennung: Canary (146 MB) und Parakeet (464 MB) über sherpa-onnx – im Test 4–5× schneller als Whisper small, mindestens so genau. Systemcheck → Spracherkennung',
     'Text-Chat: wiederholte Frage und lautes Denken am Anfang der Antwort werden ausgeblendet (wie im Gespräch)',

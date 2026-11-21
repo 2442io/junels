@@ -136,7 +136,9 @@ class _ConversationPageState extends State<ConversationPage> {
                                   child: Text(
                                       app.settings.voiceWakeWord
                                           ? 'Unterbrechen: „${conv.agentName}“ sagen oder Kreis tippen'
-                                          : 'Unterbrechen: einfach reinreden oder Kreis tippen',
+                                          : app.settings.voiceBargeIn
+                                              ? 'Unterbrechen: einfach reinreden oder Kreis tippen'
+                                              : 'Unterbrechen: Kreis tippen',
                                       style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
                                 )
                               : const SizedBox.shrink(),
@@ -298,6 +300,14 @@ void _showVoiceSettings(BuildContext context) {
                     'Kurz nach einer Antwort geht eine Nachfrage auch ohne Namen. Unterbrechen: Name sagen oder Kreis tippen.'),
                 value: st.voiceWakeWord,
                 onChanged: (v) => app.setVoiceOptions(wakeWord: v),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Reinreden unterbricht'),
+                subtitle: const Text('Aus: Der Agent spricht immer zu Ende – unterbrechen per Tipp auf den Kreis '
+                    '(oder mit dem Namen). Ein: Jede Stimme unterbricht, auch Geräusche oder andere Personen.'),
+                value: st.voiceBargeIn,
+                onChanged: st.voiceWakeWord ? null : (v) => app.setVoiceOptions(bargeIn: v),
               ),
               const Divider(height: 24),
               Text('Wann bin ich fertig?', style: t.titleMedium),

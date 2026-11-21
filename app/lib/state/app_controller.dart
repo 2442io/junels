@@ -117,6 +117,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // Lauf
   bool running = false;
 
+  /// Chat, in dem gerade eine Antwort entsteht.
+  String? runningConvId;
+
+  /// Läuft die Antwort im gerade angezeigten Chat?
+  bool get runningHere => running && runningConvId != null && runningConvId == current?.id;
+
+  /// Nachrichten, die warten, bis die laufende Antwort fertig ist (aus anderen Chats).
+  final List<({Conversation conv, String text, List<Attachment> docs, ChatEntry placeholder})> _queue = [];
+
+  bool isQueued(ChatEntry e) => _queue.any((q) => identical(q.placeholder, e));
+
   /// Seit wann die aktuelle Antwort läuft bzw. das Modell lädt (für die Zeitanzeige).
   DateTime? runStarted;
   DateTime? loadStarted;
@@ -571,7 +582,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Einstellungen des Gesprächsmodus ändern und speichern.
   Future<void> setVoiceOptions(
-      {bool? manualEnd, int? pauseMs, bool? nearField, bool? smartVad, String? agentName, bool? wakeWord}) async {
+      {bool? manualEnd, int? pauseMs, bool? nearField, bool? smartVad, String? agentName, bool? wakeWord, bool? bargeIn}) async {
+    if (bargeIn != null) settings.voiceBargeIn = bargeIn;
     if (smartVad != null) settings.voiceSmartVad = smartVad;
     if (agentName != null && agentName.trim().isNotEmpty) settings.agentName = agentName.trim();
     if (wakeWord != null) settings.voiceWakeWord = wakeWord;
@@ -1014,19 +1026,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // ------------------------------------------------------------------ Chats
 
   void newConversation() {
-    if (running) return;
+    // Auch während eine Antwort läuft: die läuft im eigenen Chat weiter
     current = null;
     notifyListeners();
   }
 
   void selectConversation(Conversation c) {
-    if (running) return;
     current = c;
     notifyListeners();
   }
 
   Future<void> deleteConversation(Conversation c) async {
-    if (running && current?.id == c.id) return;
+    if (running && runningConvId == c.id) return;
     conversations.removeWhere((x) => x.id == c.id);
     _attachments.remove(c.id);
     if (current?.id == c.id) current = null;
@@ -1572,7 +1583,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final page = pageAddressOf(input);
     if (page != null) {
       final browser = find('browser'), fetch = find('web_fetch');
-      final focus = input.replaceAll(page.$2, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+      // Thema nur, wenn ausdrücklich genannt („… zu Anthropic“, „über KI“, „nach Design tools“)
+      final rest = input.replaceAll(page.$2, ' ');
+      final focus = RegExp(r'\b(?:zu|zum thema|über|nach|bezüglich|rund um)\s+([^.!?]{2,60})', caseSensitive: false)
+              .firstMatch(rest)
+              ?.group(1)
+              ?.trim() ??
+          '';
       if (browser != null) return (browser, {'action': 'open', 'target': page.$1, 'text': focus});
       if (fetch != null) return (fetch, {'url': page.$1});
     }
@@ -1582,8 +1599,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     bool isNews(String t) => news != null && _newsIntent.hasMatch(t);
     // Erst die neue Nachricht, nur bei Nachfragen auch die vorige
     final w = isWeather(input), n = isNews(input);
-    final useWeather = w || (!n && input != gate && isWeather(gate) && !isNews(gate));
-    final useNews = !useWeather && (n || (input != gate && isNews(gate)));
+    // Ging es vorher um eine bestimmte Webseite, bleibt die Nachfrage dort (Browser), nicht im News-Feed
+    final gateOk = input != gate && pageAddressOf(gate) == null;
+    final useWeather = w || (!n && gateOk && isWeather(gate) && !isNews(gate));
+    final useNews = !useWeather && (n || (gateOk && isNews(gate)));
     if (useWeather) return (weather!, {'location': weatherPlace(input, gate), 'days': 7});
     if (useNews) {
       return (news!, {'topic': _newsTopicOf(input, gate), 'source': _newsSourceOf(input) == 'auto' ? _newsSourceOf(gate) : _newsSourceOf(input), 'count': 6});
@@ -2083,13 +2102,31 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return out;
   }
 
-  Future<void> send(String input, {bool voice = false, void Function(String text, bool done)? onAnswer}) async {
+  Future<void> send(String input,
+      {bool voice = false, void Function(String text, bool done)? onAnswer, Conversation? target, List<Attachment>? withDocs}) async {
     final eng = engine;
-    if (eng == null || running || input.trim().isEmpty) {
+    if (eng == null || input.trim().isEmpty) {
       onAnswer?.call('', true);
       return;
     }
-    final conv = _ensureConversation();
+    if (running) {
+      // Läuft schon eine Antwort (in einem anderen Chat): Nachricht vormerken
+      if (voice || onAnswer != null) {
+        onAnswer?.call('', true);
+        return;
+      }
+      final c = _ensureConversation();
+      final docs = List<Attachment>.of(attachments);
+      _attachments.remove(c.id);
+      final ph = ChatEntry(role: 'user', text: input.trim(), attachments: docs.map((d) => d.name).toList());
+      c.entries.add(ph);
+      _queue.add((conv: c, text: input.trim(), docs: docs, placeholder: ph));
+      statusMessage = 'Wartet, bis die laufende Antwort fertig ist';
+      notifyListeners();
+      return;
+    }
+    final conv = target ?? _ensureConversation();
+    runningConvId = conv.id;
 
     var history = <ChatMessage>[
       for (final e in conv.entries)
@@ -2108,7 +2145,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           ChatMessage(m.role, m.content.length > 700 ? '${m.content.substring(0, 700)} …' : m.content),
       ];
     }
-    var docs = List<Attachment>.of(attachments);
+    var docs = List<Attachment>.of(withDocs ?? attachments);
     var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
     if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
@@ -2228,8 +2265,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         final out = await tool.run(args, ctx).timeout(const Duration(seconds: 60));
         final cut = out.indexOf(moreCardsMarker);
         log.observation = out;
-        turnInput = 'Ergebnis (${tool.title}):\n${cut < 0 ? out : out.substring(0, cut)}\n\n$turnInput\n'
-            'Antworte direkt und kurz mit diesen Daten.';
+        final what = tool.name == 'browser'
+            ? 'Die Seite wurde im eingebauten Browser geöffnet; das ist ihr Inhalt (der Nutzer sieht die Einträge als Karten)'
+            : 'Ergebnis (${tool.title})';
+        turnInput = '$what:\n${cut < 0 ? out : out.substring(0, cut)}\n\n$turnInput\n'
+            'Antworte direkt mit diesen Daten. Behaupte nicht, du könntest die Seite nicht abrufen.';
         runner = _makeRunner(eng, _systemText(voice: voice, tools: const []), tools: const []);
         _runner = runner;
       } catch (e) {
@@ -2339,6 +2379,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);
       running = false;
+      runningConvId = null;
       runStarted = null;
       unawaited(BackgroundWork.end('agent'));
       _runner = null;
@@ -2355,6 +2396,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (!voice && settings.autoSpeak && answer.error == null && answer.text.trim().isNotEmpty && ttsVoicePath != null) {
       unawaited(speakText(answer.text, key: answer).catchError((_) {}));
+    }
+    // Nicht dabei (App im Hintergrund oder anderer Chat offen) → Push-Nachricht, wenn fertig
+    final away = WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed || current?.id != conv.id;
+    if (!voice && !headless && away && answer.text.trim().isNotEmpty) {
+      final body = cleanModelText(answer.text).replaceAll(RegExp(r'[*_#>`]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+      unawaited(BackgroundWork.notify(answer.error == null ? 'Junels ist fertig: ${conv.title}' : 'Junels: Fehler in ${conv.title}',
+              body.length > 200 ? '${body.substring(0, 200)}…' : body,
+              conversationId: conv.id)
+          .catchError((_) {}));
+    }
+    // Vorgemerkte Nachricht aus einem anderen Chat jetzt beantworten
+    if (_queue.isNotEmpty && !running) {
+      final q = _queue.removeAt(0);
+      q.conv.entries.remove(q.placeholder);
+      statusMessage = null;
+      unawaited(send(q.text, target: q.conv, withDocs: q.docs));
     }
   }
 

@@ -79,6 +79,23 @@ const browserSnapshotJs = r'''
     try{if(src)src=new URL(src,location.href).href;}catch(x){}
     cards.push({title:t.slice(0,140),link:a.href,image:src,price:m?m[0]:''});
   }
+  // Seiten ohne <img> in den Einträgen (Hintergrundbilder, reine Textlisten): Links mit längerem Text
+  if(cards.length<3){
+    var bg=function(e){for(var k=0;e&&k<4;k++,e=e.parentElement){if(k>0&&e.querySelectorAll('a[href]').length>1)break;var c=getComputedStyle(e).backgroundImage;var mm=c&&c.match(/url\(["']?([^"')]+)/);if(mm)return mm[1];var ii=e.querySelector&&e.querySelector('img');if(ii&&(ii.currentSrc||ii.src))return ii.currentSrc||ii.src;}return '';};
+    var as=document.querySelectorAll('a[href]');
+    for(var q=0;q<as.length&&cards.length<40;q++){
+      var A=as[q];if(!vis(A)||!A.href||A.href.indexOf('#')===A.href.length-1||seen[A.href])continue;
+      if(A.closest&&A.closest('header,nav,footer'))continue;
+      var hh=A.querySelector('h1,h2,h3,h4,strong,[class*="title"]');
+      var T=txt(it(hh||A));
+      if(T.length<20)continue;
+      seen[A.href]=1;
+      var box=A.closest('li,article,div');
+      if(!box||box.querySelectorAll('a[href]').length>1)box=A;
+      var desc=txt(it(box)).replace(T,'').trim().slice(0,200);
+      cards.push({title:T.slice(0,140),link:A.href,image:bg(A),price:'',desc:desc});
+    }
+  }
   var main=document.querySelector('main,[role=main],#content,#main')||document.body;
   var body=txt(it(main));
   var captcha=!!document.querySelector('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare"],#captchacharacters,form[action*="validateCaptcha"]')||/captcha|ich bin kein roboter|i.m not a robot|verify you are human|geben sie die zeichen ein/i.test(body.slice(0,3000));
@@ -170,6 +187,12 @@ class BrowserTool extends AgentTool {
       case 'open' || 'goto' || 'navigate':
         await d.open(_url(target));
         await d.settle();
+        // Inhalte, die per JavaScript nachgeladen werden: kurz warten, bis Einträge da sind
+        for (var i = 0; i < 3; i++) {
+          final probe = await _read(d);
+          if (((probe['cards'] as List?) ?? const []).length >= 3 || probe['captcha'] == true) break;
+          await Future<void>.delayed(const Duration(milliseconds: 1500));
+        }
         // text = worum es geht (z. B. „News zu Anthropic“): passende Einträge zuerst
         final r = await _snapshot(d, focus: text.trim());
         if (text.trim().isNotEmpty && parseResultCards(r).isNotEmpty) ctx.answerNow = true;
@@ -314,7 +337,7 @@ class BrowserTool extends AgentTool {
       for (final c in ((snap['cards'] as List?) ?? const []).cast<Map<String, dynamic>>())
         if (!isJunkLink((c['link'] ?? '').toString(), (c['title'] ?? '').toString()))
           PageItem((c['title'] ?? '').toString(), cleanLink((c['link'] ?? '').toString()), (c['image'] ?? '').toString(),
-              summary: (c['price'] ?? '').toString().isEmpty ? '' : 'Preis: ${c['price']}'),
+              summary: (c['price'] ?? '').toString().isNotEmpty ? 'Preis: ${c['price']}' : (c['desc'] ?? '').toString()),
     ];
     if (focus.isNotEmpty) {
       // Passende Einträge nach vorne, der Rest danach (fürs Karussell)

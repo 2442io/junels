@@ -77,6 +77,9 @@ class ConversationMode {
   final needsName = ValueNotifier<bool>(false);
 
   bool get _wake => app.settings.voiceWakeWord;
+
+  /// Reinreden unterbricht nur, wenn ausdrücklich eingeschaltet (sonst brechen Geräusche die Antwort ab).
+  bool get _autoBargeIn => app.settings.voiceBargeIn && !_wake;
   String get agentName => app.settings.agentName;
   bool get _followOpen => DateTime.now().isBefore(_followUntil);
 
@@ -218,8 +221,8 @@ class ConversationMode {
 
     if (manualEnd.value) {
       // Absender-Modus: zuhören, bis „Fertig“ getippt wird
-      if (ev == VadEvent.speechStart && !_wake && (s == ConvState.speaking || s == ConvState.thinking)) {
-        _bargeIn();
+      if (ev == VadEvent.speechStart && _autoBargeIn && (s == ConvState.speaking || s == ConvState.thinking)) {
+        _bargeIn('Stimme erkannt');
         _startListening();
       }
       if (state.value == ConvState.listening || state.value == ConvState.hearing) {
@@ -235,12 +238,14 @@ class ConversationMode {
     final busy = s == ConvState.speaking || s == ConvState.thinking;
     if (ev == VadEvent.speechStart) {
       // Mit Namens-Modus unterbrechen nur der Name oder ein Tipp – Geräusche nicht
-      if (busy && !_wake) _bargeIn();
-      if (state.value != ConvState.transcribing && !(busy && _wake)) state.value = ConvState.hearing;
+      if (busy && _autoBargeIn) _bargeIn('Stimme erkannt');
+      if (state.value != ConvState.transcribing && !(busy && !_autoBargeIn)) state.value = ConvState.hearing;
     } else if (ev == VadEvent.speechEnd) {
       final pcm = _vad.takeUtterance();
       if (busy && _wake) {
         unawaited(_checkInterruptByName(pcm));
+      } else if (busy && !_autoBargeIn) {
+        // Geräusch/Sprechen während der Antwort: ignorieren (unterbrechen nur per Tipp)
       } else {
         unawaited(_handleUtterance(pcm));
       }
@@ -248,7 +253,8 @@ class ConversationMode {
   }
 
   /// Agent verstummt und hört zu; bisher Gesprochenes bleibt im Verlauf.
-  void _bargeIn() {
+  void _bargeIn([String reason = 'Tipp']) {
+    if (state.value == ConvState.speaking || state.value == ConvState.thinking) voiceLog('Antwort unterbrochen: $reason');
     _turn++;
     final spoken = _streamer.spokenSoFar;
     app.voice.output.stop();
@@ -339,8 +345,7 @@ class ConversationMode {
         if (text.isNotEmpty) voiceLog('Während der Antwort gehört, ohne Namen – weiter: "$text"');
         return;
       }
-      voiceLog('Unterbrochen durch „$agentName“: "$text"');
-      _bargeIn();
+      _bargeIn('„$agentName“ gehört: "$text"');
       if (rest.isEmpty || RegExp(r'^(stopp?|halt|ruhe|still|warte|danke)\W*$', caseSensitive: false).hasMatch(rest)) {
         _followUntil = DateTime.now().add(const Duration(seconds: 12));
         _startListening();

@@ -325,6 +325,7 @@ class AppSettings {
     this.voiceManualEnd = false,
     this.agentName = 'Junels',
     this.voiceWakeWord = true,
+    this.voiceBargeIn = false,
     this.voicePauseMs = 1200,
     this.voiceNearField = true,
     this.voiceSmartVad = true,
@@ -369,6 +370,7 @@ class AppSettings {
   bool voiceManualEnd; // Gesprächsmodus: Ende per "Fertig"-Taste statt Sprechpause
   String agentName; // Name, auf den der Agent im Gespräch hört
   bool voiceWakeWord; // Gesprächsmodus: nur reagieren, wenn der Name fällt
+  bool voiceBargeIn; // Gesprächsmodus: Reinreden unterbricht die Antwort (sonst nur Tipp/Name)
   int voicePauseMs; // Gesprächsmodus: so lange Pause beendet die Äußerung
   bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
   bool voiceSmartVad; // Gesprächsmodus: Silero-Spracherkennung statt nur Lautstärke
@@ -398,6 +400,7 @@ class AppSettings {
         'voiceManualEnd': voiceManualEnd,
         'agentName': agentName,
         'voiceWakeWord': voiceWakeWord,
+        'voiceBargeIn': voiceBargeIn,
         'voicePauseMs': voicePauseMs,
         'voiceNearField': voiceNearField,
         'voiceSmartVad': voiceSmartVad,
@@ -427,6 +430,7 @@ class AppSettings {
         voiceManualEnd: j['voiceManualEnd'] as bool? ?? false,
         agentName: (j['agentName'] as String?)?.trim().isNotEmpty == true ? (j['agentName'] as String).trim() : 'Junels',
         voiceWakeWord: j['voiceWakeWord'] as bool? ?? true,
+        voiceBargeIn: j['voiceBargeIn'] as bool? ?? false,
         voicePauseMs: (j['voicePauseMs'] as num?)?.toInt() ?? 1200,
         voiceNearField: j['voiceNearField'] as bool? ?? true,
         voiceSmartVad: j['voiceSmartVad'] as bool? ?? true,

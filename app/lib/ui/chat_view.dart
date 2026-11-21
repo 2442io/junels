@@ -57,7 +57,7 @@ class _ChatViewState extends State<ChatView> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final entries = app.current?.entries ?? const <ChatEntry>[];
-    if (app.running) _scrollToBottom();
+    if (app.runningHere) _scrollToBottom();
 
     return Column(
       children: [
@@ -77,8 +77,9 @@ class _ChatViewState extends State<ChatView> {
                         );
                       }
                       final e = entries[i];
-                      final live = app.running && i == entries.length - 1;
+                      final live = app.runningHere && i == entries.length - 1;
                       return Center(
+                        key: ObjectKey(e),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 820),
                           child: e.role == 'user'
@@ -249,7 +250,7 @@ class _LiveStatusState extends State<_LiveStatus> {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final loading = app.status == EngineStatus.loading;
-    final active = app.running || loading || app.warming;
+    final active = app.runningHere || loading || app.warming;
     if (!active) {
       _tick?.cancel();
       _tick = null;
@@ -258,11 +259,11 @@ class _LiveStatusState extends State<_LiveStatus> {
     _tick ??= Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
-    final since = app.running ? app.runStarted : (loading ? app.loadStarted : null);
+    final since = app.runningHere ? app.runStarted : (loading ? app.loadStarted : null);
     String label;
     if (loading) {
       label = 'Modell wird geladen';
-    } else if (app.running) {
+    } else if (app.runningHere) {
       final last = app.current?.entries.lastOrNull;
       final step = last?.steps.lastOrNull;
       if (last == null) {
@@ -457,6 +458,11 @@ class _UserBubble extends StatelessWidget {
                     ),
                   ),
                 TextSpan(text: entry.text),
+                if (app.isQueued(entry))
+                  TextSpan(
+                    text: '\n⏳ wartet auf die laufende Antwort',
+                    style: TextStyle(fontSize: 12, color: scheme.onPrimaryContainer.withValues(alpha: 0.7)),
+                  ),
               ]), style: TextStyle(color: scheme.onPrimaryContainer)),
             ),
             actions,
@@ -911,7 +917,7 @@ class _InputBarState extends State<_InputBar> {
 
   void _send() {
     final app = AppScope.read(context);
-    if (app.running || app.status != EngineStatus.ready) return;
+    if (app.runningHere || app.status != EngineStatus.ready) return;
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
     _ctrl.clear();
@@ -1049,7 +1055,7 @@ class _InputBarState extends State<_InputBar> {
                                     )
                                   : Icon(a.name.toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.description_outlined, size: 16),
                               label: Text(isImageFile(a.name) ? a.name : '${a.name} (${(a.content.length / 1000).toStringAsFixed(1)}k)'),
-                              onDeleted: app.running ? null : () => app.removeAttachment(a),
+                              onDeleted: app.runningHere ? null : () => app.removeAttachment(a),
                             ),
                         ],
                       ),
@@ -1060,7 +1066,7 @@ class _InputBarState extends State<_InputBar> {
                         PopupMenuButton<String>(
                           tooltip: 'Anhängen',
                           icon: const Icon(Icons.attach_file),
-                          enabled: !app.running,
+                          enabled: !app.runningHere,
                           onSelected: (v) => v == 'photo' ? _photo() : _attach(),
                           itemBuilder: (_) => const [
                             PopupMenuItem(
@@ -1077,12 +1083,12 @@ class _InputBarState extends State<_InputBar> {
                         IconButton(
                           tooltip: 'Datei anhängen (PDF, Bilder, TXT, MD, CSV, JSON)',
                           icon: const Icon(Icons.attach_file),
-                          onPressed: app.running ? null : _attach,
+                          onPressed: app.runningHere ? null : _attach,
                         ),
                       PopupMenuButton<String>(
                         tooltip: 'Prompts & Vorlagen',
                         icon: const Icon(Icons.bolt_outlined),
-                        enabled: !app.running,
+                        enabled: !app.runningHere,
                         onSelected: (v) {
                           if (v == '__save__') {
                             editPrompt(context, initialText: _ctrl.text);
@@ -1142,7 +1148,7 @@ class _InputBarState extends State<_InputBar> {
                     final sendButton = SizedBox(
                       width: 48,
                       height: 48,
-                      child: app.running
+                      child: app.runningHere
                           ? IconButton.filledTonal(
                               tooltip: 'Stopp',
                               icon: const Icon(Icons.stop_rounded),

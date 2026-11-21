@@ -786,17 +786,20 @@ class _ChatSection extends StatelessWidget {
             selectedTileColor: scheme.secondaryContainer.withValues(alpha: 0.5),
             title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text('${c.entries.length ~/ 2} Nachrichten · ${_date(c.updated)}'),
-            onTap: app.running
-                ? null
-                : () {
-                    app.selectConversation(c);
-                    onSelect();
-                  },
-            trailing: IconButton(
-              tooltip: 'Löschen',
-              icon: const Icon(Icons.delete_outline, size: 20),
-              onPressed: app.running && app.current?.id == c.id ? null : () => app.deleteConversation(c),
-            ),
+            onTap: () {
+              app.selectConversation(c);
+              onSelect();
+            },
+            trailing: app.running && app.runningConvId == c.id
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : IconButton(
+                    tooltip: 'Löschen',
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    onPressed: () => app.deleteConversation(c),
+                  ),
           );
 
   static String _date(DateTime d) {

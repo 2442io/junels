@@ -179,7 +179,7 @@ class _HomeShellState extends State<HomeShell> {
           IconButton(
             tooltip: 'Neuer Chat',
             icon: const Icon(Icons.add_comment_outlined),
-            onPressed: app.running ? null : app.newConversation,
+            onPressed: app.newConversation,
           ),
           if (compact)
             IconButton(
