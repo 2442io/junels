@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../state/app_controller.dart' show NetworkChoice;
 import '../state/app_scope.dart';
 import '../state/conversation_mode.dart';
 import 'internet_menu.dart';
@@ -216,6 +217,36 @@ class _ConversationPageState extends State<ConversationPage> {
                           : Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(tm, style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            ),
+                    ),
+                    ValueListenableBuilder<String?>(
+                      valueListenable: conv.consentPrompt,
+                      builder: (context, purpose, _) => purpose == null
+                          ? const SizedBox.shrink()
+                          : Card(
+                              margin: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                              color: scheme.tertiaryContainer,
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(children: [
+                                  Text('Internet erlauben? Sag „Ja“ oder „Nein“.',
+                                      style: t.titleSmall?.copyWith(color: scheme.onTertiaryContainer)),
+                                  const SizedBox(height: 2),
+                                  Text(purpose,
+                                      style: t.bodySmall?.copyWith(color: scheme.onTertiaryContainer),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center),
+                                  const SizedBox(height: 8),
+                                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                    TextButton(onPressed: () => conv.answerConsent(NetworkChoice.deny), child: const Text('Nein')),
+                                    const SizedBox(width: 8),
+                                    OutlinedButton(onPressed: () => conv.answerConsent(NetworkChoice.once), child: const Text('Nur jetzt')),
+                                    const SizedBox(width: 8),
+                                    FilledButton(onPressed: () => conv.answerConsent(NetworkChoice.chat), child: const Text('Ja')),
+                                  ]),
+                                ]),
+                              ),
                             ),
                     ),
                     ValueListenableBuilder<String?>(

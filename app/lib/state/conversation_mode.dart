@@ -116,11 +116,8 @@ class ConversationMode {
     _manualBuf.clear();
     _manualHeard = false;
     // Fragt der Agent nach Internet, das ansagen – der Nutzer schaut evtl. nicht aufs Display
-    app.onConsentAsk = (_) {
-      if (!active) return;
-      final out = app.voice.output;
-      out.add('Dafür brauche ich das Internet. Bitte bestätige das auf dem Bildschirm.');
-    };
+    app.onConsentAsk = null;
+    app.voiceConsentHandler = _askConsentByVoice;
     // Gesprächs-Prompt vorrechnen → erste Antwort ohne Wartezeit
     unawaited(app.warmUp(voice: true));
     // Wer das Gespräch gerade geöffnet hat, meint den Agenten – erste Frage ohne Namen
@@ -156,6 +153,8 @@ class ConversationMode {
     _watchdog?.cancel();
     _watchdog = null;
     app.onConsentAsk = null;
+    app.voiceConsentHandler = null;
+    answerConsent(NetworkChoice.deny);
     _turn++;
     state.value = ConvState.off;
     await app.voice.mic.stop();
@@ -166,6 +165,56 @@ class ConversationMode {
   }
 
   void toggleMute() => muted.value = !muted.value;
+
+  // ------------------------------------------------------------ Internet-Freigabe per Stimme
+
+  /// Wofür der Agent gerade Internet möchte (Anzeige mit Knöpfen) – null = keine Frage offen.
+  final consentPrompt = ValueNotifier<String?>(null);
+  Completer<NetworkChoice>? _consent;
+  DateTime _consentSpokenUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Future<NetworkChoice> _askConsentByVoice(String purpose) async {
+    final c = _consent = Completer<NetworkChoice>();
+    consentPrompt.value = purpose;
+    const msg = 'Dafür brauche ich das Internet. Darf ich? Sag ja oder nein.';
+    // ungefähre Sprechdauer: so lange gilt Gehörtes als Echo der eigenen Frage
+    _consentSpokenUntil = DateTime.now().add(Duration(milliseconds: 600 + msg.length * 75));
+    app.voice.output.add(msg);
+    voiceLog('Frage nach Internet: $purpose');
+    final r = await c.future.timeout(const Duration(seconds: 45), onTimeout: () {
+      voiceLog('Keine Antwort auf die Internet-Frage – abgelehnt');
+      return NetworkChoice.deny;
+    });
+    _consent = null;
+    consentPrompt.value = null;
+    return r;
+  }
+
+  /// Antwort per Knopf (oder Stimme).
+  void answerConsent(NetworkChoice choice) {
+    final c = _consent;
+    if (c != null && !c.isCompleted) c.complete(choice);
+  }
+
+  Future<void> _consentFromSpeech(Float32List pcm) async {
+    if (DateTime.now().isBefore(_consentSpokenUntil) || pcm.length < 16000 * 0.25) return;
+    try {
+      final stt = await app.voice.stt(app.sttModelPath!);
+      final text = (await stt.transcribe(pcm, language: _language, threads: app.device.threads)).text.trim().toLowerCase();
+      // eigenes Echo („Darf ich? Sag ja oder nein“) nicht als Antwort werten
+      if (text.isEmpty || text.contains('darf ich') || (text.contains(' ja') && text.contains('nein'))) return;
+      final no = RegExp(r'\b(nein|nee|ne|nicht|lieber nicht|lass|stopp?|abbrechen|kein)\b').hasMatch(text);
+      final yes = RegExp(r'\b(ja|jo|jep|jawohl|klar|gern|gerne|okay|ok|erlaub\w*|mach|darfst|passt|sicher|bitte)\b').hasMatch(text);
+      voiceLog('Antwort auf Internet-Frage: "$text"');
+      if (no) {
+        answerConsent(NetworkChoice.deny);
+      } else if (yes) {
+        answerConsent(NetworkChoice.chat);
+      }
+    } catch (e) {
+      voiceLog('Internet-Frage: Erkennung fehlgeschlagen: $e');
+    }
+  }
 
   /// Tippen auf den Kreis: Agent sofort unterbrechen.
   void interrupt() {
@@ -238,6 +287,11 @@ class ConversationMode {
     }
 
     final busy = s == ConvState.speaking || s == ConvState.thinking;
+    if (_consent != null) {
+      // Internet-Frage offen: Gesprochenes ist die Antwort darauf
+      if (ev == VadEvent.speechEnd) unawaited(_consentFromSpeech(_vad.takeUtterance()));
+      return;
+    }
     if (ev == VadEvent.speechStart) {
       // Mit Namens-Modus unterbrechen nur der Name oder ein Tipp – Geräusche nicht
       if (busy && _autoBargeIn) _bargeIn('Stimme erkannt');

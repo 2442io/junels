@@ -31,6 +31,8 @@ class SystemCheckPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
               _DeviceCard(app: app),
+              const SizedBox(height: 12),
+              _SetCard(app: app),
               const SizedBox(height: 20),
               _KindSection(
                 app: app,
@@ -54,15 +56,15 @@ class SystemCheckPage extends StatelessWidget {
               _KindSection(
                 app: app,
                 kind: ModelKind.stt,
-                title: 'Spracherkennung – Whisper (optional)',
-                subtitle: 'Für die Mikrofon-Eingabe. large-v3-turbo ist die beste Wahl, wenn das Gerät es schafft.',
+                title: 'Spracherkennung (optional)',
+                subtitle: 'Für Mikrofon und Gespräch. Canary bzw. Parakeet sind ein Vielfaches schneller als Whisper.',
                 icon: Icons.mic_none,
               ),
               const SizedBox(height: 20),
               _KindSection(
                 app: app,
                 kind: ModelKind.tts,
-                title: 'Stimme – Piper (optional)',
+                title: 'Stimme – Kokoro / Piper (optional)',
                 subtitle: 'Zum Vorlesen der Antworten.',
                 icon: Icons.record_voice_over_outlined,
               ),
@@ -521,6 +523,80 @@ class _VisionRow extends StatelessWidget {
         ]),
         if (dl?.error != null) Text(dl!.error!, style: t.bodySmall?.copyWith(color: scheme.error)),
       ]),
+    );
+  }
+}
+
+
+/// Zwei Knöpfe: passendes Komplett-Set für Handy oder Desktop – nur Modelle, die hier laufen.
+class _SetCard extends StatelessWidget {
+  const _SetCard({required this.app});
+  final AppController app;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    String mb(int b) => b >= 1 << 30 ? '${(b / (1 << 30)).toStringAsFixed(1)} GB' : '${(b / (1 << 20)).round()} MB';
+    Widget option(bool mobile) {
+      final set = app.modelSet(mobile: mobile);
+      final missing = set.where((e) => app.installedPath(e) == null).toList();
+      final size = missing.fold<int>(0, (a, e) => a + e.sizeBytes);
+      final busy = set.any((e) => app.downloads[e.id]?.active == true);
+      final kindLabel = {ModelKind.llm: 'Modell', ModelKind.stt: 'Hören', ModelKind.tts: 'Stimme'};
+      return Expanded(
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(12), alignment: Alignment.centerLeft),
+          onPressed: busy
+              ? null
+              : () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.showSnackBar(SnackBar(
+                      content: Text(missing.isEmpty
+                          ? '${mobile ? 'Handy' : 'Desktop'}-Set wird aktiviert'
+                          : 'Lade ${missing.length} Modell(e), ${mb(size)} …')));
+                  await app.installModelSet(mobile: mobile);
+                },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(mobile ? Icons.smartphone : Icons.desktop_windows_outlined, size: 20),
+                const SizedBox(width: 8),
+                Text(mobile ? 'Handy' : 'Desktop', style: t.titleSmall),
+                if (busy) ...[
+                  const SizedBox(width: 8),
+                  const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                ],
+              ]),
+              const SizedBox(height: 6),
+              for (final e in set)
+                Text('${kindLabel[e.kind]}: ${e.name}${app.installedPath(e) != null ? ' ✓' : ''}',
+                    style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+              Text(missing.isEmpty ? 'Alles geladen – tippen zum Aktivieren' : 'Noch zu laden: ${mb(size)}',
+                  style: t.labelSmall),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Schnell einrichten', style: t.titleMedium),
+            const SizedBox(height: 4),
+            Text('Ein Komplett-Set aus Sprachmodell, Spracherkennung und Stimme – nur was laut Systemcheck auf diesem Gerät läuft.',
+                style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 12),
+            Row(children: [option(true), const SizedBox(width: 12), option(false)]),
+          ],
+        ),
+      ),
     );
   }
 }

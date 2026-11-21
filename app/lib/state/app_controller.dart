@@ -625,6 +625,64 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   List<Recommendation> recommendations(ModelKind kind) =>
       recommendFor(kind, device, freeDiskBytes: freeDisk, availableMemory: LlamaEngine.availableMemory());
 
+  /// Fertiges Modell-Set „Handy“ oder „Desktop“: je Art die Empfehlung für diesen Gerätetyp –
+  /// aber nur, was laut Systemcheck auf DIESEM Gerät läuft (sonst die Empfehlung fürs Gerät).
+  List<CatalogEntry> modelSet({required bool mobile}) {
+    final d = device;
+    final prof = DeviceProfile(
+      deviceClass: d.deviceClass,
+      totalMemory: d.totalMemory,
+      maxContext: d.maxContext,
+      threads: d.threads,
+      gpuLayers: d.gpuLayers,
+      quantizeKv: d.quantizeKv,
+      isMobile: mobile,
+    );
+    final avail = LlamaEngine.availableMemory();
+    final out = <CatalogEntry>[];
+    for (final kind in const [ModelKind.llm, ModelKind.stt, ModelKind.tts]) {
+      final here = recommendFor(kind, d, freeDiskBytes: freeDisk, availableMemory: avail);
+      bool runsHere(CatalogEntry e) => here.any((r) =>
+          r.entry.id == e.id && (r.suitability == Suitability.recommended || r.suitability == Suitability.suitable));
+      CatalogEntry? pick;
+      if (kind == ModelKind.tts) {
+        // Stimme: am Desktop Kokoro Martin, am Handy die kompakte Kokoro Victoria, sonst Piper
+        final pref = mobile ? ['kokoro-de-victoria', 'piper-de-thorsten'] : ['kokoro-de-martin', 'kokoro-de-victoria', 'piper-de-thorsten'];
+        pick = [for (final id in pref) ...modelCatalog.where((e) => e.id == id && runsHere(e))].firstOrNull;
+      } else {
+        final recs = recommendFor(kind, prof, freeDiskBytes: freeDisk, availableMemory: avail);
+        pick = recs.where((r) => r.suitability == Suitability.recommended && runsHere(r.entry)).map((r) => r.entry).firstOrNull;
+      }
+      pick ??= here.where((r) => r.suitability == Suitability.recommended).map((r) => r.entry).firstOrNull;
+      if (pick != null) out.add(pick);
+    }
+    return out;
+  }
+
+  /// Lädt das Set (was fehlt) und stellt es als aktiv ein.
+  Future<void> installModelSet({required bool mobile}) async {
+    final set = modelSet(mobile: mobile);
+    for (final e in set) {
+      if (installedPath(e) == null) {
+        await startDownload(e);
+        if (installedPath(e) == null) continue; // abgebrochen oder fehlgeschlagen
+      }
+      switch (e.kind) {
+        case ModelKind.stt:
+          settings.sttModelId = e.id;
+        case ModelKind.tts:
+          settings.ttsVoiceId = e.id;
+        case ModelKind.llm:
+          final m = storedModelFor(e);
+          if (m != null && loadedModel?.path != m.path && !running) unawaited(loadModel(m));
+        case ModelKind.image:
+          break;
+      }
+      await storage.saveSettings(settings);
+      notifyListeners();
+    }
+  }
+
   /// Pfad, falls das Katalog-Modell installiert ist.
   String? installedPath(CatalogEntry e) {
     if (e.kind == ModelKind.llm) {
@@ -931,10 +989,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> _requestNetwork(Conversation conv, String purpose) async {
     if (conv.internetOff) return false;
     if (conv.internetAllowed || _turnInternetAllowed) return true;
+    // Im Gespräch: per Stimme fragen (Ja/Nein), mit Knöpfen am Gesprächsbildschirm – kein Dialog
+    final voiceAsk = voiceConsentHandler;
     final ask = consentHandler;
-    if (ask == null) return false;
-    onConsentAsk?.call(purpose);
-    final choice = await ask(purpose);
+    if (voiceAsk == null && ask == null) return false;
+    if (voiceAsk == null) onConsentAsk?.call(purpose);
+    final choice = voiceAsk != null ? await voiceAsk(purpose) : await ask!(purpose);
     switch (choice) {
       case NetworkChoice.once:
         _turnInternetAllowed = true;
@@ -953,6 +1013,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Wird aufgerufen, wenn gleich nach Internet gefragt wird (Gesprächsmodus: ansagen).
   void Function(String purpose)? onConsentAsk;
+
+  /// Gesprächsmodus: Internet-Freigabe per Stimme statt Dialog.
+  Future<NetworkChoice> Function(String purpose)? voiceConsentHandler;
 
   InternetMode get internetMode {
     final c = current;
@@ -1407,6 +1470,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           'kurz (meist 1–3 Sätze), natürlich, ohne Markdown, Listen, Tabellen, Emojis oder Links. '
           'Wiederhole die Frage nicht und fasse sie nicht zusammen – beginne sofort mit der Antwort. '
           'Denke nicht laut: kein Vorspann wie „Der Nutzer möchte …“, „Du fragst …“ oder „Okay, …“. '
+          'Fang auch nicht mit den Worten der Frage an: Auf „Wie entsteht ein Regenbogen?“ nicht „Ein Regenbogen '
+          'entsteht durch …“, sondern gleich „Sonnenlicht wird in Regentropfen gebrochen …“. '
           'Du heißt ${settings.agentName}. '
           'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
           'wo sie unterbrochen wurde.');

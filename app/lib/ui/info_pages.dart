@@ -10,6 +10,12 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.22.0', [
+    'Systemcheck: „Schnell einrichten“ mit zwei Knöpfen – Handy- oder Desktop-Set (Sprachmodell, Spracherkennung, Stimme), nur Modelle, die auf diesem Gerät laufen',
+    'Gespräch: Internet-Freigabe wird zuerst gesprochen und per „Ja“/„Nein“ beantwortet – oder per Knopf am Gesprächsbildschirm, kein Dialog mehr',
+    'Gespräch: Der Agent beginnt nicht mehr mit den Worten deiner Frage',
+    'Build: GitHub-Aktionen auf aktuelle Versionen (Node 24)',
+  ]),
   ('1.21.2', [
     'Gespräch: „Regenbogen“, „Windows“ & Co. lösen keine Wetterabfrage mehr aus (die Antwort kam deshalb erst nach 25 s)',
     'Gespräch: Die erste Frage nach dem Öffnen geht ohne Namen; nach jeder Antwort 20 s Zeit für Nachfragen ohne Namen',
