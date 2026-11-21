@@ -7,7 +7,9 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import '../state/vault.dart';
 import 'chat_view.dart' show showMailAccountDialog;
+import 'device_page.dart' show setupMorningBriefing;
 import 'prompt_editor.dart';
+import 'theme.dart';
 
 Future<void> openTasks(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksPage()));
@@ -20,100 +22,323 @@ Future<void> openVault(BuildContext context) =>
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
-/// Liste wiederkehrender Aufträge mit Schaltern.
+String _when(DateTime d) => '${d.day}.${d.month}. ${_two(d.hour)}:${_two(d.minute)}';
+
+/// Liste wiederkehrender Aufträge mit Schaltern und Vorlagen.
 class TasksPage extends StatelessWidget {
   const TasksPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final c = AppColors.of(context);
     final tasks = app.prompts.where((p) => p.schedule != ScheduleKind.off).toList()
       ..sort((a, b) => (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute));
     final hasPrep = app.prompts.any((p) => p.id == AppController.meetingPrepId);
     final hasMorning = app.prompts.any((p) => p.title == 'Morgen-Übersicht');
     final now = DateTime.now();
+    final active = tasks.where((p) => p.enabled).length;
     return Scaffold(
-      appBar: AppBar(title: const Text('Geplante Aufgaben')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => editPrompt(context, initialText: ''),
-        icon: const Icon(Icons.add),
-        label: const Text('Neue Aufgabe'),
-      ),
+      appBar: AppBar(title: const Text('Geplante Aufgaben'), actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: FilledButton.icon(
+            onPressed: () => editPrompt(context, initialText: '', scheduled: true),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Neue Aufgabe'),
+          ),
+        ),
+      ]),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
         children: [
-          Text('Der Agent erledigt diese Aufträge selbständig zur eingestellten Zeit und meldet sich per Push-Nachricht.',
-              style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          for (final p in tasks)
-            Card(
-              child: ListTile(
-                leading: Icon(p.id == AppController.meetingPrepId ? Icons.event_note_outlined : Icons.schedule),
-                title: Text(p.title),
-                subtitle: Text([
-                  p.scheduleLabel,
-                  if (p.enabled && p.nextAfter(now) != null)
-                    'nächster Lauf ${p.nextAfter(now)!.day}.${p.nextAfter(now)!.month}. ${_two(p.nextAfter(now)!.hour)}:${_two(p.nextAfter(now)!.minute)}',
-                  if (p.lastRun != null) 'zuletzt ${p.lastRun!.day}.${p.lastRun!.month}. ${_two(p.lastRun!.hour)}:${_two(p.lastRun!.minute)}',
-                ].join(' · ')),
-                onTap: () => editPrompt(context, prompt: p),
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(
-                    tooltip: 'Jetzt ausführen',
-                    icon: const Icon(Icons.play_arrow),
-                    onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
-                  ),
-                  Switch(
-                    value: p.enabled,
-                    onChanged: (v) {
-                      p.enabled = v;
-                      app.savePrompt(p);
-                    },
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                PageHeader(
+                  icon: Icons.schedule,
+                  title: 'Geplante Aufgaben',
+                  subtitle: 'Der Agent erledigt diese Aufträge selbständig zur eingestellten Zeit und meldet sich per Push-Nachricht.',
+                ),
+                Row(children: [
+                  _Stat(label: 'Aktiv', value: '$active', color: c.mint),
+                  const SizedBox(width: 10),
+                  _Stat(label: 'Pausiert', value: '${tasks.length - active}', color: c.faint),
+                  const SizedBox(width: 10),
+                  _Stat(
+                    label: 'Nächster Lauf',
+                    value: () {
+                      final next = tasks
+                          .where((p) => p.enabled)
+                          .map((p) => p.nextAfter(now))
+                          .whereType<DateTime>()
+                          .fold<DateTime?>(null, (m, d) => m == null || d.isBefore(m) ? d : m);
+                      return next == null ? '–' : _when(next);
+                    }(),
+                    color: c.blue,
                   ),
                 ]),
-              ),
+                const SectionLabel('Aufgaben', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+                if (tasks.isEmpty)
+                  Panel(
+                    child: EmptyHint(
+                      icon: Icons.alarm_add_outlined,
+                      title: 'Noch keine geplanten Aufgaben',
+                      text: 'Leg eine eigene Aufgabe an oder starte mit einer Vorlage unten.',
+                    ),
+                  ),
+                for (final p in tasks)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Panel(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                      onTap: () => editPrompt(context, prompt: p),
+                      child: Row(children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: p.enabled ? c.mintSoft : c.raised,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(_iconFor(p), size: 20, color: p.enabled ? c.mint : c.faint),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Flexible(
+                                child: Text(p.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                              ),
+                              const SizedBox(width: 8),
+                              p.enabled
+                                  ? StatusChip('Aktiv', color: c.mint, soft: c.mintSoft, dense: true)
+                                  : StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
+                            ]),
+                            const SizedBox(height: 4),
+                            MonoText([
+                              p.scheduleLabel,
+                              if (p.enabled && p.nextAfter(now) != null) 'nächster ${_when(p.nextAfter(now)!)}',
+                              if (p.lastRun != null) 'zuletzt ${_when(p.lastRun!)}',
+                            ].join(' · ')),
+                          ]),
+                        ),
+                        IconButton(
+                          tooltip: 'Jetzt ausführen',
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
+                        ),
+                        Switch(
+                          value: p.enabled,
+                          onChanged: (v) {
+                            p.enabled = v;
+                            app.savePrompt(p);
+                          },
+                        ),
+                      ]),
+                    ),
+                  ),
+                const SectionLabel('Vorlagen', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+                LayoutBuilder(builder: (context, box) {
+                  final cols = box.maxWidth >= 640 ? 2 : 1;
+                  final w = (box.maxWidth - (cols - 1) * 10) / cols;
+                  final cards = <Widget>[
+                    _TemplateCard(
+                      icon: Icons.wb_twilight,
+                      title: 'Morgen-Übersicht',
+                      text: 'Termine, Wetter und Nachrichten jeden Morgen als Push-Nachricht.',
+                      done: hasMorning,
+                      onTap: () => setupMorningBriefing(context),
+                    ),
+                    _TemplateCard(
+                      icon: Icons.event_note_outlined,
+                      title: 'Termine vorbereiten',
+                      text: 'Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.',
+                      done: hasPrep,
+                      onTap: () async {
+                        await app.createMeetingPrep();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30')));
+                        }
+                      },
+                    ),
+                    _TemplateCard(
+                      icon: Icons.newspaper,
+                      title: 'News zu einem Thema',
+                      text: 'Täglich die wichtigsten Meldungen zu deinem Thema, kurz zusammengefasst.',
+                      onTap: () => editPrompt(context,
+                          initialText: 'Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.',
+                          scheduled: true),
+                    ),
+                    _TemplateCard(
+                      icon: Icons.summarize_outlined,
+                      title: 'Wochenrückblick',
+                      text: 'Freitags: was diese Woche in deinen Chats und Aktivitäten passiert ist.',
+                      onTap: () => editPrompt(context,
+                          initialText: 'Fasse zusammen, woran ich diese Woche gearbeitet habe (Chats und Aktivitäten), und nenne offene Punkte.',
+                          scheduled: true),
+                    ),
+                  ];
+                  return Wrap(spacing: 10, runSpacing: 10, children: [for (final c in cards) SizedBox(width: w, child: c)]);
+                }),
+                const SizedBox(height: 14),
+                Panel(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: SwitchListTile(
+                    title: const Text('Nach Terminen Folgemail vorschlagen'),
+                    subtitle: const Text('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.'),
+                    value: app.settings.meetingFollowUp,
+                    onChanged: (v) => app.setMeetingFollowUp(v),
+                  ),
+                ),
+              ]),
             ),
-          if (tasks.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text('Noch keine geplanten Aufgaben.', style: TextStyle(color: scheme.onSurfaceVariant)),
-            ),
-          const SizedBox(height: 16),
-          Text('Vorlagen', style: t.titleSmall),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static IconData _iconFor(SavedPrompt p) {
+    if (p.id == AppController.meetingPrepId) return Icons.event_note_outlined;
+    if (p.title == 'Morgen-Übersicht') return Icons.wb_twilight;
+    final t = p.title.toLowerCase();
+    if (t.contains('news') || t.contains('nachricht')) return Icons.newspaper;
+    if (t.contains('wetter')) return Icons.wb_sunny_outlined;
+    return Icons.alarm;
+  }
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({required this.label, required this.value, required this.color});
+  final String label;
+  final String value;
+  final Color color;
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Expanded(
+      child: Panel(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label.toUpperCase(), style: TextStyle(fontSize: 10.5, letterSpacing: 1.1, color: c.faint, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          if (!hasPrep)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.event_note_outlined),
-                title: const Text('Termine vorbereiten (Mo–Fr 7:30)'),
-                subtitle: const Text('Pro Termin eine einseitige Notiz: Firma, Webseite, mögliche Fragen, Ziele.'),
-                trailing: const Icon(Icons.add),
-                onTap: () async {
-                  await app.createMeetingPrep();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30')));
-                  }
-                },
-              ),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontFamily: Ui.mono, fontSize: 18, fontWeight: FontWeight.w500, color: color)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _TemplateCard extends StatelessWidget {
+  const _TemplateCard({required this.icon, required this.title, required this.text, required this.onTap, this.done = false});
+  final IconData icon;
+  final String title;
+  final String text;
+  final VoidCallback onTap;
+  final bool done;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    return Panel(
+      onTap: onTap,
+      padding: const EdgeInsets.all(14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: c.mint, size: 22),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(child: Text(title, style: t.titleSmall)),
+              if (done) ...[const SizedBox(width: 8), StatusChip('Eingerichtet', color: c.mint, soft: c.mintSoft, dense: true)],
+            ]),
+            const SizedBox(height: 4),
+            Text(text, style: t.bodySmall),
+          ]),
+        ),
+        Icon(done ? Icons.tune : Icons.add, size: 18, color: c.faint),
+      ]),
+    );
+  }
+}
+
+/// Gespeicherte Prompts ohne Zeitplan.
+class PromptsPage extends StatelessWidget {
+  const PromptsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final c = AppColors.of(context);
+    final list = app.prompts.where((p) => p.schedule == ScheduleKind.off).toList();
+    return Scaffold(
+      appBar: AppBar(title: const Text('Prompt-Vorlagen'), actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: FilledButton.icon(
+            onPressed: () => editPrompt(context, initialText: ''),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Neue Vorlage'),
+          ),
+        ),
+      ]),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const PageHeader(
+                  icon: Icons.bolt_outlined,
+                  title: 'Prompt-Vorlagen',
+                  subtitle: 'Häufige Aufträge mit einem Tipp starten. Mit Zeitplan werden sie zu geplanten Aufgaben.',
+                ),
+                if (list.isEmpty)
+                  Panel(
+                    child: EmptyHint(
+                      icon: Icons.bolt_outlined,
+                      title: 'Noch keine Vorlagen',
+                      text: 'Im Chat über ⚡ → „Eingabe als Prompt speichern“ oder hier mit „Neue Vorlage“.',
+                    ),
+                  ),
+                for (final p in list)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Panel(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                      onTap: () => editPrompt(context, prompt: p),
+                      child: Row(children: [
+                        Icon(Icons.bolt_outlined, color: c.amber),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(p.text.replaceAll('\n', ' '),
+                                maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+                          ]),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
+                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                          label: const Text('Starten'),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ]),
             ),
-          if (!hasMorning)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.wb_sunny_outlined),
-                title: const Text('Morgen-Übersicht (täglich 7:00)'),
-                subtitle: const Text('Termine, Wetter und Nachrichten in einer Push-Nachricht.'),
-                trailing: const Icon(Icons.add),
-                onTap: () => app.createMorningBriefing(city: app.settings.homeCity.isEmpty ? 'Wien' : app.settings.homeCity),
-              ),
-            ),
-          SwitchListTile(
-            title: const Text('Nach Terminen Folgemail vorschlagen'),
-            subtitle: const Text('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.'),
-            value: app.settings.meetingFollowUp,
-            onChanged: (v) => app.setMeetingFollowUp(v),
           ),
         ],
       ),
@@ -134,6 +359,7 @@ class ActivityPage extends StatelessWidget {
         'memory' => Icons.bookmark_border,
         'internet' => Icons.public,
         'call' => Icons.call_outlined,
+        'flow' => Icons.account_tree_outlined,
         _ => Icons.task_alt,
       };
 
@@ -168,7 +394,7 @@ class ActivityPage extends StatelessWidget {
           if (a.approval.isNotEmpty) a.approval,
           if (a.detail.isNotEmpty) a.detail.replaceAll('\n', ' '),
         ].join(' · '), maxLines: 2, overflow: TextOverflow.ellipsis),
-        trailing: Text('lokal · 0 €', style: t.labelSmall?.copyWith(color: scheme.primary)),
+        trailing: Text('lokal', style: t.labelSmall?.copyWith(color: scheme.primary)),
         onTap: a.conversationId == null
             ? null
             : () {
@@ -197,8 +423,8 @@ class ActivityPage extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Text(
-                'Alles läuft auf diesem Gerät – keine Cloud-KI, keine Kosten. '
-                '${items.length} Aktion${items.length == 1 ? '' : 'en'} im Verlauf, Kosten: 0 €.',
+                '${app.settings.routing == 'local' ? 'Alles läuft auf diesem Gerät – keine Cloud-KI, keine Kosten. ' : 'Antworten kommen ${app.routingLabel ?? 'lokal'}; alle Aktionen bleiben hier protokolliert. '}'
+                '${items.length} Aktion${items.length == 1 ? '' : 'en'} im Verlauf.',
                 style: t.bodyMedium,
               ),
             ),

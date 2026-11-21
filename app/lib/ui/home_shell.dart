@@ -15,6 +15,8 @@ import 'internet_menu.dart';
 import 'conversation_page.dart';
 import 'sidebar.dart';
 import 'system_check.dart';
+import 'nav.dart';
+import 'theme.dart';
 
 /// Fragt, ob der Agent ins Internet darf.
 Future<NetworkChoice> askNetworkConsent(BuildContext context, String purpose) async {
@@ -52,6 +54,41 @@ Future<NetworkChoice> askNetworkConsent(BuildContext context, String purpose) as
   return r ?? NetworkChoice.deny;
 }
 
+/// Fragt, ob eine Frage an den Cloud-Anbieter gehen darf.
+Future<NetworkChoice> askCloudConsent(BuildContext context, String reason) async {
+  final c = AppColors.of(context);
+  final r = await showDialog<NetworkChoice>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => AlertDialog(
+      icon: Icon(Icons.cloud_upload_outlined, color: c.blue),
+      title: const Text('Cloud-Anbieter verwenden?'),
+      content: Text('$reason\n\n'
+          'Dabei gehen deine Frage, der bisherige Chatverlauf und gefundene Inhalte an den Anbieter.\n\n'
+          '„Einmal“ gilt für diese Frage, „Ganzer Chat“ für alle weiteren Fragen in diesem Chat.'),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        Row(children: [
+          Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: const Text('Nein'))),
+          const SizedBox(width: 6),
+          Expanded(
+            child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, NetworkChoice.once),
+                child: const Text('Einmal', textAlign: TextAlign.center)),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: FilledButton(
+                onPressed: () => Navigator.pop(ctx, NetworkChoice.chat),
+                child: const Text('Ganzer Chat', textAlign: TextAlign.center)),
+          ),
+        ]),
+      ],
+    ),
+  );
+  return r ?? NetworkChoice.deny;
+}
+
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -69,6 +106,7 @@ class _HomeShellState extends State<HomeShell> {
     if (_firstRunHandled) return;
     _firstRunHandled = true;
     app.consentHandler = (purpose) => askNetworkConsent(context, purpose);
+    app.cloudConsentHandler = (reason) => askCloudConsent(context, reason);
     app.deviceBridge.confirmHandler = (title, detail) => _confirm(title, detail);
     app.pendingLaunch.addListener(() => _launch(app));
     if (app.pendingLaunch.value != null) WidgetsBinding.instance.addPostFrameCallback((_) => _launch(app));
@@ -103,12 +141,26 @@ class _HomeShellState extends State<HomeShell> {
     app.pendingLaunch.value = null;
     if (a == 'conversation') {
       openConversation(context);
+    } else if (a == 'watch' || a == 'flows' || a == 'tasks') {
+      final s = AppSection.values.firstWhere((x) => x.name == a);
+      final desktop = MediaQuery.sizeOf(context).width >= 1100 && !_focus;
+      if (desktop) {
+        _go(s);
+      } else {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => pageFor(s)));
+      }
     } else if (a == 'newchat') {
       app.newConversation();
     } else if (a.startsWith('prompt:')) {
       final p = app.prompts.where((x) => x.id == a.substring(7)).firstOrNull;
       if (p != null) runSavedPrompt(context, app, p);
     }
+  }
+
+  AppSection _section = AppSection.chat;
+
+  void _go(AppSection s) {
+    if (_section != s) setState(() => _section = s);
   }
 
   @override
@@ -131,24 +183,71 @@ class _HomeShellState extends State<HomeShell> {
 
     return LayoutBuilder(builder: (context, c) {
       final w = c.maxWidth;
-      final desktop = w >= 1200;
+      final desktop = w >= 1100;
       final tabletWide = w >= 900 && !desktop;
       final compact = !desktop && !tabletWide;
-      final scheme = Theme.of(context).colorScheme;
-      final divider = VerticalDivider(width: 1, color: scheme.outlineVariant);
+      final colors = AppColors.of(context);
+      final divider = VerticalDivider(width: 1, color: colors.border);
+      final section = desktop ? _section : AppSection.chat;
+      final onChat = section == AppSection.chat;
 
-      final focusButton = IconButton(
-        tooltip: _focus ? 'Fokus beenden' : 'Fokus: nur der Chat',
-        icon: Icon(_focus ? Icons.fullscreen_exit : Icons.center_focus_strong_outlined),
-        onPressed: () {
-          final s = _scaffold.currentState;
-          if (s?.isDrawerOpen ?? false) s!.closeDrawer();
-          if (s?.isEndDrawerOpen ?? false) s!.closeEndDrawer();
-          setState(() => _focus = !_focus);
-        },
-      );
+      void toggleFocus() {
+        final s = _scaffold.currentState;
+        if (s?.isDrawerOpen ?? false) s!.closeDrawer();
+        if (s?.isEndDrawerOpen ?? false) s!.closeEndDrawer();
+        setState(() => _focus = !_focus);
+      }
+
+      final actions = <Widget>[
+        if (!_focus) ...[
+          InternetMenu(compact: compact),
+          const SizedBox(width: 6),
+          PillIconButton(
+            icon: Icons.graphic_eq,
+            tooltip: 'Gesprächsmodus',
+            onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
+          ),
+          const SizedBox(width: 6),
+          if (!compact) ...[
+            PillIconButton(icon: Icons.add, tooltip: 'Neuer Chat', onPressed: app.newConversation),
+            const SizedBox(width: 6),
+          ],
+          if (compact)
+            PillIconButton(
+              icon: Icons.dashboard_outlined,
+              tooltip: 'Artefakte & Metriken',
+              badge: app.inspectorAttention,
+              onPressed: () {
+                app.clearInspectorAttention();
+                _scaffold.currentState?.openEndDrawer();
+              },
+            )
+          else
+            PillIconButton(
+              icon: Icons.view_sidebar_outlined,
+              tooltip: _inspectorVisible ? 'Artefakte ausblenden' : 'Artefakte einblenden',
+              active: _inspectorVisible,
+              badge: app.inspectorAttention && !_inspectorVisible,
+              onPressed: () {
+                app.clearInspectorAttention();
+                setState(() => _inspectorVisible = !_inspectorVisible);
+              },
+            ),
+          const SizedBox(width: 6),
+        ],
+        if (!compact || _focus)
+          PillIconButton(
+            icon: _focus ? Icons.close_fullscreen : Icons.open_in_full,
+            tooltip: _focus ? 'Fokus beenden' : 'Fokus: nur der Chat',
+            active: _focus,
+            onPressed: toggleFocus,
+          ),
+        const SizedBox(width: 12),
+      ];
+
       final appBar = AppBar(
-        titleSpacing: desktop || _focus ? 16 : 0,
+        toolbarHeight: 62,
+        titleSpacing: desktop || _focus ? 20 : 4,
         title: _TitleBar(app: app),
         leading: desktop || _focus
             ? null
@@ -161,78 +260,41 @@ class _HomeShellState extends State<HomeShell> {
                 onPressed: () => _scaffold.currentState?.openDrawer(),
               ),
         automaticallyImplyLeading: false,
-        actions: _focus
-            ? [focusButton, const SizedBox(width: 4)]
-            : [
-          focusButton,
-          const InternetMenu(),
-          IconButton(
-            tooltip: 'Gesprächsmodus',
-            icon: const Icon(Icons.record_voice_over_outlined),
-            onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
-          ),
-          IconButton(
-            tooltip: 'Systemcheck & Modelle',
-            icon: const Icon(Icons.speed_outlined),
-            onPressed: () => openSystemCheck(context),
-          ),
-          IconButton(
-            tooltip: 'Neuer Chat',
-            icon: const Icon(Icons.add_comment_outlined),
-            onPressed: app.newConversation,
-          ),
-          if (compact)
-            IconButton(
-              tooltip: 'Artefakte & Metriken',
-              icon: Badge(
-                isLabelVisible: app.inspectorAttention,
-                child: const Icon(Icons.dashboard_outlined),
-              ),
-              onPressed: () {
-                app.clearInspectorAttention();
-                _scaffold.currentState?.openEndDrawer();
-              },
-            )
-          else
-            IconButton(
-              tooltip: _inspectorVisible ? 'Inspector ausblenden' : 'Inspector einblenden',
-              icon: Badge(
-                isLabelVisible: app.inspectorAttention && !_inspectorVisible,
-                child: Icon(_inspectorVisible ? Icons.view_sidebar : Icons.view_sidebar_outlined),
-              ),
-              onPressed: () {
-                app.clearInspectorAttention();
-                setState(() => _inspectorVisible = !_inspectorVisible);
-              },
-            ),
-          const SizedBox(width: 4),
-        ],
+        actions: actions,
       );
 
-      final drawerWidth = compact ? (w * 0.88).clamp(280.0, 360.0) : 340.0;
+      final drawerWidth = compact ? (w * 0.88).clamp(280.0, 340.0) : 320.0;
+      final chatArea = Row(children: [
+        Expanded(child: BrowserDock(browser: app.browser, child: const ChatView())),
+        if (!compact && _inspectorVisible && !_focus) ...[
+          divider,
+          SizedBox(width: desktop ? 360 : 320, child: const InspectorPanel()),
+        ],
+      ]);
 
-      return Scaffold(
-        key: _scaffold,
-        appBar: appBar,
-        drawer: desktop || _focus
-            ? null
-            : Drawer(width: drawerWidth, child: const SafeArea(child: Sidebar(inDrawer: true))),
-        endDrawer: compact && !_focus
-            ? Drawer(width: (w * 0.92).clamp(280.0, 420.0), child: const SafeArea(child: InspectorPanel()))
-            : null,
-        body: SafeArea(
-          top: false,
-          child: Row(
+      return ShellNav(
+        section: section,
+        embedded: desktop && !_focus,
+        go: _go,
+        child: Scaffold(
+          key: _scaffold,
+          drawer: desktop || _focus
+              ? null
+              : Drawer(width: drawerWidth, child: const SafeArea(child: Sidebar(inDrawer: true))),
+          endDrawer: compact && !_focus
+              ? Drawer(width: (w * 0.92).clamp(280.0, 420.0), child: const SafeArea(child: InspectorPanel()))
+              : null,
+          body: Row(
             children: [
               if (desktop && !_focus) ...[
-                const SizedBox(width: 300, child: Sidebar()),
+                const SizedBox(width: 284, child: SafeArea(right: false, child: Sidebar())),
                 divider,
               ],
-              Expanded(child: BrowserDock(browser: app.browser, child: const ChatView())),
-              if (!compact && _inspectorVisible && !_focus) ...[
-                divider,
-                SizedBox(width: desktop ? 360 : 320, child: const InspectorPanel()),
-              ],
+              Expanded(
+                child: onChat
+                    ? Scaffold(appBar: appBar, body: SafeArea(top: false, child: chatArea))
+                    : KeyedSubtree(key: ValueKey(section), child: pageFor(section)),
+              ),
             ],
           ),
         ),
@@ -248,43 +310,33 @@ class _TitleBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
+    final c = AppColors.of(context);
     final (color, label) = switch (app.status) {
-      EngineStatus.ready => (Colors.green, app.loadedModel?.displayName ?? 'Modell bereit'),
-      EngineStatus.loading => (Colors.orange, 'Modell wird geladen …'),
-      EngineStatus.error => (scheme.error, 'Fehler beim Laden'),
-      EngineStatus.none => (scheme.outline, 'Kein Modell geladen'),
+      EngineStatus.ready => (c.mint, app.loadedModel?.displayName ?? 'Modell bereit'),
+      EngineStatus.loading => (c.amber, 'Modell wird geladen …'),
+      EngineStatus.error => (c.red, 'Fehler beim Laden'),
+      EngineStatus.none => (c.faint, 'Kein Modell geladen'),
     };
-    return Row(
-      children: [
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(app.current?.title ?? 'Offline Agent',
-                  style: t.titleMedium, overflow: TextOverflow.ellipsis),
-              Row(
-                children: [
-                  Container(
-                      width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text('$label · ${app.activeProfile.name}',
-                        style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Tooltip(
-          message: 'KI läuft lokal – Internet nur nach Freigabe',
-          child: Icon(Icons.cloud_off_outlined, size: 18, color: scheme.onSurfaceVariant),
-        ),
-      ],
+    final route = app.routingLabel;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => openSystemCheck(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(app.current?.title ?? 'Neuer Chat',
+              style: t.titleMedium?.copyWith(fontSize: 16.5), overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 2),
+          Row(children: [
+            Container(width: 7, height: 7, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Flexible(
+              child: MonoText('$label · ${app.activeProfile.name}${route == null ? '' : ' · $route'}', size: 11),
+            ),
+          ]),
+        ],
+      ),
     );
   }
 }

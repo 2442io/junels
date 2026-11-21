@@ -210,6 +210,8 @@ class ChatEntry {
     List<String>? files,
     List<Map<String, String>>? actions,
     DateTime? time,
+    this.via,
+    this.cloudOffer = false,
   })  : steps = steps ?? [],
         actions = actions ?? [],
         sources = sources ?? [],
@@ -236,8 +238,16 @@ class ChatEntry {
   final List<Map<String, String>> actions;
   final DateTime time;
 
+  /// Wer geantwortet hat, wenn nicht das lokale Modell (z. B. „Cloud · Claude“).
+  String? via;
+
+  /// Lokale Antwort hat nicht geklappt – „Mit Cloud beantworten“ anbieten.
+  bool cloudOffer;
+
   Map<String, Object?> toJson() => {
         'role': role,
+        if (via != null) 'via': via,
+        if (cloudOffer) 'cloudOffer': true,
         'text': text,
         'steps': steps.map((s) => s.toJson()).toList(),
         'attachments': attachments,
@@ -268,6 +278,8 @@ class ChatEntry {
         cards: [for (final c in (j['cards'] as List? ?? const [])) (c as Map).cast<String, String>()],
         viaVoice: j['voice'] as bool? ?? false,
         time: DateTime.tryParse(j['time'] as String? ?? ''),
+        via: j['via'] as String?,
+        cloudOffer: j['cloudOffer'] as bool? ?? false,
       );
 }
 
@@ -280,6 +292,7 @@ class Conversation {
     DateTime? updated,
     this.internetAllowed = false,
     this.internetOff = false,
+    this.cloudAllowed = false,
   })  : entries = entries ?? [],
         artifacts = artifacts ?? [],
         updated = updated ?? DateTime.now();
@@ -293,6 +306,7 @@ class Conversation {
   /// Nutzer hat Internet für diesen ganzen Chat freigegeben.
   bool internetAllowed;
   bool internetOff; // Internet in diesem Chat ganz aus (keine Web-Tools)
+  bool cloudAllowed; // Cloud-Anbieter für den ganzen Chat freigegeben
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -302,6 +316,7 @@ class Conversation {
         'updated': updated.toIso8601String(),
         'internetAllowed': internetAllowed,
         'internetOff': internetOff,
+        if (cloudAllowed) 'cloudAllowed': true,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -312,6 +327,7 @@ class Conversation {
         updated: DateTime.tryParse(j['updated'] as String? ?? ''),
         internetAllowed: j['internetAllowed'] as bool? ?? false,
         internetOff: j['internetOff'] as bool? ?? false,
+        cloudAllowed: j['cloudAllowed'] as bool? ?? false,
       );
 }
 
@@ -340,6 +356,11 @@ class AppSettings {
     this.smtpPort = 465,
     this.smtpUser = '',
     this.smtpFrom = '',
+    this.routing = 'local',
+    this.hybridFirst = 'local',
+    this.onPremId,
+    this.cloudId,
+    List<Map<String, dynamic>>? providers,
     this.voicePauseMs = 1200,
     this.voiceNearField = true,
     this.voiceSmartVad = true,
@@ -363,6 +384,7 @@ class AppSettings {
             },
         installed = installed ?? {},
         watchFolders = watchFolders ?? [],
+        providers = providers ?? [],
         grantedFolders = grantedFolders ?? [];
 
   int contextSize;
@@ -394,6 +416,17 @@ class AppSettings {
   String smtpUser;
   String smtpFrom;
   bool get smtpReady => smtpHost.isNotEmpty && smtpUser.isNotEmpty;
+
+  /// Wer antwortet: local | onprem | cloud | hybrid (erst lokal/On-Prem, Cloud nach Freigabe)
+  String routing;
+
+  /// Bei hybrid: zuerst „local“ (Gerät) oder „onprem“ (eigener Server)
+  String hybridFirst;
+  String? onPremId;
+  String? cloudId;
+
+  /// Angebundene Anbieter (ohne Schlüssel – die liegen im Tresor)
+  List<Map<String, dynamic>> providers;
   int voicePauseMs; // Gesprächsmodus: so lange Pause beendet die Äußerung
   bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
   bool voiceSmartVad; // Gesprächsmodus: Silero-Spracherkennung statt nur Lautstärke
@@ -431,6 +464,11 @@ class AppSettings {
         'smtpPort': smtpPort,
         'smtpUser': smtpUser,
         'smtpFrom': smtpFrom,
+        'routing': routing,
+        'hybridFirst': hybridFirst,
+        if (onPremId != null) 'onPremId': onPremId,
+        if (cloudId != null) 'cloudId': cloudId,
+        'providers': providers,
         'voicePauseMs': voicePauseMs,
         'voiceNearField': voiceNearField,
         'voiceSmartVad': voiceSmartVad,
@@ -468,6 +506,11 @@ class AppSettings {
         smtpPort: (j['smtpPort'] as num?)?.toInt() ?? 465,
         smtpUser: j['smtpUser'] as String? ?? '',
         smtpFrom: j['smtpFrom'] as String? ?? '',
+        routing: j['routing'] as String? ?? 'local',
+        hybridFirst: j['hybridFirst'] as String? ?? 'local',
+        onPremId: j['onPremId'] as String?,
+        cloudId: j['cloudId'] as String?,
+        providers: [for (final m in (j['providers'] as List? ?? const [])) (m as Map).cast<String, dynamic>()],
         voicePauseMs: (j['voicePauseMs'] as num?)?.toInt() ?? 1200,
         voiceNearField: j['voiceNearField'] as bool? ?? true,
         voiceSmartVad: j['voiceSmartVad'] as bool? ?? true,

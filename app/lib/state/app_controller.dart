@@ -24,6 +24,7 @@ import 'update_service.dart';
 import '../tools/chart_render.dart';
 import '../tools/save_prompt_tool.dart';
 import 'activity_log.dart';
+import 'automation.dart';
 import 'memory_store.dart';
 import 'smtp.dart';
 import 'vault.dart';
@@ -134,6 +135,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// „Was hat der Agent getan?“
   late final ActivityLog activity;
+
+  /// Watchlist (Seiten/Themen beobachten) und Prozesse (Workflows).
+  late final WatchlistService watchlist = WatchlistService(this);
+  late final FlowService flows = FlowService(this);
 
   Future<void> logActivity(Activity a) async {
     await activity.add(a);
@@ -299,6 +304,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       mcpServers = await storage.loadMcpServers();
       await _loadMcpSecrets();
       conversations = await storage.loadConversations();
+      await watchlist.load();
+      await flows.load();
       // Nach längerer Pause mit neuem Chat starten, sonst im letzten weiterarbeiten
       final last = conversations.isNotEmpty ? conversations.first : null;
       current = last != null && DateTime.now().difference(last.updated) < idleNewChat ? last : null;
@@ -310,6 +317,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (!headless) {
         BackgroundWork.listen(
           onRunPrompt: (id) async {
+            if (await runAutomation(id)) return;
             final p = prompts.where((x) => x.id == id).firstOrNull;
             if (p != null) await runPrompt(p, automated: true);
           },
@@ -1577,7 +1585,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return system.toString();
   }
 
-  AgentRunner _makeRunner(LlamaEngine eng, String system, {List<AgentTool>? tools}) {
+  AgentRunner _makeRunner(AgentBackend eng, String system, {List<AgentTool>? tools}) {
     final profile = activeProfile;
     final browsing = (tools ?? activeTools).any((t) => t.name == 'browser');
     return AgentRunner(
@@ -2143,7 +2151,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Sendet die Nutzernachricht an [index] erneut (optional mit neuem Text);
   /// alles danach im Chat wird verworfen.
-  Future<void> resendFrom(int index, {String? newText}) async {
+  Future<void> resendFrom(int index, {String? newText, bool cloud = false}) async {
     final conv = current;
     if (conv == null || running || index < 0 || index >= conv.entries.length) return;
     final entry = conv.entries[index];
@@ -2153,7 +2161,128 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     conv.entries.removeRange(index, conv.entries.length);
     await storage.saveConversation(conv);
     notifyListeners();
-    await send(text, voice: entry.viaVoice);
+    await send(text, voice: entry.viaVoice, forceCloud: cloud);
+  }
+
+  /// „Mit Cloud beantworten“ unter einer Antwort: fragt nach Freigabe und beantwortet neu.
+  Future<void> answerWithCloud(int answerIndex) async {
+    final conv = current;
+    if (conv == null || running || cloudProvider == null) return;
+    if (!conv.cloudAllowed) {
+      final ask = cloudConsentHandler;
+      if (ask == null) return;
+      final choice = await ask('Diese Frage mit ${cloudProvider!.name} (${cloudProvider!.model}) beantworten?');
+      if (choice == NetworkChoice.deny) return;
+      await _logCloudConsent(conv, choice);
+    }
+    for (var i = answerIndex - 1; i >= 0; i--) {
+      if (conv.entries[i].role == 'user') return resendFrom(i, cloud: true);
+    }
+  }
+
+  Future<void> _logCloudConsent(Conversation conv, NetworkChoice choice) async {
+    unawaited(logActivity(Activity(
+        kind: 'internet',
+        title: choice == NetworkChoice.chat ? 'Cloud-Anbieter für einen Chat freigegeben' : 'Eine Frage an den Cloud-Anbieter',
+        detail: '${cloudProvider?.name ?? ''} · ${cloudProvider?.model ?? ''}',
+        approval: choice == NetworkChoice.chat ? 'Du hast „Ganzer Chat“ gewählt' : 'Du hast „Einmal“ gewählt',
+        conversationId: conv.id)));
+    if (choice == NetworkChoice.chat) {
+      conv.cloudAllowed = true;
+      await storage.saveConversation(conv);
+      notifyListeners();
+    }
+  }
+
+  /// Cloud-Freigabe für diesen Chat zurücknehmen.
+  Future<void> revokeCloud() async {
+    final conv = current;
+    if (conv == null) return;
+    conv.cloudAllowed = false;
+    await storage.saveConversation(conv);
+    notifyListeners();
+  }
+
+  // ------------------------------------------------- KI-Anbieter (On-Prem / Cloud)
+
+  /// Fragt, ob die Cloud benutzt werden darf (Nein / Einmal / Ganzer Chat).
+  Future<NetworkChoice> Function(String reason)? cloudConsentHandler;
+
+  List<ProviderConfig> get providers => [for (final m in settings.providers) ProviderConfig.fromJson(m)];
+
+  ProviderConfig? providerById(String? id) => id == null ? null : providers.where((p) => p.id == id).firstOrNull;
+
+  ProviderConfig? get onPremProvider =>
+      providerById(settings.onPremId) ?? providers.where((p) => p.onPrem && p.enabled).firstOrNull;
+
+  ProviderConfig? get cloudProvider =>
+      providerById(settings.cloudId) ?? providers.where((p) => !p.onPrem && p.enabled).firstOrNull;
+
+  Future<void> saveProvider(ProviderConfig p, {String? apiKey}) async {
+    final list = providers;
+    final i = list.indexWhere((x) => x.id == p.id);
+    if (i >= 0) {
+      list[i] = p;
+    } else {
+      list.add(p);
+    }
+    if (apiKey != null) await Vault.write('provider:${p.id}', apiKey.trim().isEmpty ? null : apiKey.trim());
+    settings.providers = [for (final x in list) x.toJson()];
+    if (p.onPrem && settings.onPremId == null) settings.onPremId = p.id;
+    if (!p.onPrem && settings.cloudId == null) settings.cloudId = p.id;
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> removeProvider(String id) async {
+    settings.providers = [for (final x in providers) if (x.id != id) x.toJson()];
+    if (settings.onPremId == id) settings.onPremId = null;
+    if (settings.cloudId == id) settings.cloudId = null;
+    try {
+      await Vault.write('provider:$id', null);
+    } catch (_) {}
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> setRouting({String? routing, String? hybridFirst, String? onPremId, String? cloudId}) async {
+    if (routing != null) settings.routing = routing;
+    if (hybridFirst != null) settings.hybridFirst = hybridFirst;
+    if (onPremId != null) settings.onPremId = onPremId;
+    if (cloudId != null) settings.cloudId = cloudId;
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<bool> providerHasKey(String id) async => (await Vault.read('provider:$id'))?.isNotEmpty ?? false;
+
+  Future<RemoteBackend> remoteBackend(ProviderConfig p) async =>
+      RemoteBackend(p, apiKey: await Vault.read('provider:${p.id}'));
+
+  /// Kurzinfo für Kopfzeilen: null = alles lokal.
+  String? get routingLabel => switch (settings.routing) {
+        'onprem' => onPremProvider == null ? 'On-Prem nicht eingerichtet' : 'On-Prem · ${onPremProvider!.name}',
+        'cloud' => cloudProvider == null ? 'Cloud nicht eingerichtet' : 'Cloud · ${cloudProvider!.name}',
+        'hybrid' => current?.cloudAllowed == true ? 'Cloud freigegeben' : 'Cloud nach Freigabe',
+        _ => null,
+      };
+
+  /// Kann gerade geantwortet werden (lokal oder über einen Anbieter)?
+  bool get canChat => switch (settings.routing) {
+        'onprem' => onPremProvider != null,
+        'cloud' => cloudProvider != null,
+        'hybrid' => settings.hybridFirst == 'onprem' ? onPremProvider != null : status == EngineStatus.ready,
+        _ => status == EngineStatus.ready,
+      };
+
+  /// Wählt das Modell für eine Antwort: (Backend, Anzeige, ist Cloud).
+  Future<(AgentBackend?, String?, bool)> _backendFor(Conversation conv, {bool forceCloud = false}) async {
+    final r = settings.routing;
+    Future<(AgentBackend?, String?, bool)> remote(ProviderConfig? p, bool cloud) async =>
+        p == null ? (null, null, cloud) : (await remoteBackend(p), '${cloud ? 'Cloud' : 'On-Prem'} · ${p.name} · ${p.model}', cloud);
+    if (forceCloud || r == 'cloud' || (r == 'hybrid' && conv.cloudAllowed)) return remote(cloudProvider, true);
+    if (r == 'onprem' || (r == 'hybrid' && settings.hybridFirst == 'onprem')) return remote(onPremProvider, false);
+    return (engine, null, false);
   }
 
   /// Erzeugt die Antwort an [index] neu.
@@ -2352,14 +2481,155 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _syncAlarms() async {
     unawaited(updateQuickActions());
     final now = DateTime.now();
+    final watchAt = watchlist.nextDue;
     await BackgroundWork.schedule([
       for (final p in prompts)
         if (p.nextAfter(now) case final at?) (id: p.id, title: p.title, at: at),
+      for (final f in flows.flows)
+        if (f.nextAfter(now) case final at?) (id: 'flow:${f.id}', title: f.name, at: at),
+      if (watchAt != null) (id: '__watch__', title: 'Watchlist', at: watchAt.isBefore(now) ? now.add(const Duration(minutes: 1)) : watchAt),
     ]);
   }
 
+  Future<void> syncAutomationAlarms() => _syncAlarms();
+
+  /// Weckruf bzw. Hintergrundlauf für Watchlist ('__watch__') oder Prozess ('flow:<id>').
+  Future<bool> runAutomation(String id) async {
+    if (id == '__watch__') {
+      await watchlist.checkDue();
+      unawaited(_syncAlarms());
+      return true;
+    }
+    if (id.startsWith('flow:')) {
+      final wf = flows.flows.where((f) => f.id == id.substring(5)).firstOrNull;
+      if (wf != null) await flows.run(wf);
+      unawaited(_syncAlarms());
+      return true;
+    }
+    return false;
+  }
+
+  /// Chat, in dem Prozess-Läufe protokolliert werden.
+  Conversation automationConversation() {
+    const id = 'automatik';
+    var c = conversations.where((x) => x.id == id).firstOrNull;
+    if (c == null) {
+      c = Conversation(id: id, title: '⚙ Automatik');
+      conversations.insert(0, c);
+    }
+    return c;
+  }
+
+  /// Modell für Hintergrund-Aufgaben: folgt der Einstellung „Wer antwortet?“,
+  /// fragt aber nie nach Cloud-Freigabe (dafür ist niemand da).
+  Future<AgentBackend?> _automationBackend() async {
+    switch (settings.routing) {
+      case 'cloud':
+        final p = cloudProvider;
+        if (p != null) return remoteBackend(p);
+      case 'onprem':
+        final p = onPremProvider;
+        if (p != null) return remoteBackend(p);
+      case 'hybrid':
+        if (settings.hybridFirst == 'onprem' && onPremProvider != null) return remoteBackend(onPremProvider!);
+    }
+    if (!await _ensureEngine()) return null;
+    return engine;
+  }
+
+  Future<T> _exclusive<T>(String convId, Future<T> Function() body) async {
+    // Lokales Modell kann nur eine Sache gleichzeitig – auf laufende Antworten warten
+    for (var i = 0; i < 1800 && running; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    running = true;
+    runningConvId = convId;
+    runStarted = DateTime.now();
+    notifyListeners();
+    try {
+      return await body();
+    } finally {
+      running = false;
+      runningConvId = null;
+      runStarted = null;
+      notifyListeners();
+      _drainQueue();
+    }
+  }
+
+  /// Einfache Textantwort für Hintergrund-Aufgaben (Zusammenfassen, Prozesse erzeugen).
+  Future<String> automationText(String prompt, {String? grammar, int maxTokens = 600}) async {
+    final eng = await _automationBackend();
+    if (eng == null) return '';
+    return _exclusive('automatik', () async {
+      final msgs = [ChatMessage('system', _systemText(voice: false, tools: const [])), ChatMessage('user', prompt)];
+      final buf = StringBuffer();
+      try {
+        await for (final ev in eng.generate(skipThinking(await eng.formatChat(msgs)),
+            grammar: grammar, sampling: const SamplingParams(temperature: 0.3), maxTokens: maxTokens)) {
+          if (ev is TokenEvent) buf.write(ev.text);
+        }
+      } catch (e) {
+        appLog('Automatik', 'Text: $e', error: true);
+      } finally {
+        if (eng is RemoteBackend) eng.close();
+      }
+      return cleanModelText(buf.toString()).trim();
+    });
+  }
+
+  /// Agenten-Auftrag aus einem Prozess (mit Werkzeugen).
+  Future<String> automationAgent(String prompt, {required bool allowInternet, required Conversation conv, required ChatEntry entry}) async {
+    final eng = await _automationBackend();
+    if (eng == null) throw Exception('Kein Modell bereit (Systemcheck oder KI-Anbieter einrichten).');
+    return _exclusive(conv.id, () async {
+      var tools = toolsFor(prompt, hasImages: false, hasDocs: false);
+      tools = [for (final t in tools) if (t.name != 'browser' && (allowInternet || !t.requiresNetwork)) t];
+      final runner = _makeRunner(eng, _systemText(voice: false, tools: tools), tools: tools);
+      var answer = '';
+      String? error;
+      final ctx = ToolContext(
+        requestNetwork: (_) async => allowInternet,
+        propose: (a) {
+          entry.actions.add(a);
+          notifyListeners();
+        },
+        onArtifact: (a) {
+          conv.artifacts.add(a.toJson());
+          if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) entry.files.add(a.content);
+          notifyListeners();
+        },
+      );
+      try {
+        await for (final ev in runner.run(history: const [], userInput: prompt, context: ctx)) {
+          switch (ev) {
+            case FinalAnswer(:final text):
+              answer = text;
+            case ToolResult(:final output, :final isError):
+              if (!isError) {
+                final cards = parseResultCards(output);
+                if (cards.isNotEmpty) entry.cards = [...entry.cards, for (final c in cards) c.toJson()].take(40).toList();
+              }
+            case AgentFinished(:final reason, :final message):
+              if (reason == AgentStopReason.error) error = message;
+            default:
+              break;
+          }
+        }
+      } finally {
+        if (eng is RemoteBackend) eng.close();
+      }
+      if (answer.trim().isEmpty && error != null) throw Exception(error);
+      return stripAnswerPreamble(cleanModelText(answer), prompt) ?? cleanModelText(answer);
+    });
+  }
+
   void _checkSchedule() {
-    if (!initialized || running || status == EngineStatus.loading) return;
+    if (!initialized) return;
+    // Watchlist braucht kein Modell (Zusammenfassen wartet selbst auf eine freie Engine)
+    unawaited(watchlist.checkDue());
+    if (running || status == EngineStatus.loading) return;
+    flows.checkDue();
     final now = DateTime.now();
     for (final p in prompts) {
       if (p.isDue(now)) {
@@ -2431,6 +2701,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void openConversationById(String id) {
+    if (id.startsWith('watch:')) {
+      pendingLaunch.value = 'watch';
+      return;
+    }
     if (id.startsWith('followup:')) {
       // Push „Termin vorbei“ angetippt → neuer Chat mit vorbereiteter Bitte
       final parts = id.split(':');
@@ -2520,9 +2794,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> send(String input,
-      {bool voice = false, void Function(String text, bool done)? onAnswer, Conversation? target, List<Attachment>? withDocs}) async {
-    final eng = engine;
-    if (eng == null || input.trim().isEmpty) {
+      {bool voice = false,
+      void Function(String text, bool done)? onAnswer,
+      Conversation? target,
+      List<Attachment>? withDocs,
+      bool forceCloud = false}) async {
+    if (!canChat && !forceCloud || input.trim().isEmpty) {
       onAnswer?.call('', true);
       return;
     }
@@ -2544,6 +2821,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final conv = target ?? _ensureConversation();
     runningConvId = conv.id;
+    final (eng0, via, usedCloud) = await _backendFor(conv, forceCloud: forceCloud);
+    if (eng0 == null) {
+      runningConvId = null;
+      conv.entries
+        ..add(ChatEntry(role: 'user', text: input.trim()))
+        ..add(ChatEntry(role: 'assistant', error: usedCloud ? 'Kein Cloud-Anbieter eingerichtet (Einstellungen → KI-Anbieter).' : 'Kein Modell bereit.'));
+      notifyListeners();
+      onAnswer?.call('', true);
+      return;
+    }
+    final AgentBackend eng = eng0;
 
     var history = <ChatMessage>[
       for (final e in conv.entries)
@@ -2578,7 +2866,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         attachments: docs.map((d) => d.name).toList(),
         viaVoice: voice,
         files: [for (final d in docs) if (d.path != null && isImageFile(d.name)) d.path!]);
-    final answer = ChatEntry(role: 'assistant');
+    final answer = ChatEntry(role: 'assistant', via: via);
     conv.entries..add(user)..add(answer);
     if (conv.title == 'Neuer Chat') {
       final t = input.trim().replaceAll('\n', ' ');
@@ -2848,7 +3136,31 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               conversationId: conv.id)
           .catchError((_) {}));
     }
+    if (eng is RemoteBackend) eng.close();
+    // Hybrid: Lokal hat nicht geklappt → Cloud anbieten bzw. nach Freigabe fragen
+    if (!usedCloud && settings.routing == 'hybrid' && cloudProvider != null && !headless) {
+      final failed = answer.error != null || answer.text.trim().isEmpty || answer.text == '_(gestoppt)_';
+      answer.cloudOffer = true;
+      final ask = cloudConsentHandler;
+      if (failed && answer.text != '_(gestoppt)_' && !voice && ask != null && current?.id == conv.id) {
+        final choice = await ask('Das lokale Modell konnte die Frage nicht beantworten. '
+            'Mit ${cloudProvider!.name} (${cloudProvider!.model}) beantworten?');
+        if (choice != NetworkChoice.deny) {
+          await _logCloudConsent(conv, choice);
+          final i = conv.entries.indexOf(answer);
+          if (i > 0) {
+            await resendFrom(i - 1, cloud: true);
+            return;
+          }
+        }
+      }
+      notifyListeners();
+    }
     // Vorgemerkte Nachricht aus einem anderen Chat jetzt beantworten
+    _drainQueue();
+  }
+
+  void _drainQueue() {
     if (_queue.isNotEmpty && !running) {
       final q = _queue.removeAt(0);
       q.conv.entries.remove(q.placeholder);
