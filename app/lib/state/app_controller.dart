@@ -245,6 +245,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       device = DeviceProfile.detect();
       voiceLogFile = File('${storage.documentsDir.path}/junels_log.txt');
       voice = VoiceService(await getTemporaryDirectory());
+      voice.output.onTooSlow = () => unawaited(markVoiceSlow(true));
       memory = MemoryStore(File('${storage.root.path}/memory.json'));
       await memory.load();
       activity = ActivityLog(File('${storage.root.path}/activity.json'));
@@ -967,8 +968,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   String? get ttsVoicePath {
     final id = settings.ttsVoiceId;
     if (id == null) return null;
+    // War auf diesem Gerät langsamer als Echtzeit → Gerätestimme (sonst lange Pausen)
+    if (settings.slowVoice == id) return null;
     final p = settings.installed[id];
     return p != null && Directory(p).existsSync() ? p : null;
+  }
+
+  /// Gewählte lokale Stimme wurde wegen Langsamkeit durch die Gerätestimme ersetzt.
+  bool get voiceTooSlow => settings.ttsVoiceId != null && settings.slowVoice == settings.ttsVoiceId;
+
+  Future<void> markVoiceSlow(bool slow) async {
+    settings.slowVoice = slow ? (settings.ttsVoiceId ?? '') : '';
+    await storage.saveSettings(settings);
+    notifyListeners();
   }
 
   Future<void> setVoiceSettings({
@@ -1271,6 +1283,24 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+
+  // ---------------------------------------------------------------- Online/Offline
+
+  /// Laut Betriebssystem mit dem Netz verbunden? (Junels prüft das ohne eigene Anfragen.)
+  bool deviceOnline = true;
+
+  void _setOnline(bool online) {
+    if (online == deviceOnline) return;
+    deviceOnline = online;
+    appLog('Netz', online ? 'Wieder online' : 'Offline – Internet-Werkzeuge pausiert, Antworten kommen vom Gerät');
+    notifyListeners();
+    if (online) unawaited(watchlist.checkDue()); // Verpasstes nachholen
+  }
+
+  Future<void> refreshOnline() async {
+    final s = await deviceBridge.networkStatus();
+    if (s != null) _setOnline(s);
+  }
 
   // ---------------------------------------------------------------- Eigene Designs
 
@@ -2622,7 +2652,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final r = routingOf(conv);
     Future<(AgentBackend?, String?, bool)> remote(ProviderConfig? p, bool cloud) async =>
         p == null ? (null, null, cloud) : (await remoteBackend(p), '${cloud ? 'Cloud' : 'On-Prem'} · ${p.name} · ${p.model}', cloud);
-    final toCloud = escalatesToCloud(conv);
+    final toCloud = escalatesToCloud(conv) && deviceOnline;
+    if (!deviceOnline && (r == 'cloud' || forceCloud)) {
+      // Offline: Cloud nicht erreichbar → am Gerät antworten
+      statusMessage = 'Offline – Antwort kommt vom Modell auf dem Gerät.';
+      final (e, v) = await _localFor(conv, input, docChars: docChars, forceStrong: forceStrong, voice: voice);
+      return (e, v == null ? null : '$v (offline)', false);
+    }
     // forceCloud = Rückfall/Knopf „Mit … beantworten“
     if (forceCloud) return toCloud || r == 'cloud' ? remote(cloudProvider, true) : remote(onPremProvider, false);
     if (r == 'cloud' || (r == 'hybrid' && toCloud && conv.cloudAllowed)) return remote(cloudProvider, true);
@@ -2875,10 +2911,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         pendingLaunch.value = a;
       })
       ..onShared = receiveShared
+      ..onNetwork = _setOnline
       ..init();
     await deviceBridge.grantFolders([
       for (final f in [...settings.grantedFolders, ...settings.watchFolders]) f['id']!,
     ]);
+    unawaited(refreshOnline());
     final (action, shared) = await deviceBridge.takeLaunch();
     if (shared != null) await receiveShared(shared);
     if (action != null) pendingLaunch.value = action;
@@ -3180,8 +3218,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _checkSchedule() {
     if (!initialized) return;
-    // Watchlist braucht kein Modell (Zusammenfassen wartet selbst auf eine freie Engine)
-    unawaited(watchlist.checkDue());
+    // Watchlist braucht kein Modell (Zusammenfassen wartet selbst auf eine freie Engine); offline pausiert
+    if (deviceOnline) unawaited(watchlist.checkDue());
     if (running || status == EngineStatus.loading) return;
     flows.checkDue();
     final now = DateTime.now();
@@ -3480,6 +3518,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
     if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
+    await refreshOnline();
+    if (!deviceOnline) {
+      runTools = [for (final t in runTools) if (!t.requiresNetwork && t.name != 'browser' && !t.name.contains('__')) t];
+    }
     // Links sind hier Design-Vorlagen: die übernimmt das Präsentations-Tool – kein Browser nötig
     if (requiredTool != null) {
       final urls = RegExp(r'https?://\S+').allMatches(input).map((m) => m.group(0)!).toList();
@@ -3533,6 +3575,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // Sprache des Nutzers ausdrücklich vorgeben (kleine Modelle rutschen sonst ins Deutsche)
     final lang = detectLanguage(input);
     if (lang != null && lang != 'de') turnInput = '$turnInput\n\n[${languageHint(lang)}]';
+    if (!deviceOnline) {
+      turnInput = '$turnInput\n\n[Hinweis: Das Gerät ist gerade offline. Antworte mit deinem Wissen und sag kurz dazu, '
+          'wenn aktuelle Informationen (Wetter, Nachrichten, Preise) erst wieder online abrufbar sind.]';
+    }
     if (voice) turnInput = '$turnInput\n\n${voiceTurnHint()}';
     var runner = _makeRunner(eng, system, tools: runTools, requiredTool: requiredTool);
     _runner = runner;

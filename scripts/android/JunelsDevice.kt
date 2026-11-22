@@ -26,6 +26,30 @@ import java.io.File
 // Ordner überwachen, Schnellstart-Knöpfe. Senden/Anrufen/Speichern bestätigt immer
 // der Nutzer in der jeweiligen App – Junels bereitet nur vor.
 object JunelsDevice {
+    private var netCallback: android.net.ConnectivityManager.NetworkCallback? = null
+
+    /** Ist das Gerät online (Internet bestätigt oder zumindest verbunden)? */
+    fun isOnline(ctx: Context): Boolean {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            (Build.VERSION.SDK_INT < 23 || caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+    }
+
+    fun watchNetwork(ctx: Context, onChange: (Boolean) -> Unit) {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        netCallback?.let { try { cm.unregisterNetworkCallback(it) } catch (_: Throwable) {} }
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) = onChange(isOnline(ctx))
+            override fun onLost(network: android.net.Network) = onChange(isOnline(ctx))
+            override fun onCapabilitiesChanged(network: android.net.Network, caps: android.net.NetworkCapabilities) = onChange(isOnline(ctx))
+        }
+        try {
+            cm.registerDefaultNetworkCallback(cb)
+            netCallback = cb
+        } catch (_: Throwable) {}
+    }
+
     const val REQ_PERMISSION = 7301
     const val REQ_PHOTO = 7302
     const val REQ_FOLDER = 7303
@@ -93,6 +117,7 @@ object JunelsDevice {
     fun handle(ctx: Context, activity: Activity?, call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
+                "networkStatus" -> result.success(isOnline(ctx))
                 // Tresor: Geheimnisse (Passwörter, Tokens) mit einem Schlüssel aus dem Android-Keystore verschlüsselt
                 "vaultSet" -> {
                     Vault.put(ctx, call.argument<String>("key") ?: "", call.argument<String>("value"))

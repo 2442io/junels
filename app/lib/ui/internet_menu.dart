@@ -23,13 +23,16 @@ class InternetMenu extends StatelessWidget {
     final mode = app.internetMode;
     final c = AppColors.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final color = switch (mode) {
-      InternetMode.off => c.faint,
-      InternetMode.ask => scheme.onSurface,
-      InternetMode.allowed => c.amber,
-    };
+    final offline = !app.deviceOnline;
+    final color = offline
+        ? c.red
+        : switch (mode) {
+            InternetMode.off => c.faint,
+            InternetMode.ask => scheme.onSurface,
+            InternetMode.allowed => c.amber,
+          };
     return PopupMenuButton<InternetMode>(
-      tooltip: 'Internet: ${mode.label}',
+      tooltip: offline ? 'Kein Netz – Junels antwortet mit dem Modell auf dem Gerät' : 'Internet: ${mode.label}',
       child: Container(
         height: 38,
         width: compact ? 38 : null,
@@ -40,10 +43,10 @@ class InternetMenu extends StatelessWidget {
           border: Border.all(color: mode == InternetMode.allowed ? c.amber.withValues(alpha: 0.5) : c.border),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(iconFor(mode), size: 18, color: color),
+          Icon(offline ? Icons.wifi_off : iconFor(mode), size: 18, color: color),
           if (!compact) const SizedBox(width: 6),
           if (!compact)
-            Text(switch (mode) {
+            Text(offline ? 'Kein Netz' : switch (mode) {
             InternetMode.off => 'Offline',
             InternetMode.ask => 'Fragen',
             InternetMode.allowed => 'Online',

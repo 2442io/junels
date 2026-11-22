@@ -83,6 +83,8 @@ class MainActivity : FlutterActivity() {
         // Kanal "junels/device": E-Mail, WhatsApp, Kalender, Kontakte, Kamera, Teilen, Schnellstart
         val dev = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "junels/device")
         device = dev
+        // Netzwerkstatus des Systems beobachten (online/offline) – Junels sendet dafür selbst nichts
+        JunelsDevice.watchNetwork(applicationContext) { online -> runOnUiThread { device?.invokeMethod("network", mapOf("online" to online)) } }
         dev.setMethodCallHandler { call, result ->
             when (call.method) {
                 "takeLaunch" -> {

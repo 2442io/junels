@@ -179,6 +179,10 @@ class SpeechOutput {
 
   /// Wie oft die lokale Stimme langsamer als Echtzeit war (Grund für Pausen).
   int slowSynth = 0;
+  int _slowStreak = 0;
+
+  /// Lokale Stimme zweimal hintereinander zu langsam → auf Gerätestimme umgeschaltet.
+  void Function()? onTooSlow;
 
   /// Stimmen des Geräts für die Auswahl: (Name, Locale), passend zur Sprache.
   Future<List<(String, String)>> systemVoices(String lang) async {
@@ -365,6 +369,19 @@ class SpeechOutput {
       // langsamer als Echtzeit → im Protokoll sichtbar (Grund für Pausen)
       if (ms > c.seconds * 1000) slowSynth++;
       if (ms > c.seconds * 1000 * 0.8) voiceLog('Stimme langsam: ${text.length} Zeichen in $ms ms für ${c.seconds.toStringAsFixed(1)} s Audio');
+      // Deutlich langsamer als Echtzeit (bei Sätzen ab ~1 s): Pausen zwischen den Sätzen wären unvermeidlich
+      if (c.seconds >= 0.8 && ms > c.seconds * 1000 * 1.3) {
+        _slowStreak++;
+      } else if (c.seconds >= 0.8) {
+        _slowStreak = 0;
+      }
+      if (_slowStreak >= 2 && voiceDir != null) {
+        voiceLog('Stimme zu langsam für dieses Gerät → ab jetzt Gerätestimme (ohne Pausen)');
+        lastError.value = 'Die gewählte Stimme ist auf diesem Gerät zu langsam – Junels spricht mit der Gerätestimme weiter.';
+        voiceDir = null; // folgende Sätze sofort mit der Gerätestimme
+        _slowStreak = 0;
+        onTooSlow?.call();
+      }
       return c;
     } catch (e, st) {
       // Piper defekt → für diese Sitzung auf Systemstimme umschalten

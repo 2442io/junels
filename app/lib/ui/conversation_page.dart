@@ -78,7 +78,7 @@ class _ConversationPageState extends State<ConversationPage> {
             padding: const EdgeInsets.only(right: 12),
             child: Center(
               child: Text(
-                app.ttsVoicePath == null ? 'Stimme: System' : (app.settings.ttsVoiceId ?? '').startsWith('kokoro') ? 'Stimme: Kokoro' : 'Stimme: Piper',
+                app.ttsVoicePath == null ? (app.voiceTooSlow ? 'Stimme: Gerät (schneller)' : 'Stimme: System') : (app.settings.ttsVoiceId ?? '').startsWith('kokoro') ? 'Stimme: Kokoro' : 'Stimme: Piper',
                 style: t.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ),
@@ -317,6 +317,17 @@ void _showVoiceSettings(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (app.voiceTooSlow) ...[
+                Text('Gerätestimme aktiv', style: t.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Die gewählte Stimme war auf diesem Gerät langsamer als Echtzeit (lange Pausen zwischen den Sätzen). '
+                  'Junels spricht deshalb mit der Stimme des Geräts.',
+                  style: t.bodySmall,
+                ),
+                TextButton(onPressed: () => app.markVoiceSlow(false), child: const Text('Gewählte Stimme trotzdem verwenden')),
+                const SizedBox(height: 12),
+              ],
               Text('Name des Agenten', style: t.titleMedium),
               const SizedBox(height: 8),
               TextFormField(

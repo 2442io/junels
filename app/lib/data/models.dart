@@ -359,6 +359,7 @@ class AppSettings {
     this.sttModelId,
     this.ttsVoiceId,
     this.systemVoice = '',
+    this.slowVoice = '',
     this.sttLanguage = 'auto',
     this.autoSpeak = false,
     this.sendAfterVoice = true,
@@ -425,6 +426,7 @@ class AppSettings {
   String? sttModelId; // Katalog-ID des Whisper-Modells
   String? ttsVoiceId; // Katalog-ID der Piper-Stimme ('__system__' = Stimme des Geräts)
   String systemVoice; // Stimme des Geräts: „Name|Locale“ (leer = Standard)
+  String slowVoice; // diese lokale Stimme war hier langsamer als Echtzeit → Gerätestimme
   String sttLanguage; // auto | de | en
   bool autoSpeak; // Antworten automatisch vorlesen
   bool sendAfterVoice; // nach Spracheingabe sofort senden
@@ -490,6 +492,7 @@ class AppSettings {
         'sttModelId': sttModelId,
         'ttsVoiceId': ttsVoiceId,
         'systemVoice': systemVoice,
+        if (slowVoice.isNotEmpty) 'slowVoice': slowVoice,
         'sttLanguage': sttLanguage,
         'autoSpeak': autoSpeak,
         'sendAfterVoice': sendAfterVoice,
@@ -540,6 +543,7 @@ class AppSettings {
         sttModelId: j['sttModelId'] as String?,
         ttsVoiceId: j['ttsVoiceId'] as String?,
         systemVoice: j['systemVoice'] as String? ?? '',
+        slowVoice: j['slowVoice'] as String? ?? '',
         sttLanguage: j['sttLanguage'] as String? ?? 'auto',
         autoSpeak: j['autoSpeak'] as bool? ?? false,
         sendAfterVoice: j['sendAfterVoice'] as bool? ?? true,

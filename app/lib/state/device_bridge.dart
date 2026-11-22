@@ -28,6 +28,19 @@ class DeviceBridge implements DeviceActions {
   void Function(String action)? onLaunchAction;
   void Function(SharedContent content)? onShared;
 
+  /// Netzwerkstatus des Systems hat sich geändert.
+  void Function(bool online)? onNetwork;
+
+  /// Ist das Gerät laut System online? null = unbekannt (z. B. iPad/Tests).
+  Future<bool?> networkStatus() async {
+    if (!supported) return null;
+    try {
+      return await _ch.invokeMethod<bool>('networkStatus');
+    } catch (_) {
+      return null;
+    }
+  }
+
   static bool get supported => Platform.isAndroid || Platform.isMacOS;
 
   void init() {
@@ -41,6 +54,8 @@ class DeviceBridge implements DeviceActions {
         case 'shared':
           final c = _parseShared(a);
           if (c != null) onShared?.call(c);
+        case 'network':
+          onNetwork?.call(a['online'] != false);
       }
       return null;
     });

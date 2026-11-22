@@ -126,6 +126,7 @@ def patch_android():
         s = re.sub(r'\s*<uses-permission android:name="android.permission.INTERNET" tools:node="remove" />', "", s)
         perms = [
             ("android.permission.INTERNET", "Modell-Downloads und Websuche (nur nach Freigabe)"),
+            ("android.permission.ACCESS_NETWORK_STATE", "Erkennen, ob das Gerät offline ist (ohne selbst etwas zu senden)"),
             ("android.permission.RECORD_AUDIO", "Spracheingabe mit Whisper (lokal)"),
             ("android.permission.FOREGROUND_SERVICE", "Agent arbeitet im Hintergrund weiter"),
             ("android.permission.FOREGROUND_SERVICE_DATA_SYNC", "Agent/Downloads im Hintergrund"),
@@ -408,7 +409,7 @@ def patch_macos():
         s = re.sub(r"(RegisterGeneratedPlugins\(registry: flutterViewController\))",
                    r"\1\n    JunelsFiles.register(flutterViewController)\n    JunelsDevice.register(flutterViewController)"
                    r"\n    self.isReleasedWhenClosed = false", s, count=1)
-        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications\nimport EventKit\nimport Contacts\nimport Security", 1)
+        s = s.replace("import PDFKit", "import PDFKit\nimport UserNotifications\nimport EventKit\nimport Contacts\nimport Security\nimport Network", 1)
         return (s + (ROOT / "scripts/macos/JunelsFiles.swift").read_text()
                 + (ROOT / "scripts/macos/JunelsDevice.swift").read_text())
 

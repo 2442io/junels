@@ -12,9 +12,12 @@ enum JunelsDevice {
   static func register(_ controller: FlutterViewController) {
     let ch = FlutterMethodChannel(name: "junels/device", binaryMessenger: controller.engine.binaryMessenger)
     channel = ch
+    startNetworkMonitor()
     ch.setMethodCallHandler { call, result in
       let a = call.arguments as? [String: Any] ?? [:]
       switch call.method {
+      case "networkStatus":
+        result(networkOnline)
       // Tresor: Geheimnisse im macOS-Schlüsselbund (nicht in den App-Dateien)
       case "vaultSet":
         let key = a["key"] as? String ?? ""
@@ -286,6 +289,25 @@ enum JunelsDevice {
   }
 
   // Dock-Menü (Rechtsklick aufs Dock-Symbol)
+  // Netzwerkstatus des Systems (online/offline) – Junels sendet dafür selbst nichts
+  static var networkOnline = true
+  static var netMonitor: NWPathMonitor?
+  static func startNetworkMonitor() {
+    guard netMonitor == nil else { return }
+    let m = NWPathMonitor()
+    m.pathUpdateHandler = { path in
+      let online = path.status == .satisfied
+      DispatchQueue.main.async {
+        if online != networkOnline {
+          networkOnline = online
+          channel?.invokeMethod("network", arguments: ["online": online])
+        }
+      }
+    }
+    m.start(queue: DispatchQueue(label: "junels.net"))
+    netMonitor = m
+  }
+
   static func dockMenu() -> NSMenu {
     let menu = NSMenu()
     for (id, label) in quickActions {

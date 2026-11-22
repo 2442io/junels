@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.36.0', [
+    'Gespräch & Vorlesen ohne lange Pausen: Ist die gewählte Stimme auf dem Gerät langsamer als Echtzeit, spricht Junels automatisch mit der Gerätestimme weiter (und merkt sich das; in den Gesprächs-Einstellungen umkehrbar)',
+    'Offline-Erkennung: Junels merkt, wenn kein Netz da ist – zeigt „Kein Netz“, lässt Internet-Werkzeuge weg, antwortet mit dem Modell auf dem Gerät statt der Cloud und holt Beobachtungen nach, sobald das Netz zurück ist',
+  ]),
   ('1.35.1', [
     'Antworten in deiner Sprache: Fragst du auf Französisch, Englisch, Italienisch oder Spanisch, antwortet der Agent auch so',
     'Flüge, Hotels, Bahn und aktuelle Preise: Der Agent öffnet direkt eine passende Seite im Browser (z. B. Google Flights) statt aufzugeben',
