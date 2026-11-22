@@ -37,3 +37,4 @@ export 'src/sync/sync_crypto.dart' show SyncKeys, sha256, hexOf, pbkdf2Master;
 export 'src/vad.dart';
 export 'src/watch.dart';
 export 'src/flow.dart';
+export 'src/http_call.dart';

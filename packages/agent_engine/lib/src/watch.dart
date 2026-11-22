@@ -3,6 +3,7 @@
 // Benachrichtigung übernimmt die App.
 
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'agent/network_tools.dart';
 import 'sync/sync_crypto.dart' show sha256, hexOf;
@@ -52,6 +53,10 @@ class WatchItem {
     List<String>? seenLinks,
     List<WatchEvent>? events,
     this.lastError,
+    this.promptMode = false,
+    this.query = '',
+    this.recentOnly = false,
+    this.flowId,
   })  : seenLinks = seenLinks ?? [],
         events = events ?? [];
 
@@ -59,7 +64,7 @@ class WatchItem {
   WatchKind kind;
   String title;
 
-  /// Adresse (Seite) bzw. Suchbegriffe (Thema).
+  /// Adresse (Seite) bzw. Suchanfrage oder Beschreibung (Thema).
   String target;
   int intervalMinutes;
   bool summarize;
@@ -67,6 +72,19 @@ class WatchItem {
   bool enabled;
   DateTime? lastCheck;
   String? fingerprint;
+
+  /// Thema als Beschreibung („Prompt“): [target] beschreibt in eigenen Worten, was gesucht ist;
+  /// [query] ist die daraus abgeleitete Suchanfrage, der Agent prüft die Treffer auf Relevanz.
+  bool promptMode;
+
+  /// Tatsächlich verwendete Suchanfrage (leer = [target]).
+  String query;
+
+  /// Nur aktuelle Meldungen (Nachrichten der letzten 24 Stunden).
+  bool recentOnly;
+
+  /// Gehört zu einem Prozess (Auslöser „Beobachten“ im Canvas).
+  String? flowId;
 
   /// Letzter Textstand der Seite (für den Vergleich, gekürzt).
   String snapshot;
@@ -76,17 +94,39 @@ class WatchItem {
 
   int get unseen => events.where((e) => !e.seen).length;
 
-  bool due(DateTime now) =>
-      enabled && (lastCheck == null || now.difference(lastCheck!).inMinutes >= intervalMinutes);
+  /// Suchanfrage für Nachrichten und Websuche.
+  String get searchQuery => (promptMode && query.trim().isNotEmpty ? query : target).trim();
 
-  String get intervalLabel => switch (intervalMinutes) {
-        <= 60 => 'stündlich',
-        <= 180 => 'alle 3 Stunden',
-        <= 360 => 'alle 6 Stunden',
-        <= 720 => 'alle 12 Stunden',
-        <= 1440 => 'täglich',
-        _ => 'wöchentlich',
-      };
+  /// Fällig? (15 s Spielraum, weil der Zeitplan alle 30 s nachsieht)
+  bool due(DateTime now) =>
+      enabled && (lastCheck == null || now.difference(lastCheck!).inSeconds >= intervalMinutes * 60 - 15);
+
+  /// Auswahl für die Oberfläche (Minuten → Beschriftung).
+  static const intervalOptions = <(int, String)>[
+    (1, 'jede Minute'),
+    (5, 'alle 5 Minuten'),
+    (10, 'alle 10 Minuten'),
+    (15, 'alle 15 Minuten'),
+    (30, 'alle 30 Minuten'),
+    (60, 'stündlich'),
+    (180, 'alle 3 Stunden'),
+    (360, 'alle 6 Stunden'),
+    (720, 'alle 12 Stunden'),
+    (1440, 'täglich'),
+    (10080, 'wöchentlich'),
+  ];
+
+  static String labelFor(int minutes) {
+    for (final (m, l) in intervalOptions) {
+      if (m == minutes) return l;
+    }
+    if (minutes < 60) return minutes == 1 ? 'jede Minute' : 'alle $minutes Minuten';
+    if (minutes % 1440 == 0) return minutes == 1440 ? 'täglich' : 'alle ${minutes ~/ 1440} Tage';
+    if (minutes % 60 == 0) return minutes == 60 ? 'stündlich' : 'alle ${minutes ~/ 60} Stunden';
+    return 'alle $minutes Minuten';
+  }
+
+  String get intervalLabel => labelFor(intervalMinutes);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -97,6 +137,10 @@ class WatchItem {
         'summarize': summarize,
         'notify': notify,
         'enabled': enabled,
+        if (promptMode) 'prompt': true,
+        if (query.isNotEmpty) 'query': query,
+        if (recentOnly) 'recent': true,
+        if (flowId != null) 'flow': flowId,
         if (lastCheck != null) 'lastCheck': lastCheck!.toIso8601String(),
         if (fingerprint != null) 'fp': fingerprint,
         if (snapshot.isNotEmpty) 'snapshot': snapshot,
@@ -110,10 +154,14 @@ class WatchItem {
         kind: j['kind'] == 'topic' ? WatchKind.topic : WatchKind.page,
         title: j['title'] as String? ?? '',
         target: j['target'] as String? ?? '',
-        intervalMinutes: (j['interval'] as num?)?.toInt() ?? 360,
+        intervalMinutes: math.max(1, (j['interval'] as num?)?.toInt() ?? 360),
         summarize: j['summarize'] as bool? ?? true,
         notify: j['notify'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
+        promptMode: j['prompt'] as bool? ?? false,
+        query: j['query'] as String? ?? '',
+        recentOnly: j['recent'] as bool? ?? false,
+        flowId: j['flow'] as String?,
         lastCheck: DateTime.tryParse(j['lastCheck'] as String? ?? ''),
         fingerprint: j['fp'] as String?,
         snapshot: j['snapshot'] as String? ?? '',
@@ -121,6 +169,70 @@ class WatchItem {
         events: [for (final e in (j['events'] as List? ?? const [])) WatchEvent.fromJson((e as Map).cast())],
         lastError: j['error'] as String?,
       );
+}
+
+/// Suchanfrage wie bei Google: "genaue Phrase", -ausschließen, site:domain.at, OR.
+/// Die Anfrage geht unverändert an die Suchmaschinen; Ausschlüsse und site: werden
+/// zusätzlich lokal geprüft (nicht jede Suchmaschine hält sich daran).
+class SearchQuery {
+  SearchQuery._(this.raw, this.phrases, this.excludes, this.sites, this.words);
+  final String raw;
+  final List<String> phrases;
+  final List<String> excludes;
+  final List<String> sites;
+  final List<String> words;
+
+  factory SearchQuery.parse(String q) {
+    final phrases = <String>[], excludes = <String>[], sites = <String>[], words = <String>[];
+    for (final m in RegExp(r'(-?)"([^"]+)"|(\S+)').allMatches(q)) {
+      if (m.group(2) != null) {
+        (m.group(1) == '-' ? excludes : phrases).add(m.group(2)!.toLowerCase().trim());
+        continue;
+      }
+      final w = m.group(3)!;
+      final lw = w.toLowerCase();
+      if (lw.startsWith('site:') && lw.length > 5) {
+        sites.add(lw.substring(5).replaceFirst(RegExp(r'^https?://'), '').replaceFirst(RegExp(r'^www\.'), '').replaceAll(RegExp(r'/.*'), ''));
+      } else if (w.startsWith('-') && w.length > 1) {
+        excludes.add(lw.substring(1));
+      } else if (w != 'OR' && w != '|' && !lw.startsWith('when:')) {
+        words.add(lw.replaceFirst(RegExp(r'^\+'), ''));
+      }
+    }
+    return SearchQuery._(q.trim(), phrases, excludes, sites, words);
+  }
+
+  bool get hasFilters => excludes.isNotEmpty || sites.isNotEmpty;
+
+  /// Treffer behalten? (Ausschlüsse und site: streng, der Rest bleibt den Suchmaschinen überlassen)
+  bool accepts(String title, String note, String link) {
+    final text = '$title $note'.toLowerCase();
+    for (final e in excludes) {
+      if (text.contains(e)) return false;
+    }
+    if (sites.isNotEmpty) {
+      final host = (Uri.tryParse(link)?.host ?? '').toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+      // Google-News-Links zeigen auf news.google.com – dort entscheidet der Feed selbst
+      if (host != 'news.google.com' && !sites.any((s) => host == s || host.endsWith('.$s'))) return false;
+    }
+    return true;
+  }
+
+  /// Kurzbeschreibung („enthält …, ohne …, nur auf …“) für die Oberfläche.
+  String describe() => [
+        if (words.isNotEmpty) words.join(' '),
+        for (final p in phrases) '„$p“',
+        if (excludes.isNotEmpty) 'ohne ${excludes.join(', ')}',
+        if (sites.isNotEmpty) 'nur ${sites.join(', ')}',
+      ].join(' · ');
+}
+
+/// Ein Treffer der Vorschau („Testen“ im Dialog).
+class WatchPreview {
+  WatchPreview({required this.ok, required this.message, List<Map<String, String>>? hits}) : hits = hits ?? [];
+  final bool ok;
+  final String message;
+  final List<Map<String, String>> hits;
 }
 
 /// Ergebnis einer Prüfung.
@@ -213,31 +325,86 @@ class WatchChecker {
     return WatchCheck(event: WatchEvent(time: now, title: title, detail: detail, links: newLinks.take(12).toList()));
   }
 
-  Future<WatchCheck> _topic(WatchItem item, DateTime now) async {
-    final q = item.target.trim();
+  /// Treffer zu einer Suchanfrage (Nachrichten-Feed + Websuche), gefiltert nach Ausschlüssen/site:.
+  Future<List<Map<String, String>>> topicHits(String q, {bool recentOnly = false}) async {
+    final sq = SearchQuery.parse(q);
     final found = <Map<String, String>>[];
     final errors = <String>[];
-    // Nachrichten (Google-News-Feed) …
+    // Nachrichten (Google-News-Feed) – versteht dieselben Operatoren wie die Google-Suche
     try {
-      final rss = Uri.https('news.google.com', '/rss/search', {'q': q, 'hl': 'de', 'gl': 'AT', 'ceid': 'AT:de'});
+      final rss = Uri.https('news.google.com', '/rss/search',
+          {'q': recentOnly && !q.contains('when:') ? '$q when:1d' : q, 'hl': 'de', 'gl': 'AT', 'ceid': 'AT:de'});
       final xml = await fetcher(rss);
-      for (final i in extractFeedItems(xml, rss).take(20)) {
-        if (i.link.isNotEmpty) found.add({'title': i.title, 'link': i.link, if (i.image.isNotEmpty) 'image': i.image});
+      for (final i in extractFeedItems(xml, rss).take(25)) {
+        if (i.link.isEmpty || !sq.accepts(i.title, i.summary, i.link)) continue;
+        found.add({'title': i.title, 'link': i.link, if (i.image.isNotEmpty) 'image': i.image, if (i.date.isNotEmpty) 'date': i.date});
       }
     } catch (e) {
       errors.add('News: $e');
     }
-    // … und Websuche
-    try {
-      final (hits, _, errs) = await WebSearchTool.searchAllEngines(q, fetcher);
-      for (final h in hits.take(10)) {
-        found.add({'title': h.title, 'link': h.url, if (h.snippet.isNotEmpty) 'note': h.snippet});
+    // … und Websuche (bei „nur Aktuelles“ nur, wenn die Nachrichten nichts liefern)
+    if (!recentOnly || found.isEmpty) {
+      try {
+        final (hits, _, errs) = await WebSearchTool.searchAllEngines(q, fetcher);
+        for (final h in hits.take(12)) {
+          if (!sq.accepts(h.title, h.snippet, h.url)) continue;
+          found.add({'title': h.title, 'link': h.url, if (h.snippet.isNotEmpty) 'note': h.snippet});
+        }
+        if (hits.isEmpty) errors.addAll(errs);
+      } catch (e) {
+        errors.add('Suche: $e');
       }
-      if (hits.isEmpty) errors.addAll(errs);
-    } catch (e) {
-      errors.add('Suche: $e');
     }
-    if (found.isEmpty) throw Exception(errors.isEmpty ? 'keine Treffer' : errors.join('; '));
+    if (found.isEmpty && errors.isNotEmpty) throw Exception(errors.join('; '));
+    return found;
+  }
+
+  /// Vorschau ohne den Eintrag zu verändern – zum Ausprobieren vor dem Speichern.
+  Future<WatchPreview> preview(WatchItem item) async {
+    try {
+      if (item.kind == WatchKind.page) {
+        var url = item.target.trim();
+        if (!url.startsWith('http')) url = 'https://$url';
+        final uri = Uri.parse(url);
+        final html = await fetcher(uri);
+        final blocked = detectBlockPage(html);
+        if (blocked != null) return WatchPreview(ok: false, message: blocked);
+        final text = htmlToText(html);
+        final items = extractPageItems(html, uri);
+        final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+        return WatchPreview(
+          ok: words > 0,
+          message: words == 0
+              ? 'Die Seite ist erreichbar, enthält aber keinen lesbaren Text (vermutlich per JavaScript gebaut).'
+              : 'Seite erreichbar: $words Wörter, ${items.length} Einträge/Links erkannt. Junels meldet neue Einträge und Textänderungen.',
+          hits: [
+            for (final i in items.take(8))
+              {'title': i.title, 'link': i.link, if (i.image.isNotEmpty) 'image': i.image}
+          ],
+        );
+      }
+      final q = item.searchQuery;
+      if (q.isEmpty) return WatchPreview(ok: false, message: 'Bitte Suchbegriffe eingeben.');
+      final hits = await topicHits(q, recentOnly: item.recentOnly);
+      final sq = SearchQuery.parse(q);
+      return WatchPreview(
+        ok: hits.isNotEmpty,
+        message: hits.isEmpty
+            ? 'Im Moment keine Treffer – Junels meldet sich, sobald etwas erscheint.'
+            : '${hits.length} aktuelle Treffer${sq.describe().isEmpty ? '' : ' (${sq.describe()})'}. Gemeldet werden nur neue.',
+        hits: hits.take(8).toList(),
+      );
+    } catch (e) {
+      return WatchPreview(ok: false, message: 'Nicht erreichbar: $e');
+    }
+  }
+
+  Future<WatchCheck> _topic(WatchItem item, DateTime now) async {
+    final found = await topicHits(item.searchQuery, recentOnly: item.recentOnly);
+    if (found.isEmpty && item.fingerprint == null) {
+      item.fingerprint = 'topic';
+      return WatchCheck(first: true);
+    }
     String key(String link) => cleanLink(link).replaceFirst(RegExp(r'^https?://(www\.)?'), '');
     final seen = item.seenLinks.toSet();
     final fresh = <Map<String, String>>[];
