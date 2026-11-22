@@ -30,4 +30,4 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Engine-Tests (ohne Modell)
         working-directory: packages/agent_engine
-        run: dart run test/engine_test.dart 2>&1 | tail -150
+        run: dart run test/engine_test.dart 2>&1 | grep -E "FAIL|bestanden|^[^ ]" | grep -B1 -E "FAIL|bestanden"
