@@ -185,13 +185,29 @@ def patch_android():
             m = re.search(r'(<activity[^>]*android:name="\.MainActivity".*?</intent-filter>)', s, re.S)
             if m:
                 s = s[:m.end()] + share + s[m.end():]
-        if "<queries>" not in s:
-            # Apps finden und öffnen (Freigabeliste „Apps steuern“), Links in Apps öffnen
-            s = s.replace("<application", '<queries>\n'
-                          '        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>\n'
-                          '        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>\n'
-                          '        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="spotify" /></intent>\n'
-                          '    </queries>\n    <application', 1)
+        if 'android:scheme="junels"' not in s:
+            # App-Links junels://… (z. B. Rücksprung nach der SSO-Anmeldung) → MainActivity
+            link = ('\n            <intent-filter>\n'
+                    '                <action android:name="android.intent.action.VIEW" />\n'
+                    '                <category android:name="android.intent.category.DEFAULT" />\n'
+                    '                <category android:name="android.intent.category.BROWSABLE" />\n'
+                    '                <data android:scheme="junels" />\n'
+                    '            </intent-filter>')
+            m = re.search(r'(<activity[^>]*android:name="\.MainActivity".*?</intent-filter>)', s, re.S)
+            if m:
+                s = s[:m.end()] + link + s[m.end():]
+        if "junels-queries" not in s:
+            # Apps finden und öffnen (Freigabeliste „Apps steuern“), Links in Apps öffnen.
+            # Flutter legt selbst schon <queries> (PROCESS_TEXT) an – darum hineinschreiben statt nur neu anlegen.
+            ours = ('        <!-- junels-queries -->\n'
+                    '        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>\n'
+                    '        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>\n'
+                    '        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="spotify" /></intent>\n'
+                    '        <package android:name="com.spotify.music" />\n')
+            if "<queries>" in s:
+                s = s.replace("<queries>", "<queries>\n" + ours, 1)
+            else:
+                s = s.replace("<application", "<queries>\n" + ours + "    </queries>\n    <application", 1)
         if ".JunelsWidget" not in s:
             s = s.replace("</application>",
                           '    <receiver android:name=".JunelsWidget" android:exported="false" android:label="Frag Junels">\n'

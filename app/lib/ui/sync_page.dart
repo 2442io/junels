@@ -206,7 +206,7 @@ class _SyncPageState extends State<SyncPage> {
                     Text(
                       '1. Paket „Junels Agent-API“ (Weiche) auf den Webspace laden und eine Domain darauf zeigen lassen, '
                       'z. B. agent.2442.io.\n'
-                      '2. /control öffnen, einrichten und die Version junels-api_v1.zip hochladen und zuweisen.\n'
+                      '2. /control öffnen, einrichten und die Version junels-api_v2.zip hochladen und zuweisen.\n'
                       '3. https://<domain>/login im Browser öffnen, „Mit SSO verbinden“ klicken und im SSO bestätigen.\n'
                       '4. Hier die Adresse (https://<domain>) eintragen und „Mit SSO anmelden“ tippen.',
                       style: t.bodySmall,

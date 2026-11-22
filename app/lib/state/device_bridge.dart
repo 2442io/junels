@@ -28,6 +28,9 @@ class DeviceBridge implements DeviceActions {
   void Function(String action)? onLaunchAction;
   void Function(SharedContent content)? onShared;
 
+  /// junels://…-Link, der nicht für den Chat gedacht ist (z. B. junels://sso/<code> nach der SSO-Anmeldung).
+  void Function(Uri link)? onLink;
+
   /// Netzwerkstatus des Systems hat sich geändert.
   void Function(bool online)? onNetwork;
 
@@ -67,6 +70,9 @@ class DeviceBridge implements DeviceActions {
           if (c != null) onShared?.call(c);
         case 'network':
           onNetwork?.call(a['online'] != false);
+        case 'link':
+          final u = Uri.tryParse('${a['url'] ?? ''}');
+          if (u != null) onLink?.call(u);
       }
       return null;
     });
@@ -78,6 +84,8 @@ class DeviceBridge implements DeviceActions {
     try {
       final r = (await _ch.invokeMethod<Map>('takeLaunch'))?.cast<String, dynamic>() ?? const {};
       final shared = r['shared'] is Map ? _parseShared((r['shared'] as Map).cast<String, dynamic>()) : null;
+      final link = Uri.tryParse('${r['link'] ?? ''}');
+      if (link != null && link.scheme == 'junels') onLink?.call(link);
       return (r['action'] as String?, shared);
     } catch (e) {
       return (null, null);

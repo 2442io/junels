@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
@@ -301,45 +302,53 @@ class SyncService implements SyncSource {
   }
 
   /// Anmelden: Browser öffnet den eigenen Server → SSO → zurück an 127.0.0.1 (nur dieses Gerät).
+  Completer<void>? _ssoPending;
+
+  /// Anmeldung mit SSO: Browser öffnet …/login/app/<prüfwert>, nach dem SSO springt die Seite per
+  /// junels://sso/<code> zurück in die App. Der Code gilt nur mit dem geheimen Prüfwert dieses Geräts.
   Future<void> ssoLogin() async {
     if (config.serverUrl.trim().isEmpty) throw SyncException('Bitte zuerst die Server-Adresse eintragen.');
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final done = Completer<Map<String, String>>();
-    server.listen((req) async {
-      // Rücksprung als Klar-URL: http://127.0.0.1:<port>/sso/<token>
-      final m = RegExp(r'^/sso/([0-9a-f]{32,128})$').firstMatch(req.uri.path);
-      if (m == null) {
-        req.response.statusCode = 404;
-        await req.response.close();
-        return;
-      }
-      final q = {'token': m.group(1)!};
-      req.response.headers.contentType = ContentType.html;
-      req.response.write('<!doctype html><meta charset="utf-8"><title>Junels</title>'
-          '<body style="font:17px system-ui;display:grid;place-items:center;min-height:90vh">'
-          '<div><h2>Angemeldet ✓</h2><p>Du kannst dieses Fenster schließen und zu Junels zurückkehren.</p></div>');
-      await req.response.close();
-      if (!done.isCompleted) done.complete(q);
-    });
+    if (_legacyServer) throw SyncException('SSO gibt es nur mit der Agent-API (Weiche). Trage deren Adresse ein, z. B. https://agent.2442.io');
+    final rnd = Random.secure();
+    final verifier = hexOf(List<int>.generate(32, (_) => rnd.nextInt(256)));
+    await Vault.write('sso:verifier', verifier);
+    final challenge = hexOf(sha256(utf8.encode(verifier)));
+    final pending = _ssoPending = Completer<void>();
+    await NativeFiles.openUrl(_api('login/app/$challenge').toString());
+    status.value = 'Anmeldung im Browser …';
     try {
-      if (_legacyServer) throw SyncException('SSO gibt es nur mit der Agent-API (Weiche). Trage deren Adresse ein, z. B. https://agent.2442.io');
-      await NativeFiles.openUrl(_api('login/${server.port}').toString());
-      status.value = 'Anmeldung im Browser …';
-      final q = await done.future.timeout(const Duration(minutes: 5),
+      await pending.future.timeout(const Duration(minutes: 10),
           onTimeout: () => throw SyncException('Anmeldung nicht abgeschlossen (Zeit abgelaufen).'));
-      final token = q['token'] ?? '';
+    } finally {
+      if (identical(_ssoPending, pending)) _ssoPending = null;
+    }
+  }
+
+  /// junels://sso/<code> – kommt auch an, wenn die App inzwischen neu gestartet wurde.
+  Future<void> handleLink(Uri link) async {
+    final seg = [if (link.host.isNotEmpty) link.host, ...link.pathSegments];
+    if (seg.length < 2 || seg[0] != 'sso') return;
+    final pending = _ssoPending;
+    try {
+      final verifier = await Vault.read('sso:verifier');
+      if (verifier == null) throw SyncException('Anmeldung nicht gestartet – bitte in Junels „Mit SSO anmelden“ tippen.');
+      final r = await syncHttpPost(_api('token'), {'code': seg[1], 'verifier': verifier});
+      final token = '${r['token'] ?? ''}';
       if (token.length < 32) throw SyncException('Anmeldung fehlgeschlagen.');
       await Vault.write('sso:token', token);
-      final who = await syncHttpPost(_api('whoami'), {'token': token});
+      await Vault.delete('sso:verifier');
       config
-        ..ssoName = '${who['name'] ?? ''}'
-        ..ssoEmail = '${who['email'] ?? ''}';
+        ..ssoName = '${r['name'] ?? ''}'
+        ..ssoEmail = '${r['email'] ?? ''}';
       if (config.level < 1) config.level = 1;
       await saveConfig();
       status.value = 'Angemeldet als ${config.ssoName.isNotEmpty ? config.ssoName : config.ssoEmail}';
       appLog('Sync', 'Mit SSO angemeldet');
-    } finally {
-      await server.close(force: true);
+      if (pending != null && !pending.isCompleted) pending.complete();
+    } catch (e) {
+      appLog('Sync', 'SSO: $e', error: true);
+      status.value = '$e';
+      if (pending != null && !pending.isCompleted) pending.completeError(e);
     }
   }
 

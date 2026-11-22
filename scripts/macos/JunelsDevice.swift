@@ -23,14 +23,34 @@ enum JunelsDevice {
         DispatchQueue.global(qos: .userInitiated).async {
           var out: [[String: String]] = []
           var seen = Set<String>()
-          for dir in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
+          func add(_ url: URL) {
+            guard let id = Bundle(url: url)?.bundleIdentifier, !seen.contains(id), id != Bundle.main.bundleIdentifier else { return }
+            seen.insert(id)
+            out.append(["name": url.deletingPathExtension().lastPathComponent, "id": id])
+          }
+          // In der Sandbox ist NSHomeDirectory() der Container – den echten Benutzerordner nehmen
+          let home = getpwuid(getuid()).flatMap { String(validatingUTF8: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+          for dir in ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities", home + "/Applications"] {
             let items = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-            for name in items where name.hasSuffix(".app") {
+            for name in items {
               let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
-              guard let id = Bundle(url: url)?.bundleIdentifier, !seen.contains(id), id != Bundle.main.bundleIdentifier else { continue }
-              seen.insert(id)
-              out.append(["name": String(name.dropLast(4)), "id": id])
+              if name.hasSuffix(".app") { add(url); continue }
+              // Unterordner wie /Applications/Adobe … eine Ebene tiefer
+              var isDir: ObjCBool = false
+              if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                for sub in ((try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []) where sub.hasSuffix(".app") {
+                  add(url.appendingPathComponent(sub))
+                }
+              }
             }
+          }
+          // Bekannte Apps über die Startdienste finden, egal wo sie liegen (z. B. Spotify)
+          for id in ["com.spotify.client", "com.apple.Music", "com.apple.podcasts", "com.apple.TV", "com.apple.Safari",
+                     "com.google.Chrome", "org.mozilla.firefox", "com.microsoft.edgemac", "com.tinyspeck.slackmacgap",
+                     "com.microsoft.teams2", "us.zoom.xos", "com.hnc.Discord", "notion.id", "com.microsoft.VSCode",
+                     "com.microsoft.Word", "com.microsoft.Excel", "com.microsoft.Powerpoint", "com.microsoft.Outlook",
+                     "net.whatsapp.WhatsApp", "ru.keepcoder.Telegram", "org.whispersystems.signal-desktop"] where !seen.contains(id) {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) { add(url) }
           }
           out.sort { ($0["name"] ?? "").lowercased() < ($1["name"] ?? "").lowercased() }
           DispatchQueue.main.async { result(out) }
@@ -127,7 +147,9 @@ enum JunelsDevice {
         }
         let action = pendingAction
         pendingAction = nil
-        result(["action": action ?? NSNull(), "shared": shared] as [String: Any])
+        let link = pendingLink
+        pendingLink = nil
+        result(["action": action ?? NSNull(), "shared": shared, "link": link ?? NSNull()] as [String: Any])
       case "composeEmail":
         var c = URLComponents()
         c.scheme = "mailto"
@@ -380,6 +402,14 @@ enum JunelsDevice {
     if let ch = channel { ch.invokeMethod("launchAction", arguments: ["id": id]) } else { pendingAction = id }
   }
 
+  static var pendingLink: String?
+
+  /// junels://sso/… usw. an die App (nicht in den Chat).
+  static func link(_ url: String) {
+    NSApp.activate(ignoringOtherApps: true)
+    if let ch = channel { ch.invokeMethod("link", arguments: ["url": url]) } else { pendingLink = url }
+  }
+
   static var pendingText: (String, Bool)?
   static var pendingAction: String?
 
@@ -450,6 +480,8 @@ final class JunelsServices: NSObject {
           let u = URLComponents(string: s) else { return }
     let q = u.queryItems?.first(where: { ["text", "q", "frage"].contains($0.name) })?.value ?? ""
     switch (u.host ?? "").lowercased() {
+    case "sso":
+      JunelsDevice.link(s)
     case "neu", "newchat", "chat":
       JunelsDevice.launch("newchat")
       if !q.isEmpty { JunelsDevice.shareText(q) }

@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.38.2', [
+    'SSO-Anmeldung springt nach dem Login direkt per App-Link zurück in Junels – kein endlos ladender Browser mehr (braucht Agent-API v2)',
+    'Der Anmelde-Code gilt nur einmal, 10 Minuten und nur zusammen mit einem geheimen Prüfwert dieses Geräts',
+    'Apps steuern: Spotify und andere Apps erscheinen jetzt in der Liste (Android: Sichtbarkeit der Apps repariert; Mac: auch Unterordner und ~/Programme)',
+  ]),
   ('1.38.1', [
     'Junels Agent-API hinter der Weiche (Kanäle Prod/Q/T, Verwaltung, Abnahme, Rollback): nur noch Klar-URLs – /login/<port>, /sync, /whoami, /logout, /wipe; Rücksprung an die App als /sso/<token>',
     'SSO-Anmeldung läuft jetzt über die Agent-API; die einzelne Datei junels-sync.php bleibt für den Abgleich ohne SSO',

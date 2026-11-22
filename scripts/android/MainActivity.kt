@@ -22,12 +22,14 @@ class MainActivity : FlutterActivity() {
     private var launchConversation: String? = null
     private var launchAction: String? = null
     private var launchShared: Map<String, Any>? = null
+    private var launchLink: String? = null
     private var device: MethodChannel? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         launchConversation = intent?.getStringExtra("conversation")
         launchAction = intent?.getStringExtra("junels_action")
         launchShared = JunelsDevice.readShared(applicationContext, intent)
+        launchLink = junelsLink(intent)
         super.onCreate(savedInstanceState)
     }
 
@@ -36,7 +38,12 @@ class MainActivity : FlutterActivity() {
         intent.getStringExtra("conversation")?.let { channel?.invokeMethod("openConversation", mapOf("id" to it)) }
         intent.getStringExtra("junels_action")?.let { device?.invokeMethod("launchAction", mapOf("id" to it)) }
         JunelsDevice.readShared(applicationContext, intent)?.let { device?.invokeMethod("shared", it) }
+        junelsLink(intent)?.let { device?.invokeMethod("link", mapOf("url" to it)) }
     }
+
+    /** junels://… (z. B. Rücksprung nach der SSO-Anmeldung im Browser) */
+    private fun junelsLink(intent: Intent?): String? =
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data?.takeIf { it.scheme == "junels" }?.toString()
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (!JunelsDevice.onActivityResult(applicationContext, requestCode, resultCode, data)) {
@@ -88,9 +95,10 @@ class MainActivity : FlutterActivity() {
         dev.setMethodCallHandler { call, result ->
             when (call.method) {
                 "takeLaunch" -> {
-                    result.success(mapOf("action" to launchAction, "shared" to launchShared))
+                    result.success(mapOf("action" to launchAction, "shared" to launchShared, "link" to launchLink))
                     launchAction = null
                     launchShared = null
+                    launchLink = null
                 }
                 else -> JunelsDevice.handle(this, this, call, result)
             }

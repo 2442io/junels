@@ -3064,6 +3064,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         pendingLaunch.value = a;
       })
       ..onShared = receiveShared
+      ..onLink = ((u) => unawaited(sync.handleLink(u)))
       ..onNetwork = _setOnline
       ..init();
     await deviceBridge.grantFolders([
