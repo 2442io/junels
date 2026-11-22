@@ -10,6 +10,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.27.0', [
+    'Präsentationen und Dokumente bekommen ihre Bilder automatisch, sobald das Bildmodell geladen ist (Handy bis 3, Mac bis 6 Bilder) – auch aus „Bild-Idee: …“-Zeilen',
+    'Bilder erzeugen bricht nicht mehr nach 20 Sekunden ab: Werkzeuge haben eigene Zeitgrenzen (Bild 8 min, Präsentation mit Bildern 15 min)',
+  ]),
   ('1.26.0', [
     'Routinen: jede geplante Aufgabe und jeder Prozess hat einen eigenen Chat (Kategorie „Routinen“) – dort landen nur die Ergebnisse, z. B. jeden Morgen um 7 die Morgen-Übersicht im selben Chat',
     'Keine erfundenen Links mehr: Adressen, die in keiner Quelle vorkamen, werden entfernt; Karten nur noch aus echten Treffern',
