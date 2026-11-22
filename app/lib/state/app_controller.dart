@@ -1762,7 +1762,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     if ((tools ?? activeTools).any((t) => t.name == 'browser')) {
       system.write('\n\nBROWSER: Nennt der Nutzer eine Webseite oder Adresse, öffne sie mit browser '
-          '(action "open" oder "search") – nicht web_search. Wiederhole keine Suche, die schon nichts gefunden hat.');
+          '(action "open" oder "search") – nicht web_search. Wiederhole keine Suche, die schon nichts gefunden hat. '
+          'Für aktuelle Preise, Flüge, Hotels, Bahn und Verfügbarkeiten öffne mit browser direkt eine passende Seite, z. B. '
+          'https://www.google.com/travel/flights?q=Flights+from+Vienna+to+Toulouse oder https://www.booking.com – '
+          'und lies dort die Preise ab. Gib nicht auf, ohne den Browser versucht zu haben, und verweise nie auf unpassende Seiten '
+          '(z. B. Geizhals ist für Technik, nicht für Flüge).');
     }
     if (voice) {
       system.write('\n\nGESPRÄCHSMODUS: Deine Antwort wird vorgelesen. Antworte wie im persönlichen Gespräch: '
@@ -1825,12 +1829,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// das Werkzeug zu sehen. Für „Hi“ oder normale Fragen gibt es gar keine Werkzeuge –
   /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
   static final _toolTriggers = <String, RegExp>{
-    'browser': RegExp(r'browser|https?://|\b[a-z0-9-]+\.(at|de|com|ch|li|net|org|io|eu|info|fyi|app|dev|ai|co|shop)\b|öffne\w* .*(seite|webseite|website)|geh\w* auf|navigier|klick|surf|'
+    'browser': RegExp(r'browser|https?://|flug|flüge|flight|\bvols?\b|vuelos?|voli\b|hotel|unterkunft|zimmer frei|bahn|zugticket|train|billet|ticket|reservier|buchen|booking|verfügbar|'
+        r'tarif|\bprix\b|price|prezz|precio|günstigst|cheapest|moins cher|'
+        r'\b[a-z0-9-]+\.(at|de|com|ch|li|net|org|io|eu|info|fyi|app|dev|ai|co|shop)\b|öffne\w* .*(seite|webseite|website)|geh\w* auf|navigier|klick|surf|'
         r'amazon|ebay|willhaben|shop|bestell|anmelde|formular|auf der seite|im browser|such\w* (auf|bei) '),
     'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
     'site_search': RegExp(r'amazon|ebay|geizhals|idealo|willhaben|otto\.de|mediamarkt|thalia|chefkoch|wikipedia|'
         r'shop|kaufen|bestell|angebot|günstig|preisvergleich|produkt|auf [\w-]+\.(at|de|com)\b.*such|such\w* (auf|bei) '),
-    'web_search': RegExp(r'internet|im netz|online|google|such(e|en)? (im|nach|mal|mir)|such mir|finde (mir|im)|recherch|'
+    'web_search': RegExp(r'internet|im netz|online|google|web\b|search|look up|find\b|cherche|recherche|regarde|trouve|busca|cerca|'
+        r'flug|flüge|flight|\bvols?\b|hotel|tarif|\bprix\b|price|prezz|precio|actuel|current|latest|'
+        r'such(e|en)? (im|nach|mal|mir)|such mir|finde (mir|im)|recherch|'
         r'angebot|kaufen|empfehl\w* .*(produkt|marke)|vergleich|test(sieger|bericht)|'
         r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
     // Wortgrenzen: „Regenbogen“, „Windows“, „Jackett“ sind keine Wetterfragen
@@ -3522,6 +3530,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         : knowledge.search(turnInput).where((h) => rag.contains(h.chunk.url)).toList();
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
+    // Sprache des Nutzers ausdrücklich vorgeben (kleine Modelle rutschen sonst ins Deutsche)
+    final lang = detectLanguage(input);
+    if (lang != null && lang != 'de') turnInput = '$turnInput\n\n[${languageHint(lang)}]';
     if (voice) turnInput = '$turnInput\n\n${voiceTurnHint()}';
     var runner = _makeRunner(eng, system, tools: runTools, requiredTool: requiredTool);
     _runner = runner;

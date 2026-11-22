@@ -263,6 +263,14 @@ Future<void> main() async {
     check(streamed.isNotEmpty && streamed.first.thought!.length < 'Ich rechne.'.length, 'Gedanke wird live gestreamt');
   });
 
+  await group('Sprache erkennen', () async {
+    check(detectLanguage('Regarde sur Internet quels sont les tarifs actuels pour les vols de Vienne à Toulouse.') == 'fr', 'Französisch');
+    check(detectLanguage('What are the current prices for flights from Vienna to Toulouse?') == 'en', 'Englisch');
+    check(detectLanguage('Was kosten aktuell Flüge von Wien nach Toulouse?') == 'de', 'Deutsch');
+    check(detectLanguage('Cerca i prezzi dei voli da Vienna a Tolosa') == 'it', 'Italienisch');
+    check(detectLanguage('Hallo') == null, 'zu kurz: keine Vorgabe');
+  });
+
   await group('Posteingang (IMAP, nur lesend)', () async {
     check(decodeMimeWords('=?UTF-8?B?UHLDpHNlbnRhdGlvbg==?= fertig') == 'Präsentation fertig' &&
         decodeMimeWords('=?ISO-8859-1?Q?Gr=FC=DFe_aus_Wien?=') == 'Grüße aus Wien', 'MIME-Betreffs dekodiert');

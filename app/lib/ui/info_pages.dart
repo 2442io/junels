@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.35.1', [
+    'Antworten in deiner Sprache: Fragst du auf Französisch, Englisch, Italienisch oder Spanisch, antwortet der Agent auch so',
+    'Flüge, Hotels, Bahn und aktuelle Preise: Der Agent öffnet direkt eine passende Seite im Browser (z. B. Google Flights) statt aufzugeben',
+    'Internet-Suche wird auch bei Fragen auf Englisch, Französisch, Italienisch und Spanisch angeboten',
+  ]),
   ('1.35.0', [
     'Posteingang lesen: Mit dem Mail-Konto (IMAP) prüft Junels unbeantwortete und ungelesene Mails – nur Absender, Betreff, Datum, ohne etwas im Postfach zu ändern',
     '„Was ist liegengeblieben?“ zeigt jetzt auch unbeantwortete Mails (ohne Newsletter) – auch ohne MCP-Werkzeug',
