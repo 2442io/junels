@@ -25,6 +25,7 @@ class _SidebarState extends State<Sidebar> {
   final _search = TextEditingController();
   String _query = '';
   bool _showAll = false;
+  bool _showAllRoutines = false;
 
   @override
   void dispose() {
@@ -45,8 +46,11 @@ class _SidebarState extends State<Sidebar> {
     final scheduled = app.prompts.where((p) => p.schedule != ScheduleKind.off).toList();
     final templates = app.prompts.where((p) => p.schedule == ScheduleKind.off).length;
     final q = _query.trim().toLowerCase();
+    // Routinen (geplante Aufgaben, Prozesse) haben eine eigene Kategorie
+    final routines = app.conversations.where(AppController.isRoutineChat).toList();
+    final normal = app.conversations.where((c) => !AppController.isRoutineChat(c)).toList();
     final chats = q.isEmpty
-        ? app.conversations
+        ? normal
         : app.conversations
             .where((c) =>
                 c.title.toLowerCase().contains(q) || c.entries.any((e) => e.text.toLowerCase().contains(q)))
@@ -147,6 +151,27 @@ class _SidebarState extends State<Sidebar> {
               item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
               item(AppSection.knowledge, dot: app.memory.pending.isNotEmpty),
               item(AppSection.activity),
+
+              // ---- Routinen: je Aufgabe bzw. Prozess ein Chat mit allen Ergebnissen
+              if (q.isEmpty && routines.isNotEmpty) ...[
+                SectionLabel('Routinen', trailing: MonoText('${routines.length}', size: 11, color: c.faint)),
+                for (final conv in routines.take(_showAllRoutines ? 50 : 5))
+                  _ChatRow(
+                    conv: conv,
+                    selected: app.current?.id == conv.id && (active == null || active == AppSection.chat),
+                    running: app.running && app.runningConvId == conv.id,
+                    onTap: () {
+                      app.selectConversation(conv);
+                      _go(AppSection.chat);
+                    },
+                    onDelete: () => app.deleteConversation(conv),
+                  ),
+                if (routines.length > 5)
+                  TextButton(
+                    onPressed: () => setState(() => _showAllRoutines = !_showAllRoutines),
+                    child: Text(_showAllRoutines ? 'Weniger anzeigen' : 'Alle ${routines.length} Routinen'),
+                  ),
+              ],
 
               // ---- Chats
               SectionLabel(

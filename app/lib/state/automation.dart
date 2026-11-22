@@ -607,6 +607,9 @@ class FlowService {
     if (m.contains('kein modell') || m.contains('modell bereit')) {
       return FlowError(msg, 'Im Systemcheck ein Sprachmodell laden oder unter Einstellungen → KI-Anbieter einen Anbieter einrichten.');
     }
+    if (m.contains('keine treffer')) {
+      return FlowError(msg, 'Suchbegriff anpassen (kürzer, ohne Datum) – oder den Agenten beheben lassen. Ein Agent-Baustein sucht flexibler als ein festes Werkzeug.');
+    }
     if (m.contains('timeout') || m.contains('zeitüberschreitung')) {
       return FlowError(msg, 'Der Schritt hat zu lange gedauert – später erneut versuchen oder den Auftrag vereinfachen.');
     }
@@ -660,13 +663,12 @@ class FlowService {
     final now = DateTime.now();
     wf.lastRun = now;
     startedAt[wf.id] = now;
-    final conv = app.automationConversation();
-    final log = ChatEntry(role: 'assistant', via: 'Prozess · ${wf.name}');
-    conv.entries
-      ..add(ChatEntry(
-          role: 'user',
-          text: '⚙ Prozess „${wf.name}“ ${resumeIdx > 0 ? 'fortgesetzt' : 'gestartet'}${input.isEmpty || resumeIdx > 0 ? '' : ' – ausgelöst durch die Watchlist'}'))
-      ..add(log);
+    // Jeder Prozess hat seinen eigenen Chat (Kategorie „Routinen“) – nur die Ergebnisse
+    final conv = app.routineConversation('flowrun-${wf.id}', '⚙ ${wf.name}');
+    final why = resumeIdx > 0 ? 'fortgesetzt' : (input.isEmpty ? 'gestartet' : 'ausgelöst durch Beobachtung');
+    final log = ChatEntry(role: 'assistant', via: '${now.day}.${now.month}. ${_two(now.hour)}:${_two(now.minute)} · $why');
+    conv.entries.add(log);
+    if (conv.entries.length > 40) conv.entries.removeRange(0, conv.entries.length - 40);
     app.refreshUi();
     final sw = Stopwatch()..start();
     var failed = false;
@@ -718,8 +720,10 @@ class FlowService {
             continue;
           }
           out[n.id] = result;
-          last = result;
-          step.observation = result.length > 1500 ? '${result.substring(0, 1500)} …' : result;
+          if (result.trim().isNotEmpty) last = result;
+          step.observation = n.type == FlowNodeType.trigger && result.isEmpty
+              ? 'Gestartet ${vars['datum']} ${vars['uhrzeit']}'
+              : (result.length > 1500 ? '${result.substring(0, 1500)} …' : result);
           _set(wf, n.id, 'done');
         } on _Cancelled {
           stopped = true;
@@ -774,7 +778,8 @@ class FlowService {
       ChatEntry log, StepLog step) async {
     switch (n.type) {
       case FlowNodeType.trigger:
-        return input.isEmpty ? 'Gestartet ${vars['datum']} ${vars['uhrzeit']}' : input;
+        // Ohne Eingabe bleibt {{vorher}} leer (sonst würde „Gestartet …“ z. B. zur Suchanfrage)
+        return input;
       case FlowNodeType.agent:
         var prompt = Workflow.fill(n.str('prompt'), vars);
         if (!n.str('prompt').contains('{{') && prevText.trim().isNotEmpty) prompt = '$prompt\n\nErgebnis des vorigen Schritts:\n$prevText';
@@ -789,12 +794,18 @@ class FlowService {
         var result = await tool
             .run(args, ToolContext(requestNetwork: (_) async => wf.allowInternet, propose: (a) => log.actions.add(a)))
             .timeout(const Duration(seconds: 90));
-        final cut = result.indexOf(moreCardsMarker);
-        if (cut >= 0) {
-          log.cards = [...log.cards, for (final c in parseResultCards(result)) c.toJson()].take(40).toList();
-          result = result.substring(0, cut);
+        if (RegExp(r'^(Websuche ohne Ergebnis|Keine Nachrichten abrufbar|Keine Treffer)').hasMatch(result.trim())) {
+          final q = args.values.whereType<String>().where((v) => v.trim().isNotEmpty).join(' ');
+          throw Exception('Keine Treffer${q.isEmpty ? ' (Suchbegriff leer)' : ' für „$q“'}');
         }
-        return result;
+        log.cards = [
+          ...log.cards,
+          for (final c in parseResultCards(result)) {...c.toJson(), 'tag': AppController.cardTag(tool.name, args)}
+        ].take(40).toList();
+        final cut = result.indexOf(moreCardsMarker);
+        if (cut >= 0) result = result.substring(0, cut);
+        // Hinweise an das Modell („Sag dem Nutzer …“) gehören nicht ins Ergebnis
+        return result.replaceAll(RegExp(r'\n?(Die Meldungen sieht der Nutzer|Der Nutzer sieht die Treffer|Sag dem Nutzer)[^\n]*'), '').trim();
       case FlowNodeType.http:
         if (!wf.allowInternet) throw Exception('Internet nicht erlaubt (Web-API)');
         final connId = n.str('connection');

@@ -303,6 +303,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
       models = await storage.loadModels();
       prompts = await storage.loadPrompts();
+      var migrated = false;
+      for (final p in prompts) {
+        if (p.text.contains('dann Nachrichten mit Link.')) {
+          p.text = p.text.replaceFirst('dann Nachrichten mit Link.', _morningNewsLine);
+          migrated = true;
+        }
+      }
+      if (migrated) await storage.savePrompts(prompts);
       mcpServers = await storage.loadMcpServers();
       await _loadMcpSecrets();
       conversations = await storage.loadConversations();
@@ -938,12 +946,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> setVoiceSettings({
     String? sttModelId,
     String? ttsVoiceId,
+    String? systemVoice,
     String? sttLanguage,
     bool? autoSpeak,
     bool? sendAfterVoice,
   }) async {
     if (sttModelId != null) settings.sttModelId = sttModelId;
     if (ttsVoiceId != null) settings.ttsVoiceId = ttsVoiceId;
+    if (systemVoice != null) settings.systemVoice = systemVoice;
     if (sttLanguage != null) settings.sttLanguage = sttLanguage;
     if (autoSpeak != null) settings.autoSpeak = autoSpeak;
     if (sendAfterVoice != null) settings.sendAfterVoice = sendAfterVoice;
@@ -966,6 +976,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Vorlesen: Piper, falls installiert, sonst die Systemstimme.
   Future<void> speakText(String text, {Object? key}) async {
     final lang = settings.sttLanguage == 'en' ? 'en' : 'de';
+    voice.output.systemVoice = settings.systemVoice;
     await voice.speak(text, voiceDir: ttsVoicePath, key: key, language: lang);
     final err = voice.output.lastError.value;
     if (err != null) {
@@ -1596,6 +1607,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return system.toString();
   }
 
+  /// Anweisung für den Gesprächsmodus – hängt an der Frage, nicht am System-Prompt (Cache!).
+  String voiceTurnHint() => '[Gesprächsmodus – deine Antwort wird vorgelesen: antworte wie im persönlichen Gespräch, '
+      'kurz (meist 1–3 Sätze), ohne Markdown, Listen, Tabellen, Emojis oder Links. Wiederhole die Frage nicht, '
+      'beginne sofort mit der Antwort. Sagt der Nutzer „weiter“, setze deine vorige Antwort fort. Du heißt ${settings.agentName}.]';
+
   AgentRunner _makeRunner(AgentBackend eng, String system, {List<AgentTool>? tools}) {
     final profile = activeProfile;
     final browsing = (tools ?? activeTools).any((t) => t.name == 'browser');
@@ -2076,6 +2092,39 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     return '$host – ${name.length > 60 ? '${name.substring(0, 59)}…' : name}';
   }
 
+  /// Kategorie einer Karte: Thema der Nachrichten, Suchbegriff, Seite.
+  static String cardTag(String tool, Map<String, dynamic>? args) {
+    String a(String k) => '${args?[k] ?? ''}'.trim();
+    return switch (tool) {
+      'news' => a('topic').isEmpty ? 'Top-Meldungen' : a('topic'),
+      'web_search' => a('query').isEmpty ? 'Websuche' : 'Suche: ${a('query')}',
+      'site_search' => a('site').isEmpty ? 'Shop' : a('site'),
+      'web_fetch' => Uri.tryParse(a('url'))?.host.replaceFirst('www.', '') ?? 'Webseite',
+      'browser' => 'Browser',
+      _ => tool,
+    };
+  }
+
+  /// Entfernt Links mit Pfad, die in keiner Quelle (Werkzeug, Dokument, Frage) vorkamen –
+  /// also vom Modell erfunden wurden. Der Linktext bleibt, „(Beispiel-Link)“ verschwindet.
+  static String stripInventedLinks(String text, String known) {
+    final k = known.toLowerCase();
+    bool real(String url) {
+      final u = Uri.tryParse(url.trim());
+      if (u == null || u.host.isEmpty) return false;
+      if (u.path.length <= 1 && u.query.isEmpty) return true; // nur Domain: harmlos
+      final c = cleanLink(url).toLowerCase().replaceFirst(RegExp(r'^https?://(www\.)?'), '');
+      final core = c.length > 80 ? c.substring(0, 80) : c;
+      return k.contains(core) || k.contains(url.toLowerCase());
+    }
+
+    var t = text.replaceAllMapped(RegExp(r'\[([^\]]+)\]\((https?://[^)\s]+)\)'), (m) => real(m.group(2)!) ? m.group(0)! : m.group(1)!);
+    t = t.replaceAllMapped(RegExp(r'(?<![\(\w])https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\x27"]'), (m) => real(m.group(0)!) ? m.group(0)! : '');
+    t = t.replaceAll(RegExp(r'\s*\((Beispiel-?Link|Beispiel|Link)\)', caseSensitive: false), '');
+    t = t.replaceAll(RegExp(r'(Link|Quelle):\s*(?=\n|$)', caseSensitive: false), '');
+    return t;
+  }
+
   /// Entfernt nackte Adressen und „(Quellen: …)“-Anhänge – die Karten zeigen die Links.
   static String _stripCardLinks(String text) {
     var t = text.replaceAll(RegExp(r'\s*\((Quellen?|Quelle|Links?):[^)]*https?://[^)]*\)', caseSensitive: false), '');
@@ -2123,7 +2172,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     try {
       final r = voice
-          ? _makeRunner(eng, _systemText(voice: true, tools: const []), tools: const [])
+          ? _makeRunner(eng, _systemText(tools: const []), tools: const [])
           : _makeRunner(eng, _systemText());
       final prompt = await eng.formatChat([ChatMessage('system', r.buildSystemPrompt(ToolContext()))]);
       var h = 0xcbf29ce484222325;
@@ -2453,7 +2502,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         '1. Rufe meine Termine für heute aus dem Kalender ab (calendar_list).\n'
         '2. Hole das Wetter für $city für heute (weather).\n'
         '3. Hole die wichtigsten Nachrichten${topics.trim().isEmpty ? '' : ' zu: ${topics.trim()}'} (news, 5 Meldungen).\n'
-        'Fasse alles kurz und übersichtlich zusammen: zuerst Termine, dann Wetter (mit Tipp, z. B. Schirm), dann Nachrichten mit Link.';
+        'Fasse alles kurz und übersichtlich zusammen: zuerst Termine, dann Wetter (mit Tipp, z. B. Schirm), $_morningNewsLine';
     final existing = prompts.where((p) => p.title == 'Morgen-Übersicht').firstOrNull;
     final p = SavedPrompt(
       id: existing?.id,
@@ -2690,16 +2739,31 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final previousProfile = settings.activeProfileId;
     if (p.profileId != null && profiles.any((x) => x.id == p.profileId)) settings.activeProfileId = p.profileId!;
-    current = null;
-    final conv = _ensureConversation();
     final now = DateTime.now();
-    conv.title = '${p.title} · ${now.day}.${now.month}. ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final stamp = '${now.day}.${now.month}. ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    // Routine (mit Zeitplan): immer derselbe Chat, nur die Ergebnisse. Vorlage ohne Zeitplan: neuer Chat.
+    final routine = p.schedule != ScheduleKind.off;
+    final Conversation conv;
+    if (routine) {
+      conv = routineConversation('routine-${p.id}', p.scheduleLabel == 'Nur per Klick' ? p.title : '${p.title} · ${p.timeLabel}');
+    } else {
+      current = null;
+      conv = _ensureConversation();
+      conv.title = '${p.title} · $stamp';
+    }
     if (p.allowInternet) conv.internetAllowed = true;
+    // von Hand gestartet: den Routinen-Chat zeigen
+    if (routine && !automated) {
+      current = conv;
+      notifyListeners();
+    }
+    final before = conv.entries.length;
     try {
-      await send(p.text);
+      await send(p.text, target: routine ? conv : null, noHistory: routine);
     } finally {
       settings.activeProfileId = previousProfile;
     }
+    if (routine) _keepOnlyOutput(conv, before, 'Ergebnis $stamp');
     if (automated && p.notify) {
       final answer = conv.entries.lastOrNull;
       final text = answer?.error ?? answer?.text ?? '';
@@ -2709,6 +2773,41 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     notifyListeners();
     return conv;
+  }
+
+  // ------------------------------------------------------------ Routinen-Chats
+
+  static const _morningNewsLine = 'dann Nachrichten: 2–3 Sätze Überblick ohne Links und ohne Liste der Meldungen – '
+      'die Meldungen sieht der Nutzer als Karten nach Thema. Erfinde keine Meldungen oder Links.';
+
+  /// Chats von Routinen (geplante Aufgaben, Prozesse) – eigene Kategorie in der Seitenleiste.
+  static bool isRoutineChat(Conversation c) => c.id.startsWith('routine-') || c.id.startsWith('flowrun-') || c.id == 'automatik';
+
+  /// Chat einer Routine: immer derselbe, wird nicht zum aktuellen Chat.
+  Conversation routineConversation(String id, String title) {
+    var c = conversations.where((x) => x.id == id).firstOrNull;
+    if (c == null) {
+      c = Conversation(id: id, title: title);
+      conversations.insert(0, c);
+    } else {
+      c.title = title;
+    }
+    return c;
+  }
+
+  /// Nur das Ergebnis behalten: die Frage (Prompt) der Routine entfernen, Zeitpunkt vermerken, ältere Läufe kürzen.
+  void _keepOnlyOutput(Conversation conv, int before, String label) {
+    final added = conv.entries.sublist(before.clamp(0, conv.entries.length));
+    for (final e in added.where((e) => e.role == 'user').toList()) {
+      conv.entries.remove(e);
+    }
+    for (final e in added.where((e) => e.role == 'assistant')) {
+      e.via = label;
+    }
+    if (conv.entries.length > 40) conv.entries.removeRange(0, conv.entries.length - 40);
+    conv.updated = DateTime.now();
+    unawaited(storage.saveConversation(conv));
+    notifyListeners();
   }
 
   void openConversationById(String id) {
@@ -2809,6 +2908,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       void Function(String text, bool done)? onAnswer,
       void Function(String tool)? onToolStart,
       Conversation? target,
+      bool noHistory = false,
       List<Attachment>? withDocs,
       bool forceCloud = false}) async {
     if (!canChat && !forceCloud || input.trim().isEmpty) {
@@ -2853,15 +2953,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // kurze Nachfrage („wien“, „und morgen?“): Werkzeuge auch nach der vorigen Frage wählen
     final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
     final gateText = looksLikeFollowUp(input) ? '$prevUser $input' : input;
-    // Gesprächsmodus: kurzer Verlauf. Der Anfang springt nur alle 10 Nachrichten weiter,
-    // damit der vorgerechnete Teil (Cache) von Runde zu Runde gleich bleibt.
-    if (voice) {
-      final start = history.length <= 12 ? 0 : ((history.length - 6) ~/ 10) * 10;
-      history = [
-        for (final m in history.sublist(start))
-          ChatMessage(m.role, m.content.length > 700 ? '${m.content.substring(0, 700)} …' : m.content),
-      ];
-    }
+    // Gesprächsmodus: gleicher Verlauf und gleicher System-Prompt wie im Chat – so bleibt der
+    // vorgerechnete Teil (Cache) gültig und die erste Antwort kommt ohne langes Vorrechnen.
+    // Routinen: jede Ausführung für sich (kein Verlauf).
+    if (noHistory) history = [];
     var docs = List<Attachment>.of(withDocs ?? attachments);
     var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
@@ -2895,13 +2990,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       turnInput = 'Exakt berechnet (Rechner): $calc\n\nFrage des Nutzers: $turnInput\n'
           'Antworte kurz mit diesem Ergebnis.';
     }
-    final system = _systemText(voice: voice, tools: runTools);
+    final system = _systemText(tools: runTools);
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
     final ragHits = rag.isEmpty
         ? const <KnowledgeHit>[]
         : knowledge.search(turnInput).where((h) => rag.contains(h.chunk.url)).toList();
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
+    if (voice) turnInput = '$turnInput\n\n${voiceTurnHint()}';
     var runner = _makeRunner(eng, system, tools: runTools);
     _runner = runner;
     running = true;
@@ -2994,7 +3090,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             : 'Ergebnis (${tool.title})';
         turnInput = '$what:\n${cut < 0 ? out : out.substring(0, cut)}\n\n$turnInput\n'
             'Antworte direkt mit diesen Daten. Behaupte nicht, du könntest die Seite nicht abrufen.';
-        runner = _makeRunner(eng, _systemText(voice: voice, tools: const []), tools: const []);
+        runner = _makeRunner(eng, _systemText(tools: const []), tools: const []);
         _runner = runner;
       } catch (e) {
         // Klappt der Schnellweg nicht, macht der Agent normal weiter
@@ -3103,14 +3199,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       answer.sources
         ..clear()
         ..addAll(_collectSources(answer, docs, ragHits));
-      // Ergebnisse (Produkte, Meldungen) als Karten fürs Karussell
+      // Adressen, die in keiner Quelle vorkamen, hat das Modell erfunden → entfernen
+      final known = [
+        input,
+        for (final st in answer.steps) st.observation ?? '',
+        for (final d in docs) d.content,
+        rag,
+      ].join('\n');
+      answer.text = stripInventedLinks(answer.text, known);
+      // Ergebnisse (Produkte, Meldungen) als Karten fürs Karussell – mit Kategorie (Thema bzw. Suche)
       answer.cards = [
         for (final st in answer.steps)
           if (st.isError != true && const {'site_search', 'news', 'web_fetch', 'web_search', 'browser'}.contains(st.tool))
-            for (final c in parseResultCards(st.observation ?? '')) c.toJson(),
-        // Links, die das Modell in die Antwort geschrieben hat, ebenfalls als Karte
+            for (final c in parseResultCards(st.observation ?? '')) {...c.toJson(), 'tag': cardTag(st.tool!, st.args)},
+        // Links, die das Modell in die Antwort geschrieben hat (und die es wirklich gibt), ebenfalls als Karte
         for (final m in RegExp(r'https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?\x27"]').allMatches(answer.text))
-          {'title': _linkTitle(m.group(0)!), 'link': cleanLink(m.group(0)!)},
+          if ((Uri.tryParse(m.group(0)!)?.path ?? '').length > 1)
+            {'title': _linkTitle(m.group(0)!), 'link': cleanLink(m.group(0)!)},
       ].fold<List<Map<String, String>>>([], (acc, c) {
         // doppelte Links nur einmal (auch mit/ohne Tracking-Anhang)
         final l = c['link'] == null ? null : cleanLink(c['link']!);

@@ -117,18 +117,56 @@ class ResultCarousel extends StatefulWidget {
 class _ResultCarouselState extends State<ResultCarousel> {
   static const _page = 10;
   int _shown = _page;
+  String? _tag; // gewählte Kategorie (null = alle)
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
-    final cards = widget.cards;
+    // Kategorien (Thema der Nachrichten, Suchbegriff …) in der Reihenfolge des Auftretens
+    final tags = <String, int>{};
+    for (final c in widget.cards) {
+      final g = (c['tag'] ?? '').trim();
+      if (g.isNotEmpty) tags[g] = (tags[g] ?? 0) + 1;
+    }
+    final cards = _tag == null ? widget.cards : widget.cards.where((c) => c['tag'] == _tag).toList();
     final visible = cards.take(_shown).toList();
     final rest = cards.length - visible.length;
     final extra = rest > 0 || widget.onMore != null ? 1 : 0;
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: SizedBox(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (tags.length >= 2)
+          SizedBox(
+            height: 40,
+            child: ListView(scrollDirection: Axis.horizontal, children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  label: Text('Alle (${widget.cards.length})'),
+                  selected: _tag == null,
+                  onSelected: (_) => setState(() {
+                    _tag = null;
+                    _shown = _page;
+                  }),
+                ),
+              ),
+              for (final e in tags.entries)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text('${e.key} (${e.value})'),
+                    selected: _tag == e.key,
+                    onSelected: (_) => setState(() {
+                      _tag = e.key;
+                      _shown = _page;
+                    }),
+                  ),
+                ),
+            ]),
+          ),
+        if (tags.length >= 2) const SizedBox(height: 8),
+        SizedBox(
         height: 300,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
@@ -194,6 +232,14 @@ class _ResultCarouselState extends State<ResultCarousel> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          if ((c['tag'] ?? '').isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(c['tag']!.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: t.labelSmall?.copyWith(color: scheme.primary, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
+                            ),
                           Text(c['title'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis,
                               style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                           if (note.isNotEmpty) ...[
@@ -226,6 +272,7 @@ class _ResultCarouselState extends State<ResultCarousel> {
           },
         ),
       ),
+      ]),
     );
   }
 }

@@ -10,6 +10,16 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.26.0', [
+    'Routinen: jede geplante Aufgabe und jeder Prozess hat einen eigenen Chat (Kategorie „Routinen“) – dort landen nur die Ergebnisse, z. B. jeden Morgen um 7 die Morgen-Übersicht im selben Chat',
+    'Keine erfundenen Links mehr: Adressen, die in keiner Quelle vorkamen, werden entfernt; Karten nur noch aus echten Treffern',
+    'Karussell mit Kategorien: jede Karte zeigt ihr Thema (z. B. KI, Österreich, Suche: …), oben Filter nach Kategorie; die Morgen-Übersicht fasst Nachrichten nur kurz zusammen',
+    'Websuche robuster: bei „keine Treffer“ vereinfachte Anfrage und Rückfall auf Google News; gesperrte Suchmaschinen werden benannt',
+    'Prozesse: Suche ohne Treffer ist ein Fehler mit Hinweis (statt Werkzeug-Text als Ergebnis); {{vorher}} nach dem Auslöser ist leer',
+    'Gespräch deutlich schneller: gleicher vorgerechneter Verlauf wie im Chat (vorher wurde der ganze Chat neu gerechnet – 15 s bis zum ersten Wort)',
+    'Neue Wahl „Stimme des Geräts“ (z. B. Google-Sprachausgabe): klingt natürlich, ohne Pausen; Hinweis, wenn eine Stimme für das Gerät zu langsam ist',
+    'Whisper-Füllwörter wie „bitte“ oder „danke“ allein lösen keine Antwort mehr aus',
+  ]),
   ('1.25.0', [
     'Watchlist ist Teil der Prozesse: jede Beobachtung ist ein Auslöser „Beobachten“ im Canvas, an den du weitere Schritte hängst',
     'Watchlist: prüft auf Wunsch jede Minute (1, 5, 10, 15, 30 Minuten … wöchentlich), Suchanfragen wie bei Google ("Phrase", -ohne, site:, OR), Beschreibung in eigenen Worten mit Relevanzprüfung durch den Agenten, „Nur Aktuelles“ und „Jetzt testen“',

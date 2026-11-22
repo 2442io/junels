@@ -774,6 +774,14 @@ Future<void> main() async {
     check(httpStatusHint(401).contains('Anmeldung'), 'Hinweis zu 401');
   });
 
+  await group('Websuche: vereinfachte Anfrage und Rückfall', () async {
+    final q = WebSearchTool.simplifyQuery('Suche bitte aktuelle Nvidia Aktie Kurs 22.11.2026 "heute" site:finanzen.net');
+    check(q == 'Nvidia Aktie Kurs', 'vereinfacht ($q)');
+    const feed = '<rss><channel><item><title>Nvidia steigt</title><link>https://example.com/n</link></item></channel></rss>';
+    final (hits, used, _) = await WebSearchTool.searchAllEngines('Nvidia Aktie', (u) async => u.host == 'news.google.com' ? feed : '<html></html>');
+    check(hits.length == 1 && used == 'Google News', 'Rückfall auf Google News ($used)');
+  });
+
   await group('Suche auf Webseiten (Shops)', () async {
     const amazon = '''<html><body>
 <div data-component-type="s-search-result" data-asin="A1"><a href="/dp/A1"><img class="s-image" src="https://m.media-amazon.com/1.jpg"></a>

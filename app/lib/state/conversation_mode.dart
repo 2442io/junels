@@ -122,6 +122,8 @@ class ConversationMode {
     unawaited(app.warmUp(voice: true));
     app.voice.output
       ..voiceDir = app.ttsVoicePath
+      ..systemVoice = app.settings.systemVoice
+      ..slowSynth = 0
       ..language = _language == 'en' ? 'en' : 'de';
     unawaited(app.voice.output.warmUp());
     // Wer das Gespräch gerade geöffnet hat, meint den Agenten – erste Frage ohne Namen
@@ -507,6 +509,7 @@ class ConversationMode {
     }
     final out = app.voice.output
       ..voiceDir = app.ttsVoicePath
+      ..systemVoice = app.settings.systemVoice
       ..language = _language == 'en' ? 'en' : 'de';
     out.begin();
     _streamer.reset();
@@ -546,6 +549,8 @@ class ConversationMode {
     final tips = <String>[
       if (_sttSlow) 'Spracherkennung langsam → im Systemcheck „Canary“ laden (viel schneller)',
       if (firstMs > 6000) 'Antwort langsam → kleineres Sprachmodell (z. B. Gemma 4 E2B)',
+      if (out.slowSynth > 0 && out.voiceDir != null)
+        'Pausen: die Stimme ist auf diesem Gerät langsamer als Echtzeit → Einstellungen → Sprache → „Stimme des Geräts“ oder Piper',
     ];
     if (tips.isNotEmpty) timing.value = '${timing.value}\nTipp: ${tips.join(' · ')}';
     if (myTurn != _turn) return;
@@ -601,7 +606,7 @@ class ConversationMode {
     return const {
       'untertitel im auftrag des zdf', 'untertitel im auftrag des zdf 2017', 'untertitel von stephanie geiges',
       'untertitel der amaraorg community', 'vielen dank', 'thanks for watching', 'thank you for watching', 'amen',
-      'tschüss', 'bis zum nächsten mal',
+      'tschüss', 'bis zum nächsten mal', 'bitte', 'danke', 'danke schön', 'dankeschön', 'hm', 'äh',
     }.contains(s) && t.length < 40;
   }
 }

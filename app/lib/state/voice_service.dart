@@ -173,6 +173,34 @@ class SpeechOutput {
   String language = 'de';
   double speed = 1.0;
 
+  /// Stimme des Geräts („Name|Locale“, leer = Standard der Sprache).
+  String systemVoice = '';
+  String? _systemVoiceSet;
+
+  /// Wie oft die lokale Stimme langsamer als Echtzeit war (Grund für Pausen).
+  int slowSynth = 0;
+
+  /// Stimmen des Geräts für die Auswahl: (Name, Locale), passend zur Sprache.
+  Future<List<(String, String)>> systemVoices(String lang) async {
+    try {
+      final t = _system ??= FlutterTts();
+      final list = (await t.getVoices) as List? ?? const [];
+      final out = <(String, String)>[];
+      for (final v in list) {
+        if (v is! Map) continue;
+        final name = '${v['name'] ?? ''}';
+        final loc = '${v['locale'] ?? ''}';
+        if (name.isEmpty || !loc.toLowerCase().startsWith(lang)) continue;
+        out.add((name, loc));
+      }
+      out.sort((a, b) => a.$1.compareTo(b.$1));
+      return out;
+    } catch (e) {
+      voiceLog('Gerätestimmen nicht lesbar: $e');
+      return const [];
+    }
+  }
+
   /// Startet eine neue Ausgabe; danach [add] und am Ende [finish].
   void begin() {
     stop();
@@ -335,6 +363,7 @@ class SpeechOutput {
       engineLabel = 'Piper';
       final ms = sw.elapsedMilliseconds;
       // langsamer als Echtzeit → im Protokoll sichtbar (Grund für Pausen)
+      if (ms > c.seconds * 1000) slowSynth++;
       if (ms > c.seconds * 1000 * 0.8) voiceLog('Stimme langsam: ${text.length} Zeichen in $ms ms für ${c.seconds.toStringAsFixed(1)} s Audio');
       return c;
     } catch (e, st) {
@@ -391,6 +420,15 @@ class SpeechOutput {
       final t = _system ??= FlutterTts();
       await t.awaitSpeakCompletion(true);
       await t.setLanguage(language == 'en' ? 'en-US' : 'de-DE');
+      if (systemVoice.contains('|') && _systemVoiceSet != systemVoice) {
+        final i = systemVoice.indexOf('|');
+        try {
+          await t.setVoice({'name': systemVoice.substring(0, i), 'locale': systemVoice.substring(i + 1)});
+          _systemVoiceSet = systemVoice;
+        } catch (e) {
+          voiceLog('Gerätestimme nicht gesetzt: $e');
+        }
+      }
       await t.setSpeechRate(Platform.isAndroid ? 0.5 : 0.5 * speed);
       engineLabel = 'Systemstimme';
       await t.speak(text).timeout(Duration(seconds: 10 + text.length ~/ 8), onTimeout: () => null);
@@ -930,7 +968,8 @@ void _ttsMain(SendPort out) {
                       noiseScale: 0.6,
                       noiseScaleW: 0.75,
                     ),
-                    numThreads: threads,
+                    // Piper ist klein: 2 Threads reichen und lassen dem Sprachmodell Luft
+                    numThreads: 2,
                   ),
           ));
           if (tts!.ptr.address == 0) {
