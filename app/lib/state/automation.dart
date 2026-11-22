@@ -645,6 +645,13 @@ class FlowService {
           if (prevOut[order[i].id] != null) order[i].id: prevOut[order[i].id]!
     };
     if (resumeIdx > 0 && input.isEmpty) input = prevOut[order.first.id] ?? '';
+    // Beobachten-Prozess von Hand gestartet: mit der letzten Meldung arbeiten
+    if (input.isEmpty && resumeIdx < 0 && wf.trigger?.str('mode') == 'watch') {
+      final ev = app.watchlist.forFlow(wf.id)?.events.firstOrNull;
+      if (ev != null) {
+        input = '${ev.title}\n\n${ev.detail}\n\n${ev.links.map((l) => '- ${l['title']}: ${l['link']}').join('\n')}';
+      }
+    }
     final skipped = <String>{
       if (resumeIdx > 0)
         for (var i = 0; i < resumeIdx; i++)

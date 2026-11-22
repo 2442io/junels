@@ -312,7 +312,18 @@ class SpeechOutput {
     }
   }
 
-  Future<_Clip?> _synth(String text) async {
+  /// Erzeugt der Reihe nach: Der Sprach-Prozess bekommt den nächsten Satz erst, wenn der vorige fertig ist.
+  /// So warten nach einem Unterbrechen höchstens ein, nicht mehrere veraltete Sätze.
+  Future<void> _chain = Future.value();
+
+  Future<_Clip?> _synth(String text) {
+    final gen = _generation;
+    final f = _chain.then((_) => gen == _generation ? _synthNow(text) : Future<_Clip?>.value(null));
+    _chain = f.then((_) {}, onError: (_) {});
+    return f;
+  }
+
+  Future<_Clip?> _synthNow(String text) async {
     final dir = voiceDir;
     if (dir == null) return null;
     try {
