@@ -11,7 +11,13 @@ import 'tool.dart';
 
 /// Gemeinsame Umgebung für die Datei-Werkzeuge.
 class OutputSpace {
-  OutputSpace(this.dir, {this.extraImages});
+  OutputSpace(this.dir, {this.extraImages, this.imageGenerator, this.maxAutoImages = 3});
+
+  /// Bilder automatisch erzeugen (Stable Diffusion), wenn ein Bildmodell bereit ist – sonst null.
+  final ImageGenerator? Function()? imageGenerator;
+
+  /// Höchstens so viele Bilder je Dokument/Präsentation automatisch erzeugen (Handy: dauert je 1–3 min).
+  final int maxAutoImages;
 
   /// Ordner für erzeugte Dateien.
   final Directory dir;
@@ -67,6 +73,47 @@ class OutputSpace {
       ];
 }
 
+/// Fehlende Bilder (![Beschreibung](name), die es nicht gibt) und Zeilen „Bild: …“ / „Bild-Idee: …“
+/// automatisch mit dem Bildmodell erzeugen. Gibt den Markdown mit echten Dateinamen zurück.
+Future<(String, int)> autoImages(OutputSpace out, String md, ToolContext ctx) async {
+  final gen = out.imageGenerator?.call();
+  if (gen == null) return (md, 0);
+  // „Bild-Idee: …“ als Bild-Platzhalter
+  var text = md.replaceAllMapped(
+      RegExp(r'^[ \t]*[-*]?[ \t]*\**(?:Bild(?:-?Idee)?|Foto|Illustration|Image)\**[ \t]*:\**[ \t]*(.+)$', multiLine: true, caseSensitive: false),
+      (m) => '![${m.group(1)!.replaceAll(RegExp(r'[\[\]*]'), '').trim()}](auto)');
+  var made = 0;
+  final cache = <String, String>{};
+  final re = RegExp(r'!\[([^\]]*)\]\(([^)]*)\)');
+  final buf = StringBuffer();
+  var last = 0;
+  for (final m in re.allMatches(text)) {
+    buf.write(text.substring(last, m.start));
+    last = m.end;
+    final alt = m.group(1)!.trim();
+    final src = m.group(2)!.trim();
+    if (src.isNotEmpty && src != 'auto' && out.resolveImage(src) != null) {
+      buf.write(m.group(0));
+      continue;
+    }
+    final prompt = alt.isNotEmpty ? alt : src.replaceAll(RegExp(r'\.(png|jpe?g)$'), '').replaceAll(RegExp(r'[_-]'), ' ');
+    if (prompt.trim().isEmpty || made >= out.maxAutoImages) {
+      continue; // Platzhalter ohne Bild entfernen
+    }
+    try {
+      final path = cache[prompt] ??= await gen('$prompt, high quality photo, detailed', 'landscape', '');
+      made++;
+      final f = File(path);
+      _artifact(ctx, f, 'image');
+      buf.write('![${alt.isEmpty ? '' : alt}](${f.uri.pathSegments.last})');
+    } catch (_) {
+      // Bild ging nicht – Dokument trotzdem erstellen
+    }
+  }
+  buf.write(text.substring(last));
+  return (buf.toString(), made);
+}
+
 void _artifact(ToolContext ctx, File f, String kind) =>
     ctx.onArtifact(Artifact(title: f.uri.pathSegments.last, kind: kind, content: f.path));
 
@@ -80,6 +127,9 @@ class CreateDocumentTool extends AgentTool {
   final OutputSpace out;
 
   @override
+  Duration? get timeout => const Duration(minutes: 15);
+
+  @override
   String get name => 'create_document';
   @override
   String get keywords => 'pdf dokument bericht brief zusammenfassung datei';
@@ -88,7 +138,7 @@ class CreateDocumentTool extends AgentTool {
   @override
   String get description =>
       'Erstellt ein PDF-Dokument (Bericht, Brief, Zusammenfassung) aus Markdown: # Überschriften, Listen, '
-      'Tabellen, **fett**, Bilder mit ![Titel](dateiname.png).';
+      'Tabellen, **fett**, Bilder mit ![Titel](dateiname.png) – oder ![Bildbeschreibung auf Englisch](auto), dann wird das Bild erzeugt.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Titel des Dokuments'),
@@ -98,8 +148,8 @@ class CreateDocumentTool extends AgentTool {
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final title = (args['title'] ?? '').toString().trim();
-    final content = (args['content'] ?? '').toString();
-    if (content.trim().isEmpty) throw ToolException('content ist leer');
+    if ((args['content'] ?? '').toString().trim().isEmpty) throw ToolException('content ist leer');
+    final (content, _) = await autoImages(out, (args['content'] ?? '').toString(), ctx);
     final bytes = buildPdfDocument(title: title.isEmpty ? 'Dokument' : title, markdown: content, resolveImage: out.resolveImage);
     final f = out.fileFor(title.isEmpty ? 'Dokument' : title, 'pdf');
     await f.writeAsBytes(bytes);
@@ -114,6 +164,9 @@ class CreatePresentationTool extends AgentTool {
   final OutputSpace out;
 
   @override
+  Duration? get timeout => const Duration(minutes: 15);
+
+  @override
   String get name => 'create_presentation';
   @override
   String get keywords => 'präsentation folien folie slides powerpoint pptx vortrag deck';
@@ -122,7 +175,8 @@ class CreatePresentationTool extends AgentTool {
   @override
   String get description =>
       'Erstellt eine Präsentation (PowerPoint .pptx und PDF). content in Markdown: jede "# Überschrift" '
-      'beginnt eine Folie, darunter 3–6 kurze Stichpunkte mit "- ", optional ein Bild ![](name.png) oder eine Tabelle.';
+      'beginnt eine Folie, darunter 3–6 kurze Stichpunkte mit "- ", optional eine Tabelle. Bild auf einer Folie: '
+      '![kurze Bildbeschreibung auf Englisch](auto) – es wird automatisch erzeugt (Bildmodell), oder ![](name.png) für ein vorhandenes Bild.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Titel der Präsentation'),
@@ -132,7 +186,7 @@ class CreatePresentationTool extends AgentTool {
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final title = (args['title'] ?? '').toString().trim().isEmpty ? 'Präsentation' : args['title'].toString().trim();
-    final content = (args['content'] ?? '').toString();
+    final (content, made) = await autoImages(out, (args['content'] ?? '').toString(), ctx);
     final split = splitSlides(content);
     if (split.slides.isEmpty) throw ToolException('Keine Folien gefunden: jede Folie mit "# Titel" beginnen.');
     final pptx = buildPptx(title: title, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage);
@@ -143,7 +197,7 @@ class CreatePresentationTool extends AgentTool {
     await f2.writeAsBytes(pdf);
     _artifact(ctx, f1, 'pptx');
     _artifact(ctx, f2, 'pdf');
-    return 'Präsentation mit ${split.slides.length + 1} Folien erstellt: ${f1.uri.pathSegments.last} '
+    return 'Präsentation mit ${split.slides.length + 1} Folien${made > 0 ? ' und $made erzeugten Bildern' : ''} erstellt: ${f1.uri.pathSegments.last} '
         '(PowerPoint) und ${f2.uri.pathSegments.last} (PDF).${_imagesHint(out, content)}';
   }
 }
@@ -220,6 +274,9 @@ typedef ImageGenerator = Future<String> Function(String prompt, String format, S
 class GenerateImageTool extends AgentTool {
   GenerateImageTool(this.generate);
   final ImageGenerator generate;
+
+  @override
+  Duration? get timeout => const Duration(minutes: 8);
 
   @override
   String get name => 'generate_image';

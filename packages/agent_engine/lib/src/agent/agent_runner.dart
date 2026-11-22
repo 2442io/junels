@@ -388,11 +388,11 @@ class AgentRunner {
         } else {
           try {
             ctx.answerNow = false;
-            observation = await tool.run(args, ctx).timeout(toolTimeout);
+            observation = await tool.run(args, ctx).timeout(tool.timeout ?? toolTimeout);
             if (ctx.answerNow) answerNext = true;
             ctx.answerNow = false;
           } on TimeoutException {
-            observation = 'Fehler: Zeitüberschreitung nach ${toolTimeout.inSeconds} s.';
+            observation = 'Fehler: Zeitüberschreitung nach ${(tool.timeout ?? toolTimeout).inSeconds} s.';
             isError = true;
           } catch (e) {
             observation = 'Fehler: $e';

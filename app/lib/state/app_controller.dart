@@ -246,10 +246,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await knowledge.load();
       outputsDir = Directory('${storage.documentsDir.path}/Ausgaben')..createSync(recursive: true);
       attachmentsDir = Directory('${storage.documentsDir.path}/Anhänge')..createSync(recursive: true);
-      final out = OutputSpace(outputsDir, extraImages: () => {
-            for (final a in attachments)
-              if (a.path != null && isImageFile(a.name)) a.name: a.path!,
-          });
+      final out = OutputSpace(
+        outputsDir,
+        extraImages: () => {
+          for (final a in attachments)
+            if (a.path != null && isImageFile(a.name)) a.name: a.path!,
+        },
+        // Präsentationen/Dokumente bekommen ihre Bilder automatisch, sobald ein Bildmodell geladen und eingeschaltet ist
+        imageGenerator: () =>
+            imageModel != null && ImageEngine.available && settings.enabledTools.contains('generate_image') ? _generateImage : null,
+        maxAutoImages: Platform.isAndroid || Platform.isIOS ? 3 : 6,
+      );
       tools = [
         ...builtinTools(),
         ...networkTools(),
@@ -1585,6 +1592,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (activeTools.any((t) => t.name.startsWith('create_') || t.name == 'generate_image')) {
       system.write('\n\nDATEIEN: Wünscht der Nutzer ein Dokument, eine Präsentation, ein Diagramm oder ein Bild, '
           'erstelle es mit create_document, create_presentation, create_chart bzw. generate_image. '
+          '${imageModel != null ? 'Für Bilder in Folien/Dokumenten schreibe ![kurze englische Bildbeschreibung](auto) – sie werden automatisch erzeugt. ' : ''}'
           'Bilder und Diagramme zuerst erzeugen, dann im Dokument/den Folien mit ![](dateiname.png) einbinden. '
           'Schreibe Inhalte vollständig und gut gegliedert. Die Dateien erscheinen automatisch im Chat – '
           'in der final_answer nur kurz sagen, was erstellt wurde.');

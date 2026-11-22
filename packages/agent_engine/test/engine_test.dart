@@ -774,6 +774,28 @@ Future<void> main() async {
     check(httpStatusHint(401).contains('Anmeldung'), 'Hinweis zu 401');
   });
 
+  await group('Präsentation: Bilder automatisch erzeugen', () async {
+    final dir = Directory.systemTemp.createTempSync('ae_img');
+    final prompts = <String>[];
+    // 1×1-PNG als „erzeugtes Bild“
+    final png = base64.decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+    var n = 0;
+    final out = OutputSpace(dir, imageGenerator: () => (p, f, neg) async {
+          prompts.add(p);
+          final file = File('${dir.path}/gen${n++}.png')..writeAsBytesSync(png);
+          return file.path;
+        });
+    final arts = <Artifact>[];
+    final r = await CreatePresentationTool(out).run({
+      'title': 'Provence',
+      'content': '# Landschaft\n- Lavendel\n- Bild-Idee: lavender fields at sunset\n\n# Essen\n- Ratatouille\n![market with vegetables](auto)',
+    }, ToolContext(onArtifact: arts.add));
+    check(prompts.length == 2 && prompts.first.startsWith('lavender fields'), 'zwei Bilder erzeugt ($prompts)');
+    check(r.contains('2 erzeugten Bildern') && arts.where((a) => a.kind == 'image').length == 2 && arts.any((a) => a.kind == 'pptx'), 'Bilder in Präsentation ($r)');
+    final none = await autoImages(OutputSpace(dir), '![x](auto)', ToolContext());
+    check(none.$2 == 0, 'ohne Bildmodell nichts erzeugen');
+  });
+
   await group('Websuche: vereinfachte Anfrage und Rückfall', () async {
     final q = WebSearchTool.simplifyQuery('Suche bitte aktuelle Nvidia Aktie Kurs 22.11.2026 "heute" site:finanzen.net');
     check(q == 'Nvidia Aktie Kurs', 'vereinfacht ($q)');
