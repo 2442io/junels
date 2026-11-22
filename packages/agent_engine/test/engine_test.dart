@@ -1414,6 +1414,60 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
     check(File('${tmp.path}/Bericht.pdf').existsSync() && r1.contains('fehlt.png'), 'create_document schreibt PDF, meldet fehlendes Bild');
     await CreatePresentationTool(out).run({'title': 'Vortrag', 'content': '# Eins\n- a\n# Zwei\n- b'}, ctx);
     check(File('${tmp.path}/Vortrag.pptx').existsSync() && File('${tmp.path}/Vortrag.pdf').existsSync(), 'create_presentation: PPTX + PDF');
+
+    // Designs & Vorlagen
+    check(designForTopic('Präsentation für unsere Reise nach Japan').id == 'reise', 'Design passend zum Thema (Reise)');
+    final req = 'Design passend zur Reise: https://media.slidesgo.com/storage/1/travel.jpg https://slidesgo.com/de/theme/surat-reisetour-newsletter#x';
+    check(designReferencesIn(req).length == 2 && wantsDesign(req), 'Design-Vorlagen-Links erkannt');
+    final travel = buildPptx(title: 'Reise', slides: splitSlides('# Anreise\n- a\n# Tag 1\n- b\n# Tag 2\n- c\n# Heimreise\n- d').slides,
+        design: designById('reise'), agenda: true);
+    final tz = readZip(travel);
+    final tAll = tz.entries.where((e) => e.key.endsWith('.xml')).map((e) => utf8.decode(e.value)).join();
+    check(tAll.contains('Die Reiseroute') && tAll.contains('0B6E8E') && tz.containsKey('ppt/slides/slide6.xml') && tAll.contains('prstDash'),
+        'Reise-Design: Route, Farben, Reiseleiste');
+    check(officeText(travel, 'pptx').contains('Tag 1'), 'PowerPoint-Text auslesen');
+    final tpl = PptxTemplate.parse(travel)!;
+    check(tpl.wide && tpl.theme!.colors['accent1'] != null && tpl.parts.keys.any((k) => k.startsWith('ppt/slideMasters/')), 'PowerPoint-Vorlage gelesen');
+    final fromTpl = buildPptx(title: 'Neu', slides: s2.slides, resolveImage: out.resolveImage, template: tpl,
+        design: designFromOffice(tpl.theme!, base: designById('standard')));
+    final fz = readZip(fromTpl);
+    final pres = utf8.decode(fz['ppt/_rels/presentation.xml.rels']!);
+    check(pres.contains(tpl.masterPath.substring(4)) && fz.containsKey(tpl.layoutPath) && PptxTemplate.parse(fromTpl) != null,
+        'Präsentation auf Basis der Vorlage');
+    // Farben aus Beispielbild (über Link mit Vorschaubild)
+    final px = Uint8List(4 * 20 * 20);
+    for (var i = 0; i < 400; i++) {
+      final orange = i % 20 < 8;
+      px.setAll(i * 4, orange ? [232, 120, 40, 255] : [20, 90, 140, 255]);
+    }
+    final sample = encodePngRgba(20, 20, px);
+    final fetched = <String>[];
+    final dctx = ToolContext(requestNetwork: (_) async => true)..userRequest = req;
+    final look = await resolveDesign(
+      ctx: dctx,
+      topic: 'Reise',
+      decodeImage: (b) async {
+        final r = decodePng(b);
+        final rgba = Uint8List(r.width * r.height * 4);
+        for (var i = 0; i < r.width * r.height; i++) {
+          rgba.setAll(i * 4, [r.rgb[i * 3], r.rgb[i * 3 + 1], r.rgb[i * 3 + 2], 255]);
+        }
+        return (r.width, r.height, rgba);
+      },
+      fetch: (u) async {
+        fetched.add(u.toString());
+        if (u.host == 'slidesgo.com') {
+          return (Uint8List.fromList(utf8.encode('<html><meta property="og:image" content="/img/prev.png"></html>')), 'text/html');
+        }
+        return (sample, 'image/png');
+      },
+    );
+    check(fetched.contains('https://slidesgo.com/img/prev.png') && look.design.motif == DesignMotif.travel && look.design.source != null &&
+        {look.design.primary, look.design.secondary}.any((c) => int.parse(c.substring(0, 2), radix: 16) > 0xB0) &&
+        {look.design.primary, look.design.secondary}.any((c) => int.parse(c.substring(4, 6), radix: 16) > 0x70),
+        'Design aus Beispielbildern: ${look.design.primary}/${look.design.secondary}');
+    final denied = await resolveDesign(ctx: ToolContext(requestNetwork: (_) async => false)..userRequest = req, topic: 'Reise');
+    check(denied.design.id == 'reise' && denied.notes.any((n) => n.contains('Internet')), 'Ohne Freigabe: Themen-Design, kein Abruf');
     ChartSpec? spec;
     final r3 = await CreateChartTool(out, (s) async {
       spec = s;

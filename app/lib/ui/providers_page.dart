@@ -62,12 +62,12 @@ class ProvidersSettings extends StatelessWidget {
         ]);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const SectionLabel('Wer antwortet?', padding: EdgeInsets.fromLTRB(4, 0, 4, 8)),
+      const SectionLabel('Wer antwortet? (Standard – im Chat oben änderbar)', padding: EdgeInsets.fromLTRB(4, 0, 4, 8)),
       mode('local', Icons.phone_android, 'Nur lokal', 'Alles bleibt auf diesem Gerät. Standard.'),
       mode('onprem', Icons.dns_outlined, 'Nur On-Prem', 'Dein eigener Server antwortet (Ollama, LM Studio, vLLM …). Nichts geht in die Cloud.'),
       mode('cloud', Icons.cloud_outlined, 'Nur Cloud', 'Der gewählte Cloud-Anbieter beantwortet jede Frage.', color: c.blue),
-      mode('hybrid', Icons.alt_route, 'Lokal zuerst, Cloud nach Freigabe',
-          'Zuerst antwortet das Gerät bzw. dein Server. Klappt es nicht oder tippst du „Mit Cloud beantworten“, fragt Junels: Nein / Einmal / Ganzer Chat.'),
+      mode('hybrid', Icons.alt_route, 'Hybrid: zuerst am Gerät',
+          'Zuerst antwortet das Gerät (oder dein Server). Klappt es nicht oder tippst du „Mit … beantworten“, übernimmt dein On-Prem-Server – oder die Cloud nach Freigabe (Nein / Einmal / Ganzer Chat).'),
       if (r == 'hybrid')
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -87,13 +87,35 @@ class ProvidersSettings extends StatelessWidget {
             ]),
           ),
         ),
+      if (r == 'hybrid' && app.settings.hybridFirst == 'local')
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Panel(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+            child: Row(children: [
+              Expanded(child: Text('Danach', style: t.bodyMedium)),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'onprem', label: Text('On-Prem'), icon: Icon(Icons.dns_outlined, size: 16)),
+                  ButtonSegment(value: 'cloud', label: Text('Cloud'), icon: Icon(Icons.cloud_outlined, size: 16)),
+                ],
+                selected: {app.settings.hybridTarget},
+                showSelectedIcon: false,
+                onSelectionChanged: (v) => app.setRouting(hybridTarget: v.first),
+              ),
+            ]),
+          ),
+        ),
       if (r != 'local')
         Panel(
           padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
           child: Column(children: [
             if (r == 'onprem' || (r == 'hybrid' && app.settings.hybridFirst == 'onprem'))
               picker('On-Prem-Server', onPrem, app.onPremProvider, (id) => app.setRouting(onPremId: id)),
-            if (r == 'cloud' || r == 'hybrid') picker('Cloud-Anbieter', cloud, app.cloudProvider, (id) => app.setRouting(cloudId: id)),
+            if (r == 'hybrid' && app.settings.hybridFirst == 'local' && app.settings.hybridTarget == 'onprem')
+              picker('On-Prem-Server', onPrem, app.onPremProvider, (id) => app.setRouting(onPremId: id)),
+            if (r == 'cloud' || (r == 'hybrid' && (app.settings.hybridTarget == 'cloud' || app.settings.hybridFirst == 'onprem')))
+              picker('Cloud-Anbieter', cloud, app.cloudProvider, (id) => app.setRouting(cloudId: id)),
           ]),
         ),
       if (!app.canChat && r != 'local')

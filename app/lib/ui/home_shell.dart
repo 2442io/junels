@@ -201,6 +201,8 @@ class _HomeShellState extends State<HomeShell> {
 
       final actions = <Widget>[
         if (!_focus) ...[
+          AiModeMenu(compact: compact),
+          const SizedBox(width: 6),
           InternetMenu(compact: compact),
           const SizedBox(width: 6),
           PillIconButton(

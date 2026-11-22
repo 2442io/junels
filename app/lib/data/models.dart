@@ -293,6 +293,8 @@ class Conversation {
     this.internetAllowed = false,
     this.internetOff = false,
     this.cloudAllowed = false,
+    this.routing,
+    this.hybridTarget,
   })  : entries = entries ?? [],
         artifacts = artifacts ?? [],
         updated = updated ?? DateTime.now();
@@ -307,6 +309,8 @@ class Conversation {
   bool internetAllowed;
   bool internetOff; // Internet in diesem Chat ganz aus (keine Web-Tools)
   bool cloudAllowed; // Cloud-Anbieter für den ganzen Chat freigegeben
+  String? routing; // KI-Modus nur für diesen Chat (null = Einstellung)
+  String? hybridTarget; // Hybrid: danach onprem | cloud (null = Einstellung)
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -317,6 +321,8 @@ class Conversation {
         'internetAllowed': internetAllowed,
         'internetOff': internetOff,
         if (cloudAllowed) 'cloudAllowed': true,
+        if (routing != null) 'routing': routing,
+        if (hybridTarget != null) 'hybridTarget': hybridTarget,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -328,6 +334,8 @@ class Conversation {
         internetAllowed: j['internetAllowed'] as bool? ?? false,
         internetOff: j['internetOff'] as bool? ?? false,
         cloudAllowed: j['cloudAllowed'] as bool? ?? false,
+        routing: j['routing'] as String?,
+        hybridTarget: j['hybridTarget'] as String?,
       );
 }
 
@@ -362,6 +370,7 @@ class AppSettings {
     this.fastModelId,
     this.strongModelId,
     this.hybridFirst = 'local',
+    this.hybridTarget = 'cloud',
     this.onPremId,
     this.cloudId,
     List<Map<String, dynamic>>? providers,
@@ -432,6 +441,9 @@ class AppSettings {
 
   /// Bei hybrid: zuerst „local“ (Gerät) oder „onprem“ (eigener Server)
   String hybridFirst;
+
+  /// Bei hybrid: danach „cloud“ (mit Freigabe) oder „onprem“ (eigener Server, ohne Freigabe)
+  String hybridTarget;
   String? onPremId;
   String? cloudId;
 
@@ -480,6 +492,7 @@ class AppSettings {
         if (fastModelId != null) 'fastModelId': fastModelId,
         if (strongModelId != null) 'strongModelId': strongModelId,
         'hybridFirst': hybridFirst,
+        'hybridTarget': hybridTarget,
         if (onPremId != null) 'onPremId': onPremId,
         if (cloudId != null) 'cloudId': cloudId,
         'providers': providers,
@@ -526,6 +539,7 @@ class AppSettings {
         fastModelId: j['fastModelId'] as String?,
         strongModelId: j['strongModelId'] as String?,
         hybridFirst: j['hybridFirst'] as String? ?? 'local',
+        hybridTarget: j['hybridTarget'] as String? ?? 'cloud',
         onPremId: j['onPremId'] as String?,
         cloudId: j['cloudId'] as String?,
         providers: [for (final m in (j['providers'] as List? ?? const [])) (m as Map).cast<String, dynamic>()],

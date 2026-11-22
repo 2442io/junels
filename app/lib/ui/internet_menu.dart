@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'settings_page.dart' show openSettings;
 import 'theme.dart';
 
 class InternetMenu extends StatelessWidget {
@@ -87,6 +88,105 @@ class InternetMenu extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// KI-Modus für diesen Chat: Am Gerät, On-Prem, Cloud oder Hybrid.
+class AiModeMenu extends StatelessWidget {
+  const AiModeMenu({super.key, this.compact = false});
+  final bool compact;
+
+  static IconData iconFor(String mode) => switch (mode) {
+        'onprem' => Icons.dns_outlined,
+        'cloud' => Icons.cloud_outlined,
+        'hybrid' || 'hybrid-onprem' || 'hybrid-cloud' => Icons.alt_route,
+        _ => Icons.phone_android,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final c = AppColors.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final conv = app.current;
+    final own = conv?.routing;
+    final effective = own ?? (app.settings.routing == 'hybrid' ? 'hybrid-${app.settings.hybridTarget}' : app.settings.routing);
+    final short = switch (app.routingOf(conv)) {
+      'onprem' => 'On-Prem',
+      'cloud' => 'Cloud',
+      'hybrid' => 'Hybrid',
+      _ => 'Gerät',
+    };
+    final color = switch (app.routingOf(conv)) {
+      'cloud' => c.blue,
+      'onprem' => c.violet,
+      'hybrid' => c.amber,
+      _ => scheme.onSurface,
+    };
+    PopupMenuItem<String> item(String mode, {bool enabled = true, String? sub}) => PopupMenuItem(
+          value: mode,
+          enabled: enabled,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(iconFor(mode), color: enabled ? null : c.faint),
+            title: Text(AppController.routingName(mode)),
+            subtitle: sub == null ? null : Text(sub, maxLines: 2),
+            trailing: effective == mode && own != null ? Icon(Icons.check, color: c.mint, size: 18) : null,
+          ),
+        );
+    final hasOnPrem = app.onPremProvider != null, hasCloud = app.cloudProvider != null;
+    return PopupMenuButton<String>(
+      tooltip: 'KI-Modus: ${AppController.routingName(effective)}',
+      onSelected: (v) {
+        if (v == '__settings') {
+          openSettings(context, section: 'providers');
+        } else {
+          app.setChatRouting(v == '__default' ? null : v);
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: '__default',
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.settings_suggest_outlined),
+            title: const Text('Standard'),
+            subtitle: Text('wie in den Einstellungen: ${AppController.routingName(app.settings.routing == 'hybrid' ? 'hybrid-${app.settings.hybridTarget}' : app.settings.routing)}'),
+            trailing: own == null ? Icon(Icons.check, color: c.mint, size: 18) : null,
+          ),
+        ),
+        const PopupMenuDivider(),
+        item('local', enabled: app.status == EngineStatus.ready || app.models.isNotEmpty, sub: 'Alles bleibt auf diesem Gerät'),
+        item('onprem', enabled: hasOnPrem, sub: hasOnPrem ? app.onPremProvider!.label : 'Kein Server eingerichtet'),
+        item('cloud', enabled: hasCloud, sub: hasCloud ? app.cloudProvider!.label : 'Kein Cloud-Anbieter eingerichtet'),
+        item('hybrid-onprem', enabled: hasOnPrem, sub: 'Erst am Gerät, klappt es nicht: dein Server'),
+        item('hybrid-cloud', enabled: hasCloud, sub: 'Erst am Gerät, dann Cloud nach Freigabe'),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: '__settings',
+          child: ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(Icons.tune), title: Text('Anbieter verwalten …')),
+        ),
+      ],
+      child: Container(
+        height: 38,
+        width: compact ? 38 : null,
+        padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: own != null ? color.withValues(alpha: 0.6) : c.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(iconFor(effective), size: 18, color: color),
+          if (!compact) ...[
+            const SizedBox(width: 6),
+            Text(short, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: color)),
+          ],
+        ]),
+      ),
     );
   }
 }

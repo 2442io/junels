@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:agent_engine/agent_engine.dart';
 import 'package:archive/archive_io.dart';
@@ -260,6 +262,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         imageGenerator: () =>
             imageModel != null && ImageEngine.available && settings.enabledTools.contains('generate_image') ? _generateImage : null,
         maxAutoImages: Platform.isAndroid || Platform.isIOS ? 3 : 6,
+        decodeImage: _decodeRgba,
       );
       tools = [
         ...builtinTools(),
@@ -1103,6 +1106,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<String?> refreshSource(KnowledgeSource s) =>
       s.kind == 'web' ? addWebSource(s.origin, followLinks: s.crawl) : Future.value('Dateien bitte neu hinzufügen.');
 
+  /// Bild → RGBA (verkleinert) für Farbanalysen von Design-Vorlagen.
+  static Future<(int, int, Uint8List)?> _decodeRgba(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 120);
+      final frame = await codec.getNextFrame();
+      final img = frame.image;
+      final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final r = data == null ? null : (img.width, img.height, data.buffer.asUint8List());
+      img.dispose();
+      codec.dispose();
+      return r;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> addFileSource(String path, String name) async {
     try {
       final text = name.toLowerCase().endsWith('.pdf')
@@ -1310,6 +1329,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         return null;
       }
 
+      if (const {'docx', 'dotx', 'xlsx', 'pptx', 'potx'}.contains(ext)) {
+        if (size > 80 * 1024 * 1024) return '$name ist größer als 80 MB.';
+        final f = await keep();
+        var text = officeText(await f.readAsBytes(), ext).trim();
+        if (text.length > maxAttachmentChars) text = '${text.substring(0, maxAttachmentChars)}\n[… gekürzt]';
+        final kind = switch (ext) { 'xlsx' => 'Excel', 'pptx' || 'potx' => 'PowerPoint', _ => 'Word' };
+        (_attachments[key] ??= []).add(Attachment(
+          name: name,
+          content: '[$kind-Datei – Inhalt unten. Wird automatisch als Design-Vorlage (Farben, Schriften'
+              '${kind == 'PowerPoint' ? ', Folienmaster' : ''}) für neue Präsentationen und Dokumente verwendet.]\n$text',
+          path: f.path,
+        ));
+        notifyListeners();
+        return null;
+      }
+
       if (ext == 'pdf') {
         if (size > 80 * 1024 * 1024) return '$name ist größer als 80 MB.';
         final f = await keep();
@@ -1330,7 +1365,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       // einfache Binärprüfung
       final probe = bytes.length > 4096 ? bytes.sublist(0, 4096) : bytes;
       if (probe.where((b) => b == 0).length > 2) {
-        return '$name wird nicht unterstützt (möglich: PDF, Bilder, TXT, MD, CSV, JSON, Code).';
+        return '$name wird nicht unterstützt (möglich: PDF, Word, Excel, PowerPoint, Bilder, TXT, MD, CSV, JSON, Code).';
       }
       var text = utf8.decode(bytes, allowMalformed: true);
       if (text.length > maxAttachmentChars) {
@@ -2246,14 +2281,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     await send(text, voice: entry.viaVoice, forceCloud: cloud, forceStrong: strong);
   }
 
-  /// „Mit Cloud beantworten“ unter einer Antwort: fragt nach Freigabe und beantwortet neu.
+  /// „Mit Cloud/On-Prem beantworten“ unter einer Antwort: bei Cloud mit Freigabe, dann neu beantworten.
   Future<void> answerWithCloud(int answerIndex) async {
     final conv = current;
-    if (conv == null || running || cloudProvider == null) return;
-    if (!conv.cloudAllowed) {
+    final p = escalationProvider(conv);
+    if (conv == null || running || p == null) return;
+    if (escalatesToCloud(conv) && !conv.cloudAllowed) {
       final ask = cloudConsentHandler;
       if (ask == null) return;
-      final choice = await ask('Diese Frage mit ${cloudProvider!.name} (${cloudProvider!.model}) beantworten?');
+      final choice = await ask('Diese Frage mit ${p.name} (${p.model}) beantworten?');
       if (choice == NetworkChoice.deny) return;
       await _logCloudConsent(conv, choice);
     }
@@ -2327,9 +2363,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> setRouting({String? routing, String? hybridFirst, String? onPremId, String? cloudId}) async {
+  Future<void> setRouting({String? routing, String? hybridFirst, String? hybridTarget, String? onPremId, String? cloudId}) async {
     if (routing != null) settings.routing = routing;
     if (hybridFirst != null) settings.hybridFirst = hybridFirst;
+    if (hybridTarget != null) settings.hybridTarget = hybridTarget;
     if (onPremId != null) settings.onPremId = onPremId;
     if (cloudId != null) settings.cloudId = cloudId;
     await storage.saveSettings(settings);
@@ -2341,30 +2378,88 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<RemoteBackend> remoteBackend(ProviderConfig p) async =>
       RemoteBackend(p, apiKey: await Vault.read('provider:${p.id}'));
 
-  /// Kurzinfo für Kopfzeilen: null = alles lokal.
-  String? get routingLabel => switch (settings.routing) {
-        'onprem' => onPremProvider == null ? 'On-Prem nicht eingerichtet' : 'On-Prem · ${onPremProvider!.name}',
-        'cloud' => cloudProvider == null ? 'Cloud nicht eingerichtet' : 'Cloud · ${cloudProvider!.name}',
-        'hybrid' => current?.cloudAllowed == true ? 'Cloud freigegeben' : 'Cloud nach Freigabe',
-        _ => null,
+  // ---- KI-Modus: pro Chat wählbar, sonst aus den Einstellungen
+  // Werte im Chat: local | onprem | cloud | hybrid-onprem | hybrid-cloud
+
+  /// local | onprem | cloud | hybrid
+  String routingOf(Conversation? c) {
+    final r = c?.routing ?? settings.routing;
+    return r.startsWith('hybrid') ? 'hybrid' : r;
+  }
+
+  /// Hybrid: womit zuerst (local | onprem)
+  String hybridFirstOf(Conversation? c) => c?.routing != null ? 'local' : settings.hybridFirst;
+
+  /// Hybrid: wohin danach (onprem | cloud)
+  String hybridTargetOf(Conversation? c) {
+    final r = c?.routing;
+    final t = (r != null && r.startsWith('hybrid-')) ? r.substring(7) : settings.hybridTarget;
+    // erst On-Prem, dann On-Prem ergibt keinen Sinn
+    return t == 'onprem' && hybridFirstOf(c) != 'onprem' ? 'onprem' : 'cloud';
+  }
+
+  bool escalatesToCloud(Conversation? c) => hybridTargetOf(c) == 'cloud';
+
+  /// Wohin „Mit … beantworten“ bzw. der Rückfall im Hybrid-Modus geht.
+  ProviderConfig? escalationProvider(Conversation? c) =>
+      routingOf(c) != 'hybrid' ? null : (escalatesToCloud(c) ? cloudProvider : onPremProvider);
+
+  /// KI-Modus für den aktuellen Chat setzen (null = wie in den Einstellungen).
+  Future<void> setChatRouting(String? mode) async {
+    final c = _ensureConversation();
+    c.routing = mode;
+    // Cloud ausdrücklich für diesen Chat gewählt = Freigabe für diesen Chat
+    if (mode == 'cloud') c.cloudAllowed = true;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  /// Bezeichnung eines Modus für Menüs.
+  static String routingName(String mode) => switch (mode) {
+        'local' => 'Am Gerät',
+        'onprem' => 'On-Prem',
+        'cloud' => 'Cloud',
+        'hybrid-onprem' => 'Hybrid: Gerät → On-Prem',
+        'hybrid-cloud' => 'Hybrid: Gerät → Cloud',
+        'hybrid' => 'Hybrid',
+        _ => mode,
       };
 
+  /// Kurzinfo für Kopfzeilen: null = alles lokal.
+  String? get routingLabel {
+    final c = current;
+    return switch (routingOf(c)) {
+      'onprem' => onPremProvider == null ? 'On-Prem nicht eingerichtet' : 'On-Prem · ${onPremProvider!.name}',
+      'cloud' => cloudProvider == null ? 'Cloud nicht eingerichtet' : 'Cloud · ${cloudProvider!.name}',
+      'hybrid' => escalatesToCloud(c)
+          ? (c?.cloudAllowed == true ? 'Cloud freigegeben' : 'Gerät → Cloud nach Freigabe')
+          : 'Gerät → On-Prem',
+      _ => null,
+    };
+  }
+
   /// Kann gerade geantwortet werden (lokal oder über einen Anbieter)?
-  bool get canChat => switch (settings.routing) {
-        'onprem' => onPremProvider != null,
-        'cloud' => cloudProvider != null,
-        'hybrid' => settings.hybridFirst == 'onprem' ? onPremProvider != null : status == EngineStatus.ready,
-        _ => status == EngineStatus.ready,
-      };
+  bool get canChat {
+    final c = current;
+    return switch (routingOf(c)) {
+      'onprem' => onPremProvider != null,
+      'cloud' => cloudProvider != null,
+      'hybrid' => hybridFirstOf(c) == 'onprem' ? onPremProvider != null : status == EngineStatus.ready,
+      _ => status == EngineStatus.ready,
+    };
+  }
 
   /// Wählt das Modell für eine Antwort: (Backend, Anzeige, ist Cloud).
   Future<(AgentBackend?, String?, bool)> _backendFor(Conversation conv,
       {bool forceCloud = false, String input = '', int docChars = 0, bool forceStrong = false, bool voice = false}) async {
-    final r = settings.routing;
+    final r = routingOf(conv);
     Future<(AgentBackend?, String?, bool)> remote(ProviderConfig? p, bool cloud) async =>
         p == null ? (null, null, cloud) : (await remoteBackend(p), '${cloud ? 'Cloud' : 'On-Prem'} · ${p.name} · ${p.model}', cloud);
-    if (forceCloud || r == 'cloud' || (r == 'hybrid' && conv.cloudAllowed)) return remote(cloudProvider, true);
-    if (r == 'onprem' || (r == 'hybrid' && settings.hybridFirst == 'onprem')) return remote(onPremProvider, false);
+    final toCloud = escalatesToCloud(conv);
+    // forceCloud = Rückfall/Knopf „Mit … beantworten“
+    if (forceCloud) return toCloud || r == 'cloud' ? remote(cloudProvider, true) : remote(onPremProvider, false);
+    if (r == 'cloud' || (r == 'hybrid' && toCloud && conv.cloudAllowed)) return remote(cloudProvider, true);
+    if (r == 'onprem' || (r == 'hybrid' && hybridFirstOf(conv) == 'onprem')) return remote(onPremProvider, false);
     final (e, v) = await _localFor(conv, input, docChars: docChars, forceStrong: forceStrong, voice: voice);
     return (e, v, false);
   }
@@ -3526,18 +3621,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
     }
-    // Hybrid: Lokal hat nicht geklappt → Cloud anbieten bzw. nach Freigabe fragen
-    if (!usedCloud && settings.routing == 'hybrid' && cloudProvider != null && !headless) {
-      final failed = answer.error != null || answer.text.trim().isEmpty || answer.text == '_(gestoppt)_';
+    // Hybrid: Gerät hat nicht geklappt → On-Prem direkt bzw. Cloud nach Freigabe
+    final esc = escalationProvider(conv);
+    if (!usedCloud && via?.startsWith('On-Prem') != true && esc != null && !headless) {
+      final failed = answer.error != null || answer.text.trim().isEmpty;
       answer.cloudOffer = true;
+      final toCloud = escalatesToCloud(conv);
       final ask = cloudConsentHandler;
-      if (failed && answer.text != '_(gestoppt)_' && !voice && ask != null && current?.id == conv.id) {
-        final choice = await ask('Das lokale Modell konnte die Frage nicht beantworten. '
-            'Mit ${cloudProvider!.name} (${cloudProvider!.model}) beantworten?');
+      if (failed && answer.text != '_(gestoppt)_' && !voice && current?.id == conv.id && (!toCloud || ask != null)) {
+        var choice = NetworkChoice.once;
+        if (toCloud && !conv.cloudAllowed) {
+          choice = await ask!('Das Modell am Gerät konnte die Frage nicht beantworten. Mit ${esc.name} (${esc.model}) beantworten?');
+          if (choice != NetworkChoice.deny) await _logCloudConsent(conv, choice);
+        }
         if (choice != NetworkChoice.deny) {
-          await _logCloudConsent(conv, choice);
           final i = conv.entries.indexOf(answer);
           if (i > 0) {
+            appLog('KI-Modus', 'Gerät ohne Antwort – weiter mit ${esc.name}');
             await resendFrom(i - 1, cloud: true);
             return;
           }

@@ -13,6 +13,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.0', [
+    'Designs & Vorlagen: Präsentationen im passenden Stil zum Thema (z. B. Reise mit Flugroute, Reiseroute und Fortschrittsleiste als roter Faden)',
+    'Eigene PowerPoint-, Word- und Excel-Dateien sowie Beispielbilder und Vorlagen-Links werden als Design-Vorlage übernommen',
+    'Word, Excel und PowerPoint können jetzt angehängt und gelesen werden',
+    'KI-Modus pro Chat wählbar: Am Gerät, On-Prem, Cloud oder Hybrid (zuerst Gerät, dann On-Prem oder Cloud)',
+    'Scrollen funktioniert jetzt auch, während der Agent denkt – mit „Zum Ende“-Knopf',
+  ]),
   ('1.30.0', [
     'Kommentar während der Arbeit: im selben Chat weiterschreiben, während der Agent arbeitet – er berücksichtigt den Kommentar sofort (eine entstehende Antwort wird damit neu begonnen); kommt er zu spät, wird er danach beantwortet',
     'In den Denkschritten steht, ab wann dein Kommentar berücksichtigt wurde',

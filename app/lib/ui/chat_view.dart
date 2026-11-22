@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:agent_engine/agent_engine.dart' show modelCatalog, cleanModelText;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 
 import '../data/models.dart';
@@ -31,16 +32,38 @@ class ChatView extends StatefulWidget {
 
 class _ChatViewState extends State<ChatView> {
   final _scroll = ScrollController();
-  bool _stickToBottom = true;
 
-  @override
-  void initState() {
-    super.initState();
-    _scroll.addListener(() {
-      if (!_scroll.hasClients) return;
-      final pos = _scroll.position;
-      _stickToBottom = pos.pixels >= pos.maxScrollExtent - 80;
-    });
+  /// Folgt der Ansicht den neuen Zeilen? Nur der Nutzer schaltet das ab (nach oben scrollen)
+  /// und wieder an (ganz nach unten scrollen oder Knopf „Zum Ende“).
+  bool _stickToBottom = true;
+  bool _userScrolling = false;
+
+  bool _nearBottom() {
+    if (!_scroll.hasClients) return true;
+    final pos = _scroll.position;
+    return pos.pixels >= pos.maxScrollExtent - 120;
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n is UserScrollNotification) {
+      if (n.direction == ScrollDirection.forward) {
+        // nach oben: nicht mehr mitlaufen
+        if (_stickToBottom) setState(() => _stickToBottom = false);
+        _userScrolling = true;
+      } else if (n.direction == ScrollDirection.idle) {
+        _userScrolling = false;
+        final near = _nearBottom();
+        if (near != _stickToBottom) setState(() => _stickToBottom = near);
+      } else {
+        _userScrolling = true;
+      }
+    } else if (n is ScrollStartNotification && n.dragDetails != null) {
+      _userScrolling = true;
+    } else if (n is ScrollEndNotification) {
+      _userScrolling = false;
+      if (!_stickToBottom && _nearBottom()) setState(() => _stickToBottom = true);
+    }
+    return false;
   }
 
   @override
@@ -50,9 +73,15 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _scrollToBottom({bool force = false}) {
-    if (!force && !_stickToBottom) return;
+    if (force) {
+      _stickToBottom = true;
+    } else if (!_stickToBottom || _userScrolling) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (!_scroll.hasClients || (_userScrolling && !force)) return;
+      final pos = _scroll.position;
+      if (pos.pixels < pos.maxScrollExtent) _scroll.jumpTo(pos.maxScrollExtent);
     });
   }
 
@@ -67,7 +96,11 @@ class _ChatViewState extends State<ChatView> {
         Expanded(
           child: entries.isEmpty
               ? _EmptyState(app: app)
-              : SelectionArea(
+              : Stack(children: [
+                  Positioned.fill(
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: _onScroll,
+                      child: SelectionArea(
                   child: ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -92,7 +125,30 @@ class _ChatViewState extends State<ChatView> {
                       );
                     },
                   ),
-                ),
+                      ),
+                    ),
+                  ),
+                  if (!_stickToBottom)
+                    Positioned(
+                      bottom: 10,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: FloatingActionButton.small(
+                          heroTag: null,
+                          tooltip: 'Zum Ende',
+                          onPressed: () => setState(() {
+                            _stickToBottom = true;
+                            if (_scroll.hasClients) {
+                              _scroll.animateTo(_scroll.position.maxScrollExtent,
+                                  duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+                            }
+                          }),
+                          child: const Icon(Icons.arrow_downward_rounded),
+                        ),
+                      ),
+                    ),
+                ]),
         ),
         _InputBar(onSent: () => _scrollToBottom(force: true)),
       ],
@@ -602,7 +658,8 @@ class _AssistantMessage extends StatelessWidget {
             ),
           if (entry.files.isNotEmpty) FileGallery(entry.files),
           if (!live && entry.sources.isNotEmpty) _Sources(entry.sources),
-          if (!live && entry.cloudOffer && entry.via == null && AppScope.of(context).cloudProvider != null)
+          if (!live && entry.cloudOffer && (entry.via == null || entry.via!.startsWith('Lokal')) &&
+              AppScope.of(context).escalationProvider(AppScope.of(context).current) != null)
             Padding(
               padding: const EdgeInsets.only(top: 10),
               child: Align(
@@ -610,7 +667,7 @@ class _AssistantMessage extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: AppScope.of(context).running ? null : () => AppScope.read(context).answerWithCloud(index),
                   icon: Icon(Icons.cloud_upload_outlined, size: 18, color: AppColors.of(context).blue),
-                  label: Text('Mit ${AppScope.of(context).cloudProvider!.name} beantworten'),
+                  label: Text('Mit ${AppScope.of(context).escalationProvider(AppScope.of(context).current)!.name} beantworten'),
                 ),
               ),
             ),

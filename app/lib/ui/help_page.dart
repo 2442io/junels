@@ -185,6 +185,22 @@ Unter **Metriken** siehst du, wie schnell das Modell arbeitet (Tokens pro Sekund
 Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein und aus, am Handy öffnet er sich von rechts.''',
   ),
   HelpArticle(
+    id: 'designs',
+    category: 'Chat',
+    icon: Icons.palette_outlined,
+    title: 'Designs & Vorlagen',
+    summary: 'Präsentationen und Dokumente im passenden Look – oder nach deiner Vorlage.',
+    keywords: 'design vorlage template powerpoint pptx word docx excel xlsx folien farben schrift reise roter faden customer journey slidesgo',
+    body: '''Der Agent wählt für Präsentationen automatisch einen Stil, der zum Thema passt (z. B. **Reise**, Natur, Business, Technik, Bildung, Gesundheit). Eine Reise-Präsentation bekommt etwa eine Flugroute auf der Titelfolie, eine **Reiseroute** als Übersicht und unten eine Fortschrittsleiste – so entsteht ein **roter Faden**.
+
+**Eigene Vorlagen nutzen**
+- **PowerPoint anhängen** (.pptx/.potx): Folienmaster, Hintergründe, Farben und Schriften werden übernommen.
+- **Word oder Excel anhängen**: Farben und Schriften des Dokuments werden übernommen.
+- **Beispielbilder oder Links** (z. B. Vorlagen-Seiten wie slidesgo): Der Agent liest die Farben aus den Bildern. Für Links fragt er vorher nach der Internet-Freigabe.
+
+Die Rückmeldung nach dem Erstellen sagt, welches Design verwendet wurde. Angehängte Office-Dateien kann der Agent außerdem lesen und als Inhaltsbasis verwenden.''',
+  ),
+  HelpArticle(
     id: 'approvals',
     category: 'Chat',
     icon: Icons.fact_check_outlined,

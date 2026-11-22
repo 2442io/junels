@@ -7,11 +7,18 @@ import 'dart:typed_data';
 import '../documents/md_blocks.dart';
 import '../documents/pdf_writer.dart';
 import '../documents/pptx_writer.dart';
+import 'design_resolver.dart';
 import 'tool.dart';
 
 /// Gemeinsame Umgebung für die Datei-Werkzeuge.
 class OutputSpace {
-  OutputSpace(this.dir, {this.extraImages, this.imageGenerator, this.maxAutoImages = 3});
+  OutputSpace(this.dir, {this.extraImages, this.imageGenerator, this.maxAutoImages = 3, this.decodeImage, this.fetchBytes});
+
+  /// Bilder dekodieren (für Farben aus Beispielbildern) – in der App über dart:ui.
+  final ImageDecoder? decodeImage;
+
+  /// Zum Testen austauschbar.
+  final Future<(Uint8List, String)> Function(Uri)? fetchBytes;
 
   /// Bilder automatisch erzeugen (Stable Diffusion), wenn ein Bildmodell bereit ist – sonst null.
   final ImageGenerator? Function()? imageGenerator;
@@ -209,6 +216,7 @@ class CreateDocumentTool extends AgentTool {
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Titel des Dokuments'),
         ToolParam('content', ParamType.string, 'Inhalt in Markdown'),
+        ToolParam('vorlage', ParamType.string, 'Design-Vorlagen des Nutzers: Links/Dateinamen (optional)'),
       ];
 
   @override
@@ -219,11 +227,20 @@ class CreateDocumentTool extends AgentTool {
     final raw = placeImages((args['content'] ?? '').toString(),
         files: ctx.generatedImages, auto: want && out.imageGenerator?.call() != null, maxAuto: out.maxAutoImages, slides: false);
     final (content, _) = await autoImages(out, raw, ctx);
-    final bytes = buildPdfDocument(title: title.isEmpty ? 'Dokument' : title, markdown: content, resolveImage: out.resolveImage);
+    final look = await resolveDesign(
+      ctx: ctx,
+      topic: '$title $content',
+      reference: args['vorlage']?.toString(),
+      decodeImage: out.decodeImage,
+      readLocal: out.resolveImage,
+      fetch: out.fetchBytes,
+    );
+    final bytes = buildPdfDocument(
+        title: title.isEmpty ? 'Dokument' : title, markdown: content, resolveImage: out.resolveImage, theme: look.design.pdfTheme);
     final f = out.fileFor(title.isEmpty ? 'Dokument' : title, 'pdf');
     await f.writeAsBytes(bytes);
     _artifact(ctx, f, 'pdf');
-    return 'PDF erstellt: ${f.uri.pathSegments.last} (${(bytes.length / 1024).ceil()} KB). '
+    return 'PDF erstellt: ${f.uri.pathSegments.last} (${(bytes.length / 1024).ceil()} KB). ${look.design.source != null ? '${look.summary}. ' : ''}'
         'Der Nutzer sieht die Datei im Chat.${_imagesHint(out, content)}';
   }
 }
@@ -246,11 +263,17 @@ class CreatePresentationTool extends AgentTool {
       'Erstellt eine Präsentation (PowerPoint .pptx und PDF). content in Markdown: jede "# Überschrift" '
       'beginnt eine Folie, darunter 3–6 kurze Stichpunkte mit "- ", optional eine Tabelle. Bild auf einer Folie: '
       '![kurze Bildbeschreibung auf Englisch](auto) – es wird automatisch erzeugt (Bildmodell), oder ![](name.png) für ein vorhandenes Bild. '
-      'Vorher mit generate_image erzeugte Bilder kommen automatisch auf Folien ohne Bild.';
+      'Vorher mit generate_image erzeugte Bilder kommen automatisch auf Folien ohne Bild. '
+      'Baue einen roten Faden: Einstieg → Etappen → Abschluss, Folientitel als Stationen. '
+      'design: passender Stil (reise, natur, business, technik, warm, elegant, bildung, gesundheit) oder auto. '
+      'vorlage: Links oder Dateinamen von Beispielbildern oder PowerPoint/Word/Excel-Vorlagen des Nutzers – Farben, Schriften und Folienmaster werden übernommen.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Titel der Präsentation'),
         ToolParam('content', ParamType.string, 'Folien in Markdown'),
+        ToolParam('design', ParamType.enumeration, 'Stil der Folien',
+            values: ['auto', 'reise', 'natur', 'business', 'technik', 'warm', 'elegant', 'bildung', 'gesundheit', 'standard']),
+        ToolParam('vorlage', ParamType.string, 'Design-Vorlagen: Links/Dateinamen (optional)'),
       ];
 
   @override
@@ -263,8 +286,27 @@ class CreatePresentationTool extends AgentTool {
     final (content, made) = await autoImages(out, raw, ctx);
     final split = splitSlides(content);
     if (split.slides.isEmpty) throw ToolException('Keine Folien gefunden: jede Folie mit "# Titel" beginnen.');
-    final pptx = buildPptx(title: title, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage);
-    final pdf = buildSlidesPdf(title: title, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage);
+    final look = await resolveDesign(
+      ctx: ctx,
+      topic: '$title $content',
+      design: args['design']?.toString(),
+      reference: args['vorlage']?.toString(),
+      decodeImage: out.decodeImage,
+      readLocal: out.resolveImage,
+      fetch: out.fetchBytes,
+    );
+    final agenda = look.design.journey ||
+        RegExp(r'roter faden|roten faden|customer journey|journey|agenda|ablauf|route', caseSensitive: false).hasMatch(ctx.userRequest);
+    final pptx = buildPptx(
+        title: title,
+        subtitle: split.subtitle,
+        slides: split.slides,
+        resolveImage: out.resolveImage,
+        design: look.design,
+        template: look.template,
+        agenda: agenda);
+    final pdf = buildSlidesPdf(
+        title: title, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage, theme: look.design.pdfTheme);
     final f1 = out.fileFor(title, 'pptx');
     await f1.writeAsBytes(pptx);
     final f2 = File(f1.path.replaceFirst(RegExp(r'\.pptx$'), '.pdf'));
@@ -273,7 +315,8 @@ class CreatePresentationTool extends AgentTool {
     _artifact(ctx, f2, 'pdf');
     final pictures = RegExp(r'!\[[^\]]*\]\(([^)]+)\)').allMatches(content).where((m) => out.resolveImage(m.group(1)!) != null).length;
     return 'Präsentation mit ${split.slides.length + 1} Folien${pictures > 0 ? ' und $pictures Bildern' : ''} erstellt: ${f1.uri.pathSegments.last} '
-        '(PowerPoint) und ${f2.uri.pathSegments.last} (PDF).${made > 0 ? ' $made Bilder wurden dafür neu erzeugt (mit KI-Kennzeichnung).' : ''}'
+        '(PowerPoint) und ${f2.uri.pathSegments.last} (PDF). ${look.summary}.${agenda ? ' Mit Ablauf-/Routenfolie und Fortschrittsleiste als rotem Faden.' : ''}'
+        '${made > 0 ? ' $made Bilder wurden dafür neu erzeugt (mit KI-Kennzeichnung).' : ''}'
         '${want && pictures == 0 && !canGen ? ' Hinweis für den Nutzer: Für Bilder fehlt das Bildmodell (Systemcheck → Bilder erzeugen, SD-Turbo).' : ''}'
         '${_imagesHint(out, content)}';
   }

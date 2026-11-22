@@ -25,6 +25,8 @@ export 'src/documents/pdf_writer.dart' show buildPdfDocument, buildSlidesPdf, Im
 export 'src/documents/pptx_writer.dart';
 export 'src/documents/raster.dart';
 export 'src/documents/ai_label.dart';
+export 'src/documents/design.dart';
+export 'src/documents/office_read.dart';
 export 'src/downloader.dart';
 export 'src/gguf_header.dart';
 export 'src/image_gen.dart';
@@ -38,5 +40,6 @@ export 'src/sync/sync_crypto.dart' show SyncKeys, sha256, hexOf, pbkdf2Master;
 export 'src/vad.dart';
 export 'src/watch.dart';
 export 'src/flow.dart';
+export 'src/agent/design_resolver.dart';
 export 'src/model_router.dart';
 export 'src/http_call.dart';
