@@ -2752,6 +2752,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       conv.title = '${p.title} · $stamp';
     }
     if (p.allowInternet) conv.internetAllowed = true;
+    // von Hand gestartet: den Routinen-Chat zeigen
+    if (routine && !automated) {
+      current = conv;
+      notifyListeners();
+    }
     final before = conv.entries.length;
     try {
       await send(p.text, target: routine ? conv : null, noHistory: routine);
