@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.37.1', [
+    'Korrektur: In 1.37.0 konnte die Stimme vor jedem Satz lange warten (wirkte stumm). Jetzt wird höchstens einmal am Anfang kurz gepuffert (max. 5 s) – und nur, wenn es hilft',
+    'Stimme nutzt wieder weniger Prozessorkerne, damit sie und das Sprachmodell sich nicht gegenseitig bremsen',
+  ]),
   ('1.37.0', [
     'Stimme ohne Stocken: Junels misst das Tempo der Stimme und puffert kurz vor dem Sprechen – danach läuft die Antwort ohne Pausen durch. Die schöne KI-Stimme bleibt (keine automatische Gerätestimme mehr)',
     'Mehr Rechenkraft für die Stimme: Piper und Kokoro nutzen jetzt mehr Prozessorkerne',

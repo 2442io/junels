@@ -168,6 +168,7 @@ class SpeechOutput {
   Completer<void>? _drained;
   Completer<void>? _playDone;
   bool _loopRunning = false;
+  bool _buffered = false; // Antwort hat schon einmal gepuffert
 
   String? voiceDir; // Piper-Ordner oder null = Systemstimme
   String language = 'de';
@@ -208,6 +209,7 @@ class SpeechOutput {
   /// Startet eine neue Ausgabe; danach [add] und am Ende [finish].
   void begin() {
     stop();
+    _buffered = false;
     _finished = false;
     _drained = Completer<void>();
   }
@@ -233,10 +235,14 @@ class SpeechOutput {
   /// Puffern: Ist die Stimme langsamer als Echtzeit, erst losspielen, wenn genug Ton vorbereitet ist,
   /// dass die (bekannten) folgenden Sätze ohne Pause anschließen. Einmal kurz warten statt ständig stocken.
   Future<void> _waitForBuffer(int gen, _Clip current) async {
+    if (_buffered) return; // nur einmal am Anfang einer Antwort
+    _buffered = true;
     if (msPerChar <= 0) return; // Tempo unbekannt → sofort spielen (misst dabei)
+    // Viel langsamer als Echtzeit: Puffern würde zu lange dauern → sofort sprechen
+    if (msPerChar > 65 * 2.2) return;
     final start = DateTime.now();
     var logged = false;
-    while (gen == _generation && DateTime.now().difference(start).inSeconds < 25) {
+    while (gen == _generation && DateTime.now().difference(start).inMilliseconds < 5000) {
       var ahead = current.seconds;
       var i = 0;
       for (; i < _queue.length; i++) {
@@ -990,9 +996,8 @@ void _ttsMain(SendPort out) {
           }
           // Kokoro-Stimmen haben eine voices.bin (Stil-Vektoren), Piper nicht
           final voices = files.where((f) => f.path.endsWith('voices.bin')).firstOrNull;
-          // Mehr Rechenkraft für die Stimme: alle Kerne bis auf zwei (max. 6) – das Sprachmodell
-          // ist beim Vorlesen meist schon fertig, das Puffern wartet sonst auf die Stimme
-          final threads = math.max(2, math.min(6, Platform.numberOfProcessors - 2));
+          // Nicht zu viele Kerne: das Sprachmodell rechnet oft gleichzeitig – zu viele Threads bremsen beide
+          final threads = math.max(2, math.min(4, Platform.numberOfProcessors ~/ 2));
           tts = sherpa.OfflineTts(sherpa.OfflineTtsConfig(
             model: voices != null
                 ? sherpa.OfflineTtsModelConfig(
@@ -1014,7 +1019,8 @@ void _ttsMain(SendPort out) {
                       noiseScale: 0.6,
                       noiseScaleW: 0.75,
                     ),
-                    numThreads: threads,
+                    // Piper ist klein: 2 Threads reichen und lassen dem Sprachmodell Luft
+                    numThreads: 2,
                   ),
           ));
           if (tts!.ptr.address == 0) {
