@@ -14,7 +14,7 @@ import 'flows_page.dart';
 enum AppSection {
   chat('Chat', Icons.forum_outlined),
   tasks('Geplante Aufgaben', Icons.schedule),
-  flows('Prozesse', Icons.account_tree_outlined),
+  flows('Prozesse & Watchlist', Icons.account_tree_outlined),
   watch('Watchlist', Icons.radar),
   prompts('Prompt-Vorlagen', Icons.bolt_outlined),
   knowledge('Wissen & Gedächtnis', Icons.local_library_outlined),

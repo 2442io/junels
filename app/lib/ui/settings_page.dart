@@ -653,6 +653,30 @@ class _VoiceSection extends StatelessWidget {
             items: [for (final e in tts) DropdownMenuItem(value: e.id, child: Text(e.name.replaceFirst('Piper ', '')))],
             onChanged: (v) => app.setVoiceSettings(ttsVoiceId: v),
           )),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                  () {
+                    final id = app.settings.ttsVoiceId ?? '';
+                    if (app.voice.output.engineLabel == 'Systemstimme') {
+                      return 'Zuletzt sprach die Systemstimme (die gewählte Stimme war nicht verfügbar).';
+                    }
+                    if (id.startsWith('kokoro')) return 'Kokoro: die natürlichste Stimme.';
+                    if (id == 'piper-de-thorsten-high') return 'Thorsten HD: klar und schnell.';
+                    return 'Klingt es blechern? Im Systemcheck „Kokoro Deutsch – Martin/Victoria“ oder „Thorsten HD“ laden – deutlich natürlicher.';
+                  }(),
+                  style: t.bodySmall,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => app.speakText('Hallo! So klinge ich. Um 14:30 Uhr sind es z. B. 21 °C – ca. 5 % wärmer als gestern.'),
+                icon: const Icon(Icons.volume_up_outlined, size: 18),
+                label: const Text('Probehören'),
+              ),
+            ]),
+          ),
           SwitchListTile(
             dense: true,
             contentPadding: const EdgeInsets.only(left: 4),

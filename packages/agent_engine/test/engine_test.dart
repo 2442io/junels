@@ -735,6 +735,45 @@ Future<void> main() async {
     check(s.spokenSoFar.endsWith('Mehr gibt es nicht'), 'gesprochener Text nachvollziehbar');
   });
 
+  await group('Gesprochene Ausgabe: Abkürzungen und Aussprache', () async {
+    final parts = splitForSpeech('Das gilt z. B. am 3. Mai in Wien. Dr. Huber kommt um 14:30 Uhr. Fertig!');
+    check(parts.length == 2 && parts.first.contains('z. B. am 3. Mai'), 'kein Satzende nach z. B. und 3. ($parts)');
+    final st = SentenceStreamer();
+    check(st.feed('Es sind z. ').isEmpty, 'Streaming wartet nach „z.“');
+    final n = normalizeForSpeech('Um 14:30 sind es z. B. 21 °C, ca. 5 % mehr – 3–5 km/h (leicht) & sonnig 🌞');
+    check(n.contains('14 Uhr 30') && n.contains('zum Beispiel') && n.contains('21 Grad') && n.contains('circa') &&
+        n.contains('5 Prozent') && n.contains('3 bis 5 Kilometer pro Stunde') && n.contains(' und ') && !n.contains('🌞'), 'normalisiert ($n)');
+  });
+
+  await group('Watchlist: Suchanfrage, Intervalle', () async {
+    final q = SearchQuery.parse('"Wiener Linien" Störung -Wartung site:orf.at');
+    check(q.phrases.single == 'wiener linien' && q.excludes.single == 'wartung' && q.sites.single == 'orf.at', 'Operatoren erkannt');
+    check(q.accepts('U4 Störung', '', 'https://wien.orf.at/x'), 'passender Treffer bleibt');
+    check(!q.accepts('Wartung U6', '', 'https://wien.orf.at/x'), '-Wort schließt aus');
+    check(!q.accepts('Störung', '', 'https://example.com/x'), 'site: filtert');
+    final w = WatchItem(id: 'm', kind: WatchKind.topic, title: 't', target: 'x', intervalMinutes: 1, lastCheck: DateTime(2026, 1, 1, 10, 0, 0));
+    check(!w.due(DateTime(2026, 1, 1, 10, 0, 30)) && w.due(DateTime(2026, 1, 1, 10, 0, 50)), 'minütlich fällig');
+    check(WatchItem.labelFor(5) == 'alle 5 Minuten' && WatchItem.labelFor(1440) == 'täglich', 'Beschriftung');
+    final r = WatchItem.fromJson(WatchItem(id: 'a', kind: WatchKind.topic, title: 't', target: 'Wunsch', promptMode: true, query: 'q', recentOnly: true, flowId: 'f').toJson());
+    check(r.promptMode && r.query == 'q' && r.recentOnly && r.flowId == 'f' && r.searchQuery == 'q', 'neue Felder gespeichert');
+  });
+
+  await group('Prozesse: Auto-Verbinden und neue Bausteine', () async {
+    final wf = Workflow(id: 'w', name: 'T', nodes: [
+      FlowNode(id: 'a', type: FlowNodeType.trigger, title: 'Start', x: 0, y: 100),
+      FlowNode(id: 'b', type: FlowNodeType.http, title: 'API', config: {'url': 'https://api.example.com/x'}, x: 320, y: 100),
+      FlowNode(id: 'c', type: FlowNodeType.notify, title: 'Push', x: 640, y: 110),
+    ]);
+    check(wf.autoConnect() == 2 && wf.order().map((n) => n.id).join() == 'abc', 'lose Bausteine logisch verbunden');
+    check(wf.attachPoint()?.id == 'c', 'Anhängepunkt = Ende der Kette');
+    check(wf.problems({}).isEmpty, 'keine Probleme (${wf.problems({})})');
+    wf.node('b')!.config['url'] = 'ftp:/x';
+    check(wf.problems({}).any((p) => p.contains('https')), 'ungültige Adresse erkannt');
+    check(FlowNodeType.parse('rest') == FlowNodeType.http, 'Alias rest → Web-API');
+    check(jsonPath({'items': [{'title': 'A'}]}, 'items.0.title') == 'A', 'JSON-Pfad');
+    check(httpStatusHint(401).contains('Anmeldung'), 'Hinweis zu 401');
+  });
+
   await group('Suche auf Webseiten (Shops)', () async {
     const amazon = '''<html><body>
 <div data-component-type="s-search-result" data-asin="A1"><a href="/dp/A1"><img class="s-image" src="https://m.media-amazon.com/1.jpg"></a>

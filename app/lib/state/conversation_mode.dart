@@ -118,8 +118,12 @@ class ConversationMode {
     // Fragt der Agent nach Internet, das ansagen – der Nutzer schaut evtl. nicht aufs Display
     app.onConsentAsk = null;
     app.voiceConsentHandler = _askConsentByVoice;
-    // Gesprächs-Prompt vorrechnen → erste Antwort ohne Wartezeit
+    // Gesprächs-Prompt vorrechnen und Stimme laden → erste Antwort ohne Wartezeit
     unawaited(app.warmUp(voice: true));
+    app.voice.output
+      ..voiceDir = app.ttsVoicePath
+      ..language = _language == 'en' ? 'en' : 'de';
+    unawaited(app.voice.output.warmUp());
     // Wer das Gespräch gerade geöffnet hat, meint den Agenten – erste Frage ohne Namen
     _followUntil = DateTime.now().add(const Duration(seconds: 30));
     needsName.value = false;
@@ -509,7 +513,19 @@ class ConversationMode {
     _speakingStarted = false;
     final sw = Stopwatch()..start();
     var firstMs = -1;
-    await app.send(text, voice: true, onAnswer: (raw, done) {
+    var saidWait = false;
+    await app.send(text, voice: true, onToolStart: (tool) {
+      // Werkzeuge (Internet) brauchen Zeit: kurz Bescheid geben statt stumm zu warten
+      if (myTurn != _turn || _speakingStarted || saidWait) return;
+      saidWait = true;
+      out.add(switch (tool) {
+        'weather' => 'Moment, ich schaue mir das Wetter an.',
+        'news' => 'Moment, ich hole die Nachrichten.',
+        'calculator' => 'Einen Moment.',
+        _ => 'Moment, ich schaue nach.',
+      });
+      if (state.value == ConvState.thinking) state.value = ConvState.speaking;
+    }, onAnswer: (raw, done) {
       if (myTurn != _turn) return;
       // Wiederholte Frage und lautes Denken nicht vorlesen
       final full = stripAnswerPreamble(raw, text, done: done);

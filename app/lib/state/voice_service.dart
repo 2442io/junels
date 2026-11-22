@@ -87,6 +87,9 @@ class MicStream {
           numChannels: 1,
           echoCancel: aec,
           noiseSuppress: aec,
+          // Kein Bluetooth-„Telefonmodus“ (SCO): der schaltet Kopfhörer/Auto auf Telefonqualität
+          // und die Stimme klingt blechern. Aufgenommen wird übers Gerätemikrofon.
+          androidConfig: const AndroidRecordConfig(manageBluetooth: false),
         ));
         _rate = rate;
         break;
@@ -151,8 +154,13 @@ class SpeechOutput {
 
   _TtsWorker? _piper;
   String? _piperDir;
+  Future<_TtsWorker>? _starting;
   FlutterTts? _system;
   final AudioPlayer _player = AudioPlayer();
+  bool _contextSet = false;
+
+  /// So viele Sätze werden im Voraus erzeugt, während der aktuelle noch spielt.
+  static const _lookahead = 3;
 
   final List<_QueueItem> _queue = [];
   bool _finished = true;
@@ -173,9 +181,53 @@ class SpeechOutput {
   }
 
   void add(String sentence) {
-    if (sentence.trim().isEmpty) return;
-    _queue.add(_QueueItem(sentence));
+    final text = normalizeForSpeech(sentence, language: language);
+    if (text.trim().isEmpty) return;
+    _queue.add(_QueueItem(text));
+    _prefetch();
     _kick();
+  }
+
+  /// Nächste Sätze schon erzeugen (der Sprach-Prozess arbeitet sie der Reihe nach ab),
+  /// damit zwischen den Sätzen keine Pause entsteht.
+  void _prefetch() {
+    for (final q in _queue.take(_lookahead)) {
+      q.clip ??= _synth(q.text);
+    }
+  }
+
+  /// Stimme vorab laden (z. B. beim Start des Gesprächs), damit der erste Satz sofort kommt.
+  Future<void> warmUp() async {
+    final dir = voiceDir;
+    if (dir == null) return;
+    try {
+      final sw = Stopwatch()..start();
+      await _worker(dir);
+      voiceLog('Stimme bereit nach ${sw.elapsedMilliseconds} ms');
+    } catch (e) {
+      voiceLog('Stimme vorladen fehlgeschlagen: $e');
+    }
+  }
+
+  Future<_TtsWorker> _worker(String dir) async {
+    if (_piper != null && _piperDir == dir) return _piper!;
+    if (_starting != null && _piperDir == dir) return _starting!;
+    await _piper?.dispose();
+    _piper = null;
+    _piperDir = dir;
+    final f = _starting = _TtsWorker.start(dir).timeout(const Duration(seconds: 60),
+        onTimeout: () => throw Exception('Piper-Stimme lädt nicht (Zeitüberschreitung)'));
+    try {
+      final w = await f;
+      if (_piperDir == dir) {
+        _piper = w;
+      } else {
+        unawaited(w.dispose());
+      }
+      return w;
+    } finally {
+      if (identical(_starting, f)) _starting = null;
+    }
   }
 
   void finish() {
@@ -198,6 +250,13 @@ class SpeechOutput {
 
   void stop() {
     _generation++;
+    // schon erzeugte bzw. noch entstehende Sätze wegräumen
+    for (final q in _queue) {
+      q.clip?.then((c) {
+        final p = c?.path;
+        if (p != null) File(p).delete().then((_) {}, onError: (_) {});
+      });
+    }
     _queue.clear();
     _finished = true;
     final p = _playDone;
@@ -233,8 +292,8 @@ class SpeechOutput {
       }
       final item = _queue.removeAt(0);
       final clipF = item.clip ??= _synth(item.text);
-      // nächsten Satz schon erzeugen, während dieser spielt
-      if (_queue.isNotEmpty) _queue.first.clip ??= _synth(_queue.first.text);
+      // nächste Sätze schon erzeugen, während dieser spielt
+      _prefetch();
       final clip = await clipF;
       if (gen != _generation) break;
       speaking.value = true;
@@ -253,21 +312,30 @@ class SpeechOutput {
     }
   }
 
-  Future<_Clip?> _synth(String text) async {
+  /// Erzeugt der Reihe nach: Der Sprach-Prozess bekommt den nächsten Satz erst, wenn der vorige fertig ist.
+  /// So warten nach einem Unterbrechen höchstens ein, nicht mehrere veraltete Sätze.
+  Future<void> _chain = Future.value();
+
+  Future<_Clip?> _synth(String text) {
+    final gen = _generation;
+    final f = _chain.then((_) => gen == _generation ? _synthNow(text) : Future<_Clip?>.value(null));
+    _chain = f.then((_) {}, onError: (_) {});
+    return f;
+  }
+
+  Future<_Clip?> _synthNow(String text) async {
     final dir = voiceDir;
     if (dir == null) return null;
     try {
-      if (_piper == null || _piperDir != dir) {
-        await _piper?.dispose();
-        _piper = null;
-        _piper = await _TtsWorker.start(dir).timeout(const Duration(seconds: 60),
-            onTimeout: () => throw Exception('Piper-Stimme lädt nicht (Zeitüberschreitung)'));
-        _piperDir = dir;
-      }
-      final path = '${tempDir.path}/tts_${DateTime.now().microsecondsSinceEpoch}.wav';
-      final c = await _piper!.synth(text, path, speed).timeout(const Duration(seconds: 45),
+      final w = await _worker(dir);
+      final path = '${tempDir.path}/tts_${DateTime.now().microsecondsSinceEpoch}_${text.hashCode & 0xffff}.wav';
+      final sw = Stopwatch()..start();
+      final c = await w.synth(text, path, speed).timeout(const Duration(seconds: 45),
           onTimeout: () => throw Exception('Piper antwortet nicht (Zeitüberschreitung)'));
       engineLabel = 'Piper';
+      final ms = sw.elapsedMilliseconds;
+      // langsamer als Echtzeit → im Protokoll sichtbar (Grund für Pausen)
+      if (ms > c.seconds * 1000 * 0.8) voiceLog('Stimme langsam: ${text.length} Zeichen in $ms ms für ${c.seconds.toStringAsFixed(1)} s Audio');
       return c;
     } catch (e, st) {
       // Piper defekt → für diese Sitzung auf Systemstimme umschalten
@@ -278,7 +346,27 @@ class SpeechOutput {
     }
   }
 
+  Future<void> _ensureContext() async {
+    if (_contextSet) return;
+    _contextSet = true;
+    if (!Platform.isAndroid) return;
+    try {
+      // Als Sprach-Medium abspielen (volle Qualität über Lautsprecher/Kopfhörer), andere Apps leiser stellen
+      await _player.setAudioContext(AudioContext(
+        android: const AudioContextAndroid(
+          contentType: AndroidContentType.speech,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+        ),
+      ));
+      await _player.setReleaseMode(ReleaseMode.stop);
+    } catch (e) {
+      voiceLog('Audio-Einstellung nicht übernommen: $e');
+    }
+  }
+
   Future<bool> _play(_Clip clip) async {
+    await _ensureContext();
     final done = _playDone = Completer<void>();
     final sub = _player.onPlayerComplete.listen((_) {
       if (!done.isCompleted) done.complete();
@@ -286,7 +374,7 @@ class SpeechOutput {
     try {
       await _player.play(DeviceFileSource(clip.path!));
       // Sicherheitsnetz, falls das Ende-Ereignis ausbleibt
-      final ms = (clip.seconds * 1000).round() + 1500;
+      final ms = (clip.seconds * 1000).round() + 800;
       await done.future.timeout(Duration(milliseconds: ms), onTimeout: () {});
       return true;
     } catch (e, st) {
@@ -838,8 +926,11 @@ void _ttsMain(SendPort out) {
                       model: model.path,
                       tokens: tokens.path,
                       dataDir: espeak.path,
+                      // etwas weniger „Rauschen“ in der Betonung: ruhiger, natürlicher
+                      noiseScale: 0.6,
+                      noiseScaleW: 0.75,
                     ),
-                    numThreads: 2,
+                    numThreads: threads,
                   ),
           ));
           if (tts!.ptr.address == 0) {
@@ -861,12 +952,13 @@ void _ttsMain(SendPort out) {
             return;
           }
           final path = m['out'] as String;
-          File(path).writeAsBytesSync(encodeWav16(audio.samples, audio.sampleRate));
+          final pcm = _polish(audio.samples, audio.sampleRate);
+          File(path).writeAsBytesSync(encodeWav16(pcm, audio.sampleRate));
           out.send({
             'id': id,
             'ok': true,
             'path': path,
-            'seconds': audio.samples.length / audio.sampleRate,
+            'seconds': pcm.length / audio.sampleRate,
             'rate': audio.sampleRate,
           });
         case 'dispose':
@@ -878,4 +970,36 @@ void _ttsMain(SendPort out) {
       out.send({'id': id, 'ok': false, 'error': e.toString()});
     }
   });
+}
+
+/// Klang aufbereiten: Stille am Anfang/Ende kürzen (weniger Pausen zwischen Sätzen),
+/// Lautstärke angleichen (manche Stimmen sind sehr leise) und kurz ein-/ausblenden (kein Knacksen).
+Float32List _polish(Float32List s, int rate) {
+  if (s.isEmpty) return s;
+  var peak = 0.0;
+  for (final v in s) {
+    final a = v.abs();
+    if (a > peak) peak = a;
+  }
+  if (peak < 1e-4) return s;
+  final thr = math.max(0.008, peak * 0.02);
+  var a = 0, b = s.length - 1;
+  while (a < s.length && s[a].abs() < thr) {
+    a++;
+  }
+  while (b > a && s[b].abs() < thr) {
+    b--;
+  }
+  final start = math.max(0, a - (rate * 0.02).round());
+  final end = math.min(s.length, b + (rate * 0.14).round());
+  final out = Float32List.fromList(s.sublist(start, end));
+  final gain = math.min(3.0, 0.89 / peak);
+  final fade = math.min((rate * 0.008).round(), out.length ~/ 4);
+  for (var i = 0; i < out.length; i++) {
+    var g = gain;
+    if (i < fade) g *= i / fade;
+    if (i >= out.length - fade) g *= (out.length - 1 - i) / fade;
+    out[i] = (out[i] * g).clamp(-1.0, 1.0);
+  }
+  return out;
 }

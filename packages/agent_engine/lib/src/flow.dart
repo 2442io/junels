@@ -9,6 +9,8 @@ enum FlowNodeType {
   trigger('Auslöser'),
   agent('Agent'),
   tool('Werkzeug'),
+  http('Web-API'),
+  mcp('MCP-Server'),
   condition('Bedingung'),
   notify('Benachrichtigung'),
   save('Speichern');
@@ -28,6 +30,8 @@ enum FlowNodeType {
       'push' || 'notification' || 'nachricht' || 'message' || 'benachrichtigen' => notify,
       'memory' || 'note' || 'notiz' || 'document' || 'dokument' => save,
       'action' || 'werkzeuge' || 'tools' => tool,
+      'api' || 'rest' || 'request' || 'webhook' || 'web-api' || 'webapi' => http,
+      'mcp-server' || 'mcp_tool' => mcp,
       _ => null,
     };
   }
@@ -45,16 +49,25 @@ class FlowNode {
 
   String str(String key, [String fallback = '']) => (config[key] ?? fallback).toString();
 
+  static String _short(String s, int n) => s.length > n ? '${s.substring(0, n)}…' : s;
+  static String _every(int m) => m < 60
+      ? (m == 1 ? 'jede Minute' : 'alle $m min')
+      : (m % 1440 == 0 ? (m == 1440 ? 'täglich' : 'alle ${m ~/ 1440} Tage') : (m == 60 ? 'stündlich' : 'alle ${(m / 60).round()} h'));
+
   /// Kurzbeschreibung für die Karte.
   String get summary => switch (type) {
         FlowNodeType.trigger => switch (str('mode', 'manual')) {
             'schedule' => '${str('days', 'daily') == 'weekdays' ? 'Mo–Fr' : (str('days') == 'weekly' ? 'wöchentlich' : 'täglich')} '
                 '${(config['hour'] ?? 8).toString().padLeft(2, '0')}:${(config['minute'] ?? 0).toString().padLeft(2, '0')}',
-            'watch' => 'bei Watchlist-Änderung',
+            'watch' => str('watchTarget').isNotEmpty
+                ? 'beobachtet „${_short(str('watchTarget'), 40)}“ · ${_every((config['interval'] as num?)?.toInt() ?? 60)}'
+                : 'bei Watchlist-Änderung',
             _ => 'manuell starten',
           },
         FlowNodeType.agent => str('prompt'),
         FlowNodeType.tool => '${str('tool')} ${(config['args'] is Map && (config['args'] as Map).isNotEmpty) ? jsonEncode(config['args']) : ''}'.trim(),
+        FlowNodeType.http => '${str('method', 'GET')} ${str('url')}'.trim(),
+        FlowNodeType.mcp => str('tool').isEmpty ? 'Server und Tool wählen' : '${str('serverName', str('server'))} · ${str('tool')}',
         FlowNodeType.condition => '${config['negate'] == true ? 'enthält nicht' : 'enthält'} „${str('contains')}“',
         FlowNodeType.notify => str('title', 'Junels'),
         FlowNodeType.save => str('mode', 'memory') == 'document' ? 'als Dokument' : 'ins Gedächtnis',
@@ -150,6 +163,46 @@ class Workflow {
     edges.removeWhere((e) => e.from == id || e.to == id);
   }
 
+  /// Bausteine ohne Nachfolger (Ende einer Kette) – dort hängt man logisch an.
+  List<FlowNode> get tails => [for (final n in nodes) if (next(n.id).isEmpty) n];
+
+  /// Logischer Vorgänger für einen neuen Baustein: das Ende der Kette, das am
+  /// weitesten rechts liegt (bei mehreren Ketten das zuletzt ausgeführte).
+  FlowNode? attachPoint({String? except}) {
+    final cands = [for (final n in order()) if (n.id != except && next(n.id).isEmpty) n];
+    if (cands.isEmpty) return null;
+    cands.sort((a, b) => (b.x + b.y * 0.01).compareTo(a.x + a.y * 0.01));
+    return cands.first;
+  }
+
+  /// Verbindet lose Bausteine sinnvoll: Jeder Baustein ohne Eingang (außer dem Auslöser)
+  /// bekommt den nächstgelegenen Baustein links von sich als Vorgänger – bzw. den
+  /// Auslöser, wenn links nichts liegt. Gibt die Zahl neuer Verbindungen zurück.
+  int autoConnect() {
+    var added = 0;
+    final sorted = [...nodes]..sort((a, b) => a.x == b.x ? a.y.compareTo(b.y) : a.x.compareTo(b.x));
+    for (final n in sorted) {
+      if (n.type == FlowNodeType.trigger || prev(n.id).isNotEmpty) continue;
+      FlowNode? best;
+      var bestD = double.infinity;
+      for (final m in sorted) {
+        if (m.id == n.id || m.x >= n.x - 20) continue;
+        final dy = (m.y - n.y).abs();
+        final d = (n.x - m.x) + dy * 2.2 + (next(m.id).isEmpty ? 0 : 160);
+        if (d < bestD) {
+          bestD = d;
+          best = m;
+        }
+      }
+      best ??= trigger;
+      if (best == null || best.id == n.id) continue;
+      final before = edges.length;
+      connect(best.id, n.id);
+      if (edges.length > before) added++;
+    }
+    return added;
+  }
+
   /// Ausführungsreihenfolge (topologisch, beginnend bei den Auslösern bzw. Knoten ohne Vorgänger).
   List<FlowNode> order() {
     final indeg = {for (final n in nodes) n.id: 0};
@@ -199,6 +252,20 @@ class Workflow {
       if (n.type == FlowNodeType.agent && n.str('prompt').trim().isEmpty) p.add('„${n.title}“ hat keinen Auftrag.');
       if (n.type == FlowNodeType.tool && !toolNames.contains(n.str('tool'))) p.add('„${n.title}“: Werkzeug „${n.str('tool')}“ ist nicht aktiv.');
       if (n.type == FlowNodeType.condition && n.str('contains').trim().isEmpty) p.add('„${n.title}“: Bedingung ist leer.');
+      if (n.type == FlowNodeType.http) {
+        final u = Uri.tryParse(n.str('url').trim());
+        if (n.str('url').trim().isEmpty) {
+          p.add('„${n.title}“: Adresse (URL) fehlt.');
+        } else if (u == null || !u.hasScheme || !(u.isScheme('http') || u.isScheme('https')) || u.host.isEmpty) {
+          if (!n.str('url').contains('{{')) p.add('„${n.title}“: Adresse muss mit https:// beginnen.');
+        }
+      }
+      if (n.type == FlowNodeType.mcp && (n.str('server').isEmpty || n.str('tool').isEmpty)) {
+        p.add('„${n.title}“: MCP-Server und Tool wählen.');
+      }
+      if (n.type == FlowNodeType.trigger && n.str('mode') == 'watch' && n.config['watchInline'] == true && n.str('watchTarget').trim().isEmpty) {
+        p.add('„${n.title}“: Was soll beobachtet werden? Adresse oder Suchbegriffe eintragen.');
+      }
     }
     return p;
   }
@@ -294,6 +361,7 @@ Bausteintypen:
 - trigger: Auslöser. config: {"mode": "manual" | "schedule" | "watch", "hour": 0-23, "minute": 0-59, "days": "daily" | "weekdays" | "weekly"}
 - agent: Auftrag an den KI-Agenten (darf Werkzeuge benutzen). config: {"prompt": "…"} – mit {{vorher}} bekommt er das Ergebnis des vorigen Bausteins.
 - tool: ein Werkzeug direkt aufrufen. config: {"tool": "<name>", "args": {…}}
+- http: eine Web-API (REST) aufrufen. config: {"method": "GET" | "POST", "url": "https://…", "headers": {…}, "body": "…"}
 - condition: weiter nur, wenn das vorige Ergebnis einen Text enthält. config: {"contains": "…", "negate": false}
 - notify: Push-Nachricht. config: {"title": "…", "text": "{{vorher}}"}
 - save: Ergebnis speichern. config: {"mode": "memory" | "document", "title": "…"}
@@ -325,7 +393,7 @@ Halte den Prozess einfach (3–6 Bausteine), beginne mit genau einem trigger und
       final type = FlowNodeType.parse(r['type']?.toString()) ?? FlowNodeType.agent;
       final cfg = <String, dynamic>{...?(r['config'] as Map?)?.cast<String, dynamic>()};
       // Felder, die manche Modelle direkt am Knoten statt in config schreiben
-      for (final k in const ['prompt', 'tool', 'args', 'contains', 'negate', 'text', 'mode', 'hour', 'minute', 'days']) {
+      for (final k in const ['prompt', 'tool', 'args', 'contains', 'negate', 'text', 'mode', 'hour', 'minute', 'days', 'url', 'method', 'headers', 'body']) {
         if (!cfg.containsKey(k) && r.containsKey(k)) cfg[k] = r[k];
       }
       if (type == FlowNodeType.tool && toolNames.isNotEmpty && !toolNames.contains(cfg['tool'])) {
