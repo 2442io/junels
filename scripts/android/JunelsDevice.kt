@@ -166,6 +166,28 @@ object JunelsDevice {
                     am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code))
                     result.success(true)
                 }
+                "playSearch" -> {
+                    // „Abspielen aus Suche“ (wie bei Google Assistant): Spotify spielt das Gesuchte direkt
+                    val pkg = call.argument<String>("id") ?: ""
+                    val q = call.argument<String>("query") ?: ""
+                    val play = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+                        .putExtra(android.app.SearchManager.QUERY, q)
+                        .putExtra(android.provider.MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (pkg.isNotEmpty()) play.setPackage(pkg)
+                    try {
+                        ctx.startActivity(play)
+                        result.success(true)
+                    } catch (e: Throwable) {
+                        val uri = call.argument<String>("uri") ?: "spotify:search:${Uri.encode(q)}"
+                        try {
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).apply { if (pkg.isNotEmpty()) setPackage(pkg) })
+                            result.success(true)
+                        } catch (e2: Throwable) {
+                            result.error("app", "Abspielen aus der Suche geht in dieser App nicht", null)
+                        }
+                    }
+                }
                 "openInApp" -> {
                     val url = call.argument<String>("url") ?: ""
                     val pkg = call.argument<String>("id")

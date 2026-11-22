@@ -147,6 +147,26 @@ final _riskyLabel = RegExp(
     r'abonnier|subscribe|registrier|konto erstellen|sign ?up|bestätig|confirm',
     caseSensitive: false);
 
+/// Zahlung: macht immer der Mensch – Junels klickt das nie, sondern übergibt.
+final _paymentLabel = RegExp(
+    r'bezahl|zahlungspflichtig|kostenpflichtig|zahlung (abschließen|bestätigen|ausführen)|jetzt kaufen|kaufen\b|zur kasse|kasse\b|'
+    r'checkout|pay now|pay\b|place order|purchase|zahlungsart|kreditkarte|paypal|sofortüberweisung|eps-überweisung|apple pay|google pay',
+    caseSensitive: false);
+
+/// Anmelde-Seiten (ID Austria, Handy-Signatur, Passkey, Logins): der Nutzer meldet sich selbst an.
+final _loginPage = RegExp(
+    r'id-austria|idaustria|eid\.gv\.at|a-trust|handy-signatur|oauth|openid|/login|/signin|/sign-in|/anmeld|/auth|accounts\.|sso\.',
+    caseSensitive: false);
+
+/// Ist die Seite eine Anmeldeseite? (Adresse oder Passwortfeld)
+bool looksLikeLogin(Map<String, dynamic> snap) {
+  final url = (snap['url'] ?? '').toString();
+  final text = (snap['text'] ?? '').toString();
+  final head = text.length > 1500 ? text.substring(0, 1500) : text;
+  final secret = ((snap['els'] as List?) ?? const []).any((e) => e is Map && e['secret'] == 1);
+  return _loginPage.hasMatch(url) || secret || RegExp(r'mit id austria anmelden|passkey', caseSensitive: false).hasMatch(head);
+}
+
 class BrowserTool extends AgentTool {
   BrowserTool(this.driver);
   final BrowserDriver? Function() driver;
@@ -209,6 +229,15 @@ class BrowserTool extends AgentTool {
       case 'click':
         final el = await _element(d, target);
         final label = (el['label'] ?? '').toString();
+        if (_paymentLabel.hasMatch(label)) {
+          // Bezahlen/Kaufen: immer der Mensch – Junels drückt diesen Knopf nie
+          final ok = await d.handOver('💳 Zahlung machst du selbst: „$label“. Prüfe Betrag und Angaben, bezahle im Browser '
+              'und tippe dann auf „Weiter“ (oder „Abbrechen“).');
+          return _snapshot(d,
+              note: ok
+                  ? 'Der Nutzer hat die Zahlung („$label“) selbst übernommen. Prüfe die Seite (Bestätigung?) und sag, wie es weitergeht.'
+                  : 'Der Nutzer hat die Zahlung abgebrochen. Frag, wie es weitergehen soll.');
+        }
         if (_riskyLabel.hasMatch(label) &&
             !await d.confirm('Im Browser klicken?', '„$label“\nDer Agent möchte diesen Knopf drücken.')) {
           return 'Der Nutzer hat den Klick auf „$label“ abgelehnt. Frag, wie es weitergehen soll.';
@@ -370,6 +399,10 @@ class BrowserTool extends AgentTool {
       b.writeln('[${e['id']}] $kind „${e['label']}“$extra');
     }
     if (snap['more'] == true) b.writeln('(weiter unten gibt es mehr – action scroll)');
+    if (looksLikeLogin(snap)) {
+      b.writeln('ANMELDUNG: Das ist eine Anmeldeseite (z. B. ID Austria, Passkey, Passwort). Der Nutzer meldet sich selbst an – '
+          'übergib an ihn (Werkzeug begleiten, aktion uebergabe – sonst bitte ihn, sich im Browser anzumelden) statt etwas einzutippen.');
+    }
     final text = (snap['text'] ?? '').toString();
     final stems = focus.isEmpty ? const <String>[] : queryStems(focus);
     if (stems.isNotEmpty) {
@@ -386,7 +419,7 @@ class BrowserTool extends AgentTool {
     }
     b.writeln('Antworte, sobald du genug weißt; sonst nächste Aktion. Nenne Produkte mit Namen und Preis, '
         'aber schreib keine Adressen (URLs) in die Antwort – die Karten zeigen die Links. '
-        'Bei Bestellung/Zahlung: der Nutzer macht das selbst.');
+        'Bei Anmeldung und Zahlung: der Nutzer macht das selbst.');
     if (cards.length > 5) b..write(moreCardsMarker)..write(formatCardItems(cards.skip(5).take(35)));
     return b.toString().trim();
   }

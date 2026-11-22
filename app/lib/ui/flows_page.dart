@@ -1015,6 +1015,12 @@ class _RunBanner extends StatelessWidget {
                   onPressed: () => app.flows.stop(wf),
                 ),
               ]),
+              if ((app.flows.live[wf.id] ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 26, top: 2, right: 8),
+                  child: Text(app.flows.live[wf.id]!,
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.muted, fontSize: 12)),
+                ),
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(99),

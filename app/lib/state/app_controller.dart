@@ -23,6 +23,7 @@ import 'loose_ends.dart';
 import 'conversation_mode.dart';
 import 'browser_service.dart';
 import 'device_bridge.dart';
+import 'guide.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
 import '../tools/chart_render.dart';
@@ -299,6 +300,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         LooseEndsTool(this),
         MailInboxTool(imapAccount),
         appControlTool,
+        guideTool,
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
@@ -310,7 +312,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         WeatherTool(defaultLocation: () => settings.homeCity),
         NewsTool(),
         SiteSearchTool(),
-        BrowserTool(() => headless ? null : browser),
+        browserTool,
         ContactsTool(deviceBridge),
         EmailTool(deviceBridge),
         WhatsAppTool(deviceBridge),
@@ -1333,11 +1335,104 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  late final BrowserTool browserTool = BrowserTool(() => headless ? null : browser);
+
+  /// Begleit-Modus: gemeinsam durch Webseiten (Plan, Übergabe, Warten & melden, Vorlage).
+  late final GuideTool guideTool = GuideTool(
+    conversation: () => conversations.where((c) => c.id == runningConvId).firstOrNull ?? current,
+    save: (c) async {
+      await storage.saveConversation(c);
+      notifyListeners();
+    },
+    browser: browserTool,
+    service: browser,
+    notify: (title, body, id) async {
+      await BackgroundWork.requestNotifyPermission();
+      await BackgroundWork.notify(title, body, conversationId: id);
+    },
+    saveTemplate: (title, text) => savePrompt(SavedPrompt(title: 'Leitfaden: $title', text: text)),
+  );
+
+  /// Modellwahl für Begleitungen in dieser Sitzung: Chat-Id → Cloud nutzen?
+  final Map<String, bool> _guideCloud = {};
+
+  /// Begleitung: großes Modell (Cloud) vorschlagen, wenn eines eingerichtet ist und sonst das Gerät antworten würde.
+  Future<bool> _guideWantsCloud(Conversation conv) async {
+    final r = routingOf(conv);
+    final p = cloudProvider;
+    if (r == 'cloud' || r == 'onprem' || p == null || !deviceOnline) return false;
+    if (conv.cloudAllowed) return true;
+    final known = _guideCloud[conv.id];
+    if (known != null) return known;
+    final ask = cloudConsentHandler;
+    if (ask == null) return false;
+    final choice = await ask('Gemeinsam durch Webseiten klappt mit ${p.name} (${p.model}) deutlich zuverlässiger als mit dem '
+        'Modell am Gerät. Für diese Begleitung ${p.name} nutzen?');
+    _guideCloud[conv.id] = choice != NetworkChoice.deny;
+    if (choice != NetworkChoice.deny) await _logCloudConsent(conv, choice);
+    return choice != NetworkChoice.deny;
+  }
+
+  /// Was der Agent gerade im Browser tut – für Leiste und Begleit-Karte.
+  static String browserActivityLabel(String tool, Map<String, dynamic> a) {
+    final t = '${a['target'] ?? ''}'.trim(), x = '${a['text'] ?? ''}'.trim();
+    if (tool == 'begleiten') {
+      return switch ('${a['aktion'] ?? ''}') {
+        'start' => 'öffnet die Seite',
+        'plan' => 'plant die Schritte',
+        'schritt' => 'Schritt ${a['nr'] ?? ''} erledigt',
+        'uebergabe' => 'wartet auf dich',
+        'warten' => 'beobachtet die Seite',
+        'vorlage' => 'speichert die Vorlage',
+        _ => 'arbeitet',
+      };
+    }
+    return switch ('${a['action'] ?? ''}') {
+      'open' => 'öffnet ${Uri.tryParse(t.contains('://') ? t : 'https://$t')?.host ?? t}',
+      'search' => 'sucht „$x“',
+      'click' => 'klickt [$t]',
+      'type' => 'füllt Feld [$t] aus',
+      'select' => 'wählt „$x“',
+      'scroll' => 'scrollt',
+      'back' => 'geht zurück',
+      _ => 'liest die Seite',
+    };
+  }
+
+  /// Begleitung beenden (Karte im Chat).
+  Future<void> endGuide(Conversation c) async {
+    browser.stopWatch();
+    c.guide = null;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  /// Ablauf der Begleitung als Vorlage speichern (Karte im Chat).
+  Future<String> saveGuideTemplate(Conversation c) async {
+    final g = Guide.of(c);
+    if (g == null) return 'Keine Begleitung';
+    final name = g.goal.length > 60 ? '${g.goal.substring(0, 60)}…' : g.goal;
+    await savePrompt(SavedPrompt(title: 'Leitfaden: $name', text: g.asTemplate()));
+    return 'Als Vorlage „Leitfaden: $name“ gespeichert';
+  }
+
   late final AppControlTool appControlTool = AppControlTool(
     allowed: () => allowedApps,
     launch: deviceBridge.launchApp,
     mediaKey: deviceBridge.mediaKey,
     openInApp: deviceBridge.openInApp,
+    playSearch: deviceBridge.playSearch,
+    findMusic: (q) async {
+      // Spotify-Link (Playlist/Titel/Album) über die Websuche finden
+      final (hits, _, _) = await WebSearchTool.searchAllEngines('site:open.spotify.com $q', httpGetText);
+      for (final kind in const ['playlist', 'track', 'album', 'artist']) {
+        for (final h in hits) {
+          final m = RegExp('open\\.spotify\\.com/(?:intl-[a-z]+/)?$kind/([A-Za-z0-9]{22})').firstMatch(h.url);
+          if (m != null) return 'spotify:$kind:${m.group(1)}';
+        }
+      }
+      return null;
+    },
     unattended: () {
       final c = conversations.where((c) => c.id == runningConvId).firstOrNull;
       return c != null && isRoutineChat(c);
@@ -2145,8 +2240,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       if (a['type'] == 'app') {
         // nochmals prüfen (Freigabe kann sich geändert haben), dann ausführen
-        final (app, link) = appControlTool.check(a['app'] ?? '', a['action'] ?? 'oeffnen', a['url'] == null ? '' : '-');
-        msg = await appControlTool.execute(app, a['action'] ?? 'oeffnen', a['url'] ?? link);
+        final (app, link, q) = appControlTool.check(a['app'] ?? '', a['action'] ?? 'oeffnen', a['query'] ?? (a['url'] == null ? '' : '-'));
+        msg = await appControlTool.execute(app, a['action'] ?? 'oeffnen', a['url'] ?? link, query: a['query'] ?? q);
         a['status'] = 'sent';
         unawaited(logActivity(Activity(kind: 'app', title: '${app.name}: ${a['body'] ?? ''}', detail: msg, approval: approval, conversationId: conv?.id)));
         await storage.saveConversation(conv!);
@@ -2812,7 +2907,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Wählt das Modell für eine Antwort: (Backend, Anzeige, ist Cloud).
   Future<(AgentBackend?, String?, bool)> _backendFor(Conversation conv,
-      {bool forceCloud = false, String input = '', int docChars = 0, bool forceStrong = false, bool voice = false}) async {
+      {bool forceCloud = false, String input = '', int docChars = 0, bool forceStrong = false, bool voice = false, bool guideCloud = false}) async {
     final r = routingOf(conv);
     Future<(AgentBackend?, String?, bool)> remote(ProviderConfig? p, bool cloud) async =>
         p == null ? (null, null, cloud) : (await remoteBackend(p), '${cloud ? 'Cloud' : 'On-Prem'} · ${p.name} · ${p.model}', cloud);
@@ -2823,6 +2918,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final (e, v) = await _localFor(conv, input, docChars: docChars, forceStrong: forceStrong, voice: voice);
       return (e, v == null ? null : '$v (offline)', false);
     }
+    if (guideCloud && cloudProvider != null) return remote(cloudProvider, true);
     // forceCloud = Rückfall/Knopf „Mit … beantworten“
     if (forceCloud) return toCloud || r == 'cloud' ? remote(cloudProvider, true) : remote(onPremProvider, false);
     if (r == 'cloud' || (r == 'hybrid' && toCloud && conv.cloudAllowed)) return remote(cloudProvider, true);
@@ -3336,12 +3432,24 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Agenten-Auftrag aus einem Prozess (mit Werkzeugen).
-  Future<String> automationAgent(String prompt, {required bool allowInternet, required Conversation conv, required ChatEntry entry}) async {
+  Future<String> automationAgent(String prompt,
+      {required bool allowInternet,
+      required Conversation conv,
+      required ChatEntry entry,
+      void Function(String line)? onProgress,
+      Future<void>? cancel}) async {
+    onProgress?.call('Modell wird vorbereitet …');
     final eng = await _automationBackend();
     if (eng == null) throw Exception('Kein Modell bereit (Systemcheck oder KI-Anbieter einrichten).');
+    if (running) onProgress?.call('Wartet, bis die laufende Antwort im Chat fertig ist …');
     return _exclusive(conv.id, () async {
       var tools = toolsFor(prompt, hasImages: false, hasDocs: false);
       tools = [for (final t in tools) if (t.name != 'browser' && (allowInternet || !t.requiresNetwork)) t];
+      if (wantsGuide(prompt)) {
+        prompt = '$prompt\n\n[Hinweis: Dieser Prozess läuft ohne den Nutzer – Anmeldung, Formulare absenden und Zahlungen gehen hier nicht. '
+            'Liefere eine kurze Schritt-für-Schritt-Anleitung mit dem Link und schreib am Ende: „Gemeinsam erledigen: im Chat '
+            '„Begleite mich: <Link>“ schreiben.“]';
+      }
       final runner = _makeRunner(eng, _systemText(voice: false, tools: tools), tools: tools);
       var answer = '';
       String? error;
@@ -3357,12 +3465,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           notifyListeners();
         },
       );
+      unawaited(cancel?.then((_) => runner.stop()));
+      final toolTitles = {for (final t in tools) t.name: t.title};
       try {
         await for (final ev in runner.run(history: const [], userInput: prompt, context: ctx)) {
           switch (ev) {
+            case StepStarted(:final step):
+              onProgress?.call('💭 denkt nach (Runde $step) …');
+            case ToolCalled(:final tool, :final args):
+              final a = [for (final v in args.values) if ('$v'.trim().isNotEmpty) '$v'.trim()].join(' · ');
+              onProgress?.call('🔧 ${toolTitles[tool] ?? tool}${a.isEmpty ? '' : ': ${a.length > 80 ? '${a.substring(0, 80)}…' : a}'}');
             case FinalAnswer(:final text):
               answer = text;
-            case ToolResult(:final output, :final isError):
+              onProgress?.call('✓ Antwort fertig');
+            case ToolResult(:final output, :final isError, :final tool, :final duration):
+              onProgress?.call('${isError ? '✗' : '✓'} ${toolTitles[tool] ?? tool} (${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s)'
+                  '${isError ? ': ${output.length > 100 ? '${output.substring(0, 100)}…' : output}' : ''}');
               if (!isError) {
                 final cards = parseResultCards(output);
                 if (cards.isNotEmpty) entry.cards = [...entry.cards, for (final c in cards) c.toJson()].take(40).toList();
@@ -3642,8 +3760,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final conv = target ?? _ensureConversation();
+    // Begleit-Modus: Webseite gemeinsam erledigen (URL + „mach mit mir …“ oder laufende Begleitung)
+    final guideNow = !voice && !headless && onAnswer == null && (wantsGuide(input) || (Guide.of(conv)?.active ?? false));
+    final guideCloud = guideNow && !forceCloud && await _guideWantsCloud(conv);
     runningConvId = conv.id;
     final (eng0, via, usedCloud) = await _backendFor(conv,
+        guideCloud: guideCloud,
         forceCloud: forceCloud,
         input: input,
         docChars: (withDocs ?? attachments).fold<int>(0, (n, d) => n + d.content.length),
@@ -3699,6 +3821,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         if (t != null) runTools = [...runTools, t];
       }
     }
+    // Begleitung: Browser + begleiten statt nur zusammenfassen
+    if (guideNow && deviceOnline && !conv.internetOff) {
+      runTools = [for (final t in runTools) if (!const {'web_fetch', 'web_search', 'site_search', 'begleiten', 'browser'}.contains(t.name)) t];
+      for (final name in const ['begleiten', 'browser']) {
+        final t = activeTools.where((t) => t.name == name).firstOrNull;
+        if (t != null) runTools = [...runTools, t];
+      }
+    }
     // Browser nur im Chat mit offener App; dann ersetzt er die einfache Shop-Suche
     if (voice || headless) {
       runTools = [for (final t in runTools) if (t.name != 'browser') t];
@@ -3729,6 +3859,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       runTools = const [];
       turnInput = 'Exakt berechnet (Rechner): $calc\n\nFrage des Nutzers: $turnInput\n'
           'Antworte kurz mit diesem Ergebnis.';
+    }
+    if (guideNow && runTools.any((t) => t.name == 'begleiten')) {
+      final g = Guide.of(conv);
+      final newUrl = firstUrl(input);
+      if (g != null && g.active && (newUrl == null || newUrl == g.url)) {
+        turnInput = '${g.brief()}\n\nNachricht des Nutzers: $turnInput';
+      } else {
+        turnInput = '$turnInput\n\n[BEGLEITMODUS: Der Nutzer will das gemeinsam mit dir auf der Webseite erledigen, Schritt für Schritt. '
+            'Rufe zuerst begleiten mit aktion start auf (url, ziel). Fasse die Seite nicht nur zusammen und verweise nicht bloß auf den Link.]';
+      }
     }
     final system = _systemText(tools: runTools);
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
@@ -3880,6 +4020,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             }
           case ToolCalled(:final tool, :final args, thought: final callThought):
             onToolStart?.call(tool);
+            if (tool == 'browser' || tool == 'begleiten') browser.setActivity(browserActivityLabel(tool, args));
             final last = answer.steps.lastOrNull;
             if (last != null) {
               last
@@ -3927,6 +4068,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               last.thought = finalThought;
             }
           case AgentFinished(:final reason, :final message):
+            if (browser.activity.isNotEmpty) browser.setActivity('');
             switch (reason) {
               case AgentStopReason.error:
                 answer.error = message ?? 'Unbekannter Fehler';

@@ -7,6 +7,7 @@ import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'background_work.dart';
 import 'voice_service.dart' show appLog;
 
 class BrowserService extends ChangeNotifier implements BrowserDriver {
@@ -182,7 +183,7 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
     handOverMessage = message;
     final c = _handOver = Completer<bool>();
     notifyListeners();
-    final ok = await c.future.timeout(const Duration(minutes: 5), onTimeout: () => false);
+    final ok = await c.future.timeout(const Duration(minutes: 20), onTimeout: () => false);
     handOverMessage = null;
     _handOver = null;
     notifyListeners();
@@ -193,5 +194,152 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
   void finishHandOver(bool ok) {
     final c = _handOver;
     if (c != null && !c.isCompleted) c.complete(ok);
+  }
+
+  // ------------------------------------------------------------ Warten & melden
+
+  /// Beobachtung der offenen Seite (Warteschlange, Termin frei …). null = keine.
+  PageWatch? watch;
+  Timer? _watchTimer;
+
+  /// Seite im Browser beobachten, bis [until] erscheint – ohne [until]: bis die Warteschlange vorbei ist
+  /// oder sich die Seite deutlich ändert. [onHit] meldet das Ergebnis (Benachrichtigung).
+  void startWatch({String until = '', int everySeconds = 20, required void Function(String message) onHit}) {
+    stopWatch();
+    final w = watch = PageWatch(until: until.trim(), since: DateTime.now(), startUrl: url);
+    Future<void> tick() async {
+      if (watch != w || _c == null) return;
+      try {
+        // Normale Seiten (kein Warteraum) neu laden, um Änderungen zu sehen; Warteräume aktualisieren sich selbst
+        if (w.checks > 0 && w.reload && w.checks % 2 == 0) {
+          await controller.reload();
+          await Future<void>.delayed(const Duration(seconds: 5));
+          if (watch != w) return;
+        }
+        final raw = await controller.runJavaScriptReturningResult(_watchJs);
+        Object? v = raw;
+        for (var i = 0; i < 3 && v is String; i++) {
+          try {
+            v = jsonDecode(v);
+          } catch (_) {
+            break;
+          }
+        }
+        if (v is! Map) return;
+        final text = '${v['text'] ?? ''}';
+        final now = '${v['url'] ?? ''}';
+        final low = text.toLowerCase();
+        w
+          ..checks += 1
+          ..last = DateTime.now()
+          ..position = _position(text) ?? w.position
+          ..waitText = _waitTime(text) ?? w.waitText;
+        final head = low.length > 1500 ? low.substring(0, 1500) : low;
+        if (w.firstText == null) {
+          w.firstText = head;
+          w.reload = !(_queueWords.hasMatch(low) || _queueHost.hasMatch(now));
+        }
+        String? hit;
+        if (w.until.isNotEmpty) {
+          if (low.contains(w.until.toLowerCase())) hit = '„${w.until}“ ist jetzt auf der Seite.';
+        } else {
+          final queue = _queueWords.hasMatch(low) || _queueHost.hasMatch(now);
+          if (queue) w.sawQueue = true;
+          final hostNow = Uri.tryParse(now)?.host ?? '', hostStart = Uri.tryParse(w.startUrl)?.host ?? '';
+          if (w.sawQueue && !queue) {
+            hit = 'Die Warteschlange ist vorbei – du bist dran!';
+          } else if (_yourTurn.hasMatch(low)) {
+            hit = 'Du bist an der Reihe!';
+          } else if (w.sawQueue && hostNow.isNotEmpty && hostNow != hostStart && !_queueHost.hasMatch(now)) {
+            hit = 'Die Seite hat weitergeleitet – du bist durch.';
+          } else if (w.position != null && w.position! <= 3) {
+            hit = 'Fast dran: Position ${w.position}.';
+          } else if (!w.sawQueue && w.checks > 1 && _changed(w.firstText!, head)) {
+            hit = 'Die Seite hat sich geändert.';
+          }
+        }
+        if (hit != null) {
+          stopWatch();
+          onHit(hit);
+          return;
+        }
+        notifyListeners();
+      } catch (e) {
+        appLog('Browser', 'Beobachten: $e', error: true);
+      }
+    }
+
+    _watchTimer = Timer.periodic(Duration(seconds: everySeconds.clamp(15, 900)), (_) => tick());
+    // App im Hintergrund am Leben halten, solange beobachtet wird
+    unawaited(BackgroundWork.begin('watch', 'Junels beobachtet eine Webseite …').catchError((Object _) {}));
+    unawaited(tick());
+    notifyListeners();
+  }
+
+  void stopWatch() {
+    if (_watchTimer != null) unawaited(BackgroundWork.end('watch').catchError((Object _) {}));
+    _watchTimer?.cancel();
+    _watchTimer = null;
+    if (watch != null) {
+      watch = null;
+      notifyListeners();
+    }
+  }
+
+  static final _queueWords = RegExp(
+      r'warteschlange|wartezimmer|warteraum|sie sind in der|ihre position|ihr platz|vor ihnen|waiting room|in line|queue|you are now in|your number|estimated wait|voraussichtliche wartezeit');
+  static final _queueHost = RegExp(r'queue-it|queueit|queue\.|waitingroom|waiting-room|crowdhandler', caseSensitive: false);
+  static final _yourTurn = RegExp(r"sie sind (jetzt )?an der reihe|you'?re next|it'?s your turn|du bist dran|ihre zeit beginnt");
+
+  /// Deutliche Änderung (nicht nur Uhrzeit/Zähler): Wörter vergleichen.
+  static bool _changed(String a, String b) {
+    Set<String> w(String s) => RegExp(r'[a-zäöüß]{4,}').allMatches(s).map((m) => m.group(0)!).toSet();
+    final x = w(a), y = w(b);
+    if (x.isEmpty || y.isEmpty) return false;
+    final same = x.intersection(y).length;
+    return same / (x.length > y.length ? x.length : y.length) < 0.8;
+  }
+
+  static int? _position(String text) {
+    final m = RegExp(r'(position|platz|nummer|number in line|your number|vor ihnen|ahead of you|people ahead)[^\d]{0,40}(\d[\d.,]*)',
+            caseSensitive: false)
+        .firstMatch(text);
+    return m == null ? null : int.tryParse(m.group(2)!.replaceAll(RegExp(r'[.,]'), ''));
+  }
+
+  static String? _waitTime(String text) {
+    final m = RegExp(r'(wartezeit|wait time|estimated wait|noch etwa|noch ca\.?)[^\d]{0,30}(\d+\s*(min|minuten|minutes|std|stunden|hours|sek|seconds)[^\n.]{0,10})',
+            caseSensitive: false)
+        .firstMatch(text);
+    return m?.group(2)?.trim();
+  }
+
+  static const _watchJs = r'''
+(function(){var b=document.body;var t=(b?(b.innerText||''):'').replace(/\s+/g,' ').trim();
+return JSON.stringify({url:location.href,text:t.slice(0,5000)});})()
+''';
+}
+
+/// Laufende Beobachtung einer Seite.
+class PageWatch {
+  PageWatch({required this.until, required this.since, required this.startUrl});
+  final String until;
+  final DateTime since;
+  final String startUrl;
+  int checks = 0;
+  DateTime? last;
+  int? position;
+  String? waitText;
+  String? firstText;
+  bool sawQueue = false;
+  bool reload = false;
+
+  String get label {
+    final parts = <String>[
+      if (until.isNotEmpty) 'wartet auf „$until“' else 'beobachtet die Seite',
+      if (position != null) 'Position $position',
+      if (waitText != null) 'noch $waitText',
+    ];
+    return parts.join(' · ');
   }
 }

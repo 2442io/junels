@@ -582,6 +582,7 @@ class _ToolSection extends StatelessWidget {
     'find_loose_ends': Icons.pending_actions_outlined,
     'mail_inbox': Icons.inbox_outlined,
     'control_app': Icons.apps,
+    'begleiten': Icons.explore_outlined,
     'create_chart': Icons.bar_chart,
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,

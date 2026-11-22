@@ -396,6 +396,9 @@ class FlowService {
   final Map<String, String> current = {};
   final Map<String, DateTime> startedAt = {};
 
+  /// Was der laufende Baustein gerade tut (Live-Ansicht).
+  final Map<String, String> live = {};
+
   final Set<String> _running = {};
   final Map<String, Completer<void>> _cancel = {};
 
@@ -796,6 +799,7 @@ class FlowService {
           'uhrzeit': '${_two(d.hour)}:${_two(d.minute)}',
           for (final e in out.entries) e.key.toLowerCase(): e.value,
         };
+        live.remove(wf.id);
         _set(wf, n.id, 'running');
         final step = StepLog(step: log.steps.length + 1)
           ..tool = n.type.label
@@ -848,6 +852,7 @@ class FlowService {
       _cancel.remove(wf.id);
       current.remove(wf.id);
       startedAt.remove(wf.id);
+      live.remove(wf.id);
       wf.lastStatus = stopped ? 'Gestoppt' : (failed ? 'Fehler' : 'Erfolgreich');
       log
         ..text = stopped
@@ -879,7 +884,25 @@ class FlowService {
       case FlowNodeType.agent:
         var prompt = Workflow.fill(n.str('prompt'), vars);
         if (!n.str('prompt').contains('{{') && prevText.trim().isNotEmpty) prompt = '$prompt\n\nErgebnis des vorigen Schritts:\n$prevText';
-        return app.automationAgent(prompt, allowInternet: wf.allowInternet, conv: conv, entry: log);
+        // Live-Ansicht: was der Agent gerade tut (Banner im Editor und Schritt im Verlauf)
+        final lines = <String>[];
+        void progress(String line) {
+          lines.add(line);
+          if (lines.length > 14) lines.removeAt(0);
+          live[wf.id] = line;
+          step.observation = lines.join('\n');
+          app.refreshUi();
+        }
+
+        return app
+            .automationAgent(prompt,
+                allowInternet: wf.allowInternet,
+                conv: conv,
+                entry: log,
+                onProgress: progress,
+                cancel: _cancel[wf.id]?.future)
+            .timeout(const Duration(minutes: 10),
+                onTimeout: () => throw Exception('Zeitüberschreitung: Der Agent-Schritt lief über 10 Minuten.'));
       case FlowNodeType.tool:
         final tool = [...app.tools, ...app.mcpTools].where((t) => t.name == n.str('tool')).firstOrNull;
         if (tool == null) throw Exception('Werkzeug „${n.str('tool')}“ nicht gefunden');

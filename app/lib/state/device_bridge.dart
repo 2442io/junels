@@ -44,6 +44,8 @@ class DeviceBridge implements DeviceActions {
   Future<void> launchApp(String id) => _ch.invokeMethod('launchApp', {'id': id});
   Future<void> mediaKey(String id, String key) => _ch.invokeMethod('mediaKey', {'id': id, 'key': key});
   Future<void> openInApp(String id, String url) => _ch.invokeMethod('openInApp', {'id': id, 'url': url});
+  Future<void> playSearch(String id, String query, String? uri) =>
+      _ch.invokeMethod('playSearch', {'id': id, 'query': query, if (uri != null) 'uri': uri});
 
   /// Ist das Gerät laut System online? null = unbekannt (z. B. iPad/Tests).
   Future<bool?> networkStatus() async {

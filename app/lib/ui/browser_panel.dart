@@ -82,7 +82,9 @@ class _Bar extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(browser.loading ? 'Browser lädt …' : 'Browser',
+                        Text(browser.activity.isNotEmpty ? 'Junels ${browser.activity}' : (browser.loading ? 'Browser lädt …' : 'Browser'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: t.labelSmall?.copyWith(color: scheme.onSecondaryContainer.withValues(alpha: 0.8))),
                         Text(label,
                             style: t.bodyMedium?.copyWith(color: scheme.onSecondaryContainer),
@@ -120,6 +122,21 @@ class _Bar extends StatelessWidget {
               ),
             ),
           ),
+          if (browser.watch != null)
+            Container(
+              width: double.infinity,
+              color: scheme.primaryContainer,
+              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+              child: Row(children: [
+                Icon(Icons.visibility_outlined, size: 18, color: scheme.onPrimaryContainer),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Junels ${browser.watch!.label} – du bekommst eine Benachrichtigung',
+                      style: t.bodySmall?.copyWith(color: scheme.onPrimaryContainer)),
+                ),
+                TextButton(onPressed: browser.stopWatch, child: const Text('Stopp')),
+              ]),
+            ),
           if (browser.handOverMessage != null)
             Container(
               width: double.infinity,

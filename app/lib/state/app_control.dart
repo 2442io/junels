@@ -60,6 +60,8 @@ class AppControlTool extends AgentTool {
     required this.launch,
     required this.mediaKey,
     required this.openInApp,
+    required this.playSearch,
+    this.findMusic,
     required this.unattended,
     required this.android,
   });
@@ -67,6 +69,17 @@ class AppControlTool extends AgentTool {
   final Future<void> Function(String id) launch;
   final Future<void> Function(String id, String key) mediaKey;
   final Future<void> Function(String id, String url) openInApp;
+
+  /// Gesuchtes direkt abspielen (Android: „Abspielen aus Suche“, Mac: Spotify-Link per AppleScript).
+  final Future<void> Function(String id, String query, String? uri) playSearch;
+
+  /// Mac: Spotify-Link (spotify:playlist:…) zu einer Suche finden (Websuche), null = nichts gefunden.
+  final Future<String?> Function(String query)? findMusic;
+
+  /// Letzte Suche je App – „abspielen“ danach spielt das Gesuchte statt des alten Titels.
+  final Map<String, (String, DateTime)> _lastSearch = {};
+
+  static bool isMusicApp(String id) => RegExp(r'spotify', caseSensitive: false).hasMatch(id);
   final bool Function() unattended;
   final bool android;
 
@@ -81,6 +94,7 @@ class AppControlTool extends AgentTool {
     final names = allowed().map((a) => a.name).join(', ');
     return 'Öffnet freigegebene Apps und steuert die Wiedergabe. Freigegeben: ${names.isEmpty ? '(keine)' : names}. '
         'aktion: oeffnen, abspielen_pause, abspielen, pause, weiter, zurueck, suchen (nur wenn für die App erlaubt; suche = Text). '
+        '„Spiel Jazz/Lied X“ = abspielen mit suche (sucht und spielt das Gesuchte direkt). '
         '„Such nach Jazz“ ohne App-Namen = suchen in der freigegebenen Musik-App (app leer lassen). '
         'Kann nichts tippen, kaufen, bestellen oder bezahlen.';
   }
@@ -109,34 +123,53 @@ class AppControlTool extends AgentTool {
         ok.firstOrNull;
   }
 
-  (AllowedApp, String?) check(String appName, String action, String query) {
+  (AllowedApp, String?, String) check(String appName, String action, String query) {
     var app = find(appName);
-    if (app == null && action == 'suchen') app = defaultSearchApp();
+    if (app == null && (action == 'suchen' || action == 'abspielen')) app = defaultSearchApp();
     if (app == null) {
       throw ToolException('„$appName“ ist nicht freigegeben. Hinweis für den Nutzer: Einstellungen → Apps steuern → App hinzufügen.');
     }
     if (unattended() && !app.inAutomation) {
       throw ToolException('„${app.name}“ darf nur gesteuert werden, wenn du selbst dabei bist (nicht in Prozessen/geplanten Aufgaben).');
     }
-    if (action == 'suchen') {
+    if (action == 'abspielen' && query.trim().isEmpty) {
+      final last = _lastSearch[app.id];
+      if (last != null && DateTime.now().difference(last.$2).inMinutes < 15) query = last.$1;
+    }
+    if (action == 'suchen' || (action == 'abspielen' && query.trim().isNotEmpty)) {
       if (app.sensitive) throw ToolException('Bei „${app.name}“ (Bank/Shop/Zahlung) öffnet Junels nur die App – keine Suchen oder Links.');
       if (!app.links) throw ToolException('Suchen in „${app.name}“ ist nicht freigegeben – nur öffnen und Wiedergabe steuern.');
       if (touchesMoney(query)) throw ToolException('Abgelehnt: Kaufen, Bestellen, Abos oder Zahlungen macht Junels nie.');
       final link = searchLinkFor(app.id, query, android: android);
       if (link == null) throw ToolException('Für „${app.name}“ kennt Junels keine Suche – nur öffnen und Wiedergabe steuern.');
-      return (app, link);
+      _lastSearch[app.id] = (query.trim(), DateTime.now());
+      return (app, link, query.trim());
     }
-    return (app, null);
+    return (app, null, '');
   }
 
   /// Führt eine (geprüfte) Aktion aus.
-  Future<String> execute(AllowedApp app, String action, String? link) async {
+  Future<String> execute(AllowedApp app, String action, String? link, {String query = ''}) async {
+    if (action == 'abspielen' && query.trim().isNotEmpty) {
+      String? uri;
+      if (!android && isMusicApp(app.id) && findMusic != null) uri = await findMusic!(query.trim());
+      if (android || uri != null) {
+        await playSearch(app.id, query.trim(), uri);
+        return 'Spielt „${query.trim()}“ in „${app.name}“.';
+      }
+      if (link != null) await openInApp(app.id, link);
+      return 'Suche nach „${query.trim()}“ in „${app.name}“ geöffnet – direkt abspielen ging nicht (kein passender Link gefunden). '
+          'Tipp auf einen Treffer.';
+    }
     switch (action) {
       case 'oeffnen':
         await launch(app.id);
         return '„${app.name}“ geöffnet.';
       case 'suchen':
         await openInApp(app.id, link!);
+        if (isMusicApp(app.id)) {
+          return 'Suche in „${app.name}“ geöffnet. Sag „spiel das“, dann spielt Junels das Gesuchte ab.';
+        }
         return 'Suche in „${app.name}“ geöffnet. Abspielen musst du dort selbst antippen (oder sag „abspielen“).';
       default:
         final key = switch (action) {
@@ -161,7 +194,10 @@ class AppControlTool extends AgentTool {
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final action = (args['aktion'] ?? 'oeffnen').toString();
     final query = (args['suche'] ?? '').toString();
-    final (app, link) = check((args['app'] ?? '').toString(), action, query);
+    final (app, link, q) = check((args['app'] ?? '').toString(), action, query);
+    if (action == 'abspielen' && q.isNotEmpty && !android && isMusicApp(app.id)) {
+      await ctx.ensureNetwork('Spotify-Link zu „$q“ suchen');
+    }
     if (app.confirm && ctx.propose != null) {
       ctx.propose!({
         'type': 'app',
@@ -169,14 +205,15 @@ class AppControlTool extends AgentTool {
         'id': app.id,
         'action': action,
         if (link != null) 'url': link,
-        'body': '${_label(action)}${query.isEmpty ? '' : ': „$query“'}',
+        if (q.isNotEmpty) 'query': q,
+        'body': '${_label(action)}${q.isEmpty ? '' : ': „$q“'}',
         'status': 'pending',
       });
       ctx.answerNow = true;
       return 'Vorschlag erstellt – der Nutzer bestätigt mit „Ausführen“.';
     }
     ctx.answerNow = true;
-    return execute(app, action, link);
+    return execute(app, action, link, query: q);
   }
 
   static String _label(String a) => switch (a) {

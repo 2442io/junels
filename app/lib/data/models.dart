@@ -297,6 +297,7 @@ class Conversation {
     this.hybridTarget,
     this.pinned = false,
     this.folder,
+    this.guide,
   })  : entries = entries ?? [],
         artifacts = artifacts ?? [],
         updated = updated ?? DateTime.now();
@@ -315,6 +316,7 @@ class Conversation {
   String? hybridTarget; // Hybrid: danach onprem | cloud (null = Einstellung)
   bool pinned; // oben angeheftet
   String? folder; // Ordner/Projekt in der Seitenleiste
+  Map<String, dynamic>? guide; // Begleitung durch eine Webseite (Ziel, Plan, aktueller Schritt)
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -329,6 +331,7 @@ class Conversation {
         if (hybridTarget != null) 'hybridTarget': hybridTarget,
         if (pinned) 'pinned': true,
         if (folder != null) 'folder': folder,
+        if (guide != null) 'guide': guide,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -344,6 +347,7 @@ class Conversation {
         hybridTarget: j['hybridTarget'] as String?,
         pinned: j['pinned'] as bool? ?? false,
         folder: j['folder'] as String?,
+        guide: (j['guide'] as Map?)?.cast<String, dynamic>(),
       );
 }
 
@@ -406,7 +410,7 @@ class AppSettings {
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
-              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'control_app', 'create_chart', 'generate_image', 'look_at_image',
+              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'control_app', 'begleiten', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
@@ -616,7 +620,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 14;
+  static const toolsVersion = 15;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -637,6 +641,7 @@ class AppSettings {
     if (from < 12) enabledTools.add('find_loose_ends');
     if (from < 13) enabledTools.add('mail_inbox');
     if (from < 14) enabledTools.add('control_app');
+    if (from < 15) enabledTools.add('begleiten');
   }
 }
 

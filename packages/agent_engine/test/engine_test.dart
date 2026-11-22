@@ -1292,12 +1292,17 @@ Future<void> main() async {
     check(d.scripts.any((s) => s.contains('"Brotdose"')) && d.settled == 2, 'Text eingeben');
     d.allow = false;
     out = await tool.run({'action': 'click', 'target': '[3]', 'text': ''}, ctx);
-    check(d.confirms == 1 && out.contains('abgelehnt') && !d.scripts.any((s) => s.contains('"click"')), 'Kaufen nur nach Bestätigung');
+    check(d.handOvers == 1 && d.confirms == 0 && !d.scripts.any((s) => s.contains('"click"')) && out.contains('Zahlung'),
+        'Kaufen/Zahlen: Junels übergibt an den Nutzer und klickt nie');
     out = await tool.run({'action': 'type', 'target': '2', 'text': 'geheim'}, ctx);
-    check(d.handOvers == 1 && !d.scripts.any((s) => s.contains('geheim')), 'Passwort gibt der Nutzer selbst ein');
+    check(d.handOvers == 2 && !d.scripts.any((s) => s.contains('geheim')), 'Passwort gibt der Nutzer selbst ein');
+    check(out.contains('ANMELDUNG'), 'Passwortfeld → Hinweis Anmeldeseite');
     d.captcha = true;
     out = await tool.run({'action': 'search', 'target': 'beispielshop.at', 'text': 'Brot'}, ctx);
-    check(d.handOvers == 2 && out.contains('Suchfeld [1] ausgefüllt'), 'Captcha → Nutzer übernimmt, dann Suche ($out)');
+    check(d.handOvers == 3 && out.contains('Suchfeld [1] ausgefüllt'), 'Captcha → Nutzer übernimmt, dann Suche ($out)');
+    check(looksLikeLogin({'url': 'https://www.id-austria.gv.at/authHandler', 'els': const [], 'text': ''}) &&
+            !looksLikeLogin({'url': 'https://www.oesterreich.gv.at/de/landingpages/urkunden', 'els': const [], 'text': 'Urkunden bestellen'}),
+        'Anmeldeseite erkennen (ID Austria ja, Urkundenseite nein)');
     out = await tool.run({'action': 'search', 'target': 'amazon', 'text': 'Brot dose'}, ctx);
     check(d.opened.last.startsWith('https://www.amazon.de/s?k=Brot+dose'), 'bekannte Shops direkt über die Such-Adresse');
     final noApp = BrowserTool(() => null);

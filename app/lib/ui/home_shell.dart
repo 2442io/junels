@@ -9,6 +9,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'browser_panel.dart';
 import 'chat_view.dart';
+import 'guide_card.dart';
 import 'inspector.dart';
 import 'prompt_editor.dart';
 import 'internet_menu.dart';
@@ -268,7 +269,12 @@ class _HomeShellState extends State<HomeShell> {
 
       final drawerWidth = compact ? (w * 0.88).clamp(280.0, 340.0) : 320.0;
       final chatArea = Row(children: [
-        Expanded(child: BrowserDock(browser: app.browser, child: const ChatView())),
+        Expanded(
+          child: Column(children: [
+            ListenableBuilder(listenable: app.browser, builder: (context, _) => const GuideCard()),
+            Expanded(child: BrowserDock(browser: app.browser, child: const ChatView())),
+          ]),
+        ),
         if (!compact && _inspectorVisible && !_focus) ...[
           divider,
           SizedBox(width: desktop ? 360 : 320, child: const InspectorPanel()),

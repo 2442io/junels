@@ -13,6 +13,15 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.39.0', [
+    'Begleiten: Link posten („Mach das mit mir: …“) – Junels führt dich Schritt für Schritt durch Amtswege, Tickets, Buchungen und Käufe',
+    'Plan mit Häkchen über dem Chat, und du siehst live, was Junels im Browser tut',
+    'Übergabe an dich bei Anmeldung (ID Austria, Passkey), Captcha und Zahlung – Bezahl-Knöpfe drückt Junels nie',
+    'Warten & melden: Warteschlange oder Seite beobachten, Benachrichtigung, sobald du dran bist',
+    'Geschaffte Abläufe als Vorlage speichern; bei eingerichtetem Cloud-Modell fragt Junels, ob es dafür genutzt werden darf',
+    'Prozesse: Live-Ansicht, was der laufende Agent-Schritt gerade tut; Stoppen bricht ihn sofort ab, nach 10 Minuten Zeitlimit',
+    'Spotify: „Spiel Jazz“ bzw. „abspielen“ nach einer Suche spielt jetzt das Gesuchte statt des alten Titels (Android direkt, Mac über einen gefundenen Spotify-Link)',
+  ]),
   ('1.38.4', [
     'Apps steuern: „Such nach Jazz“ funktioniert jetzt – auch ohne App-Namen (nimmt die freigegebene Musik-App)',
     'Spotify-Suche öffnet direkt in der App; am Mac wird Spotify vorher gestartet, damit die Suche nicht verloren geht',

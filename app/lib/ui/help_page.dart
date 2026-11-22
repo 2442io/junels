@@ -185,13 +185,32 @@ Unter **Metriken** siehst du, wie schnell das Modell arbeitet (Tokens pro Sekund
 Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein und aus, am Handy öffnet er sich von rechts.''',
   ),
   HelpArticle(
+    id: 'begleiten',
+    category: 'Chat',
+    icon: Icons.explore_outlined,
+    title: 'Begleiten: gemeinsam durch Webseiten',
+    summary: 'Link posten – Junels führt dich Schritt für Schritt durch Amtswege, Tickets, Buchungen. Anmelden und Zahlen machst du.',
+    keywords: 'begleiten amtsweg antrag urkunde formular ticket termin warteschlange buchen kaufen schritt für schritt id austria vorlage',
+    body: '''Schreib z. B. „Mach das mit mir: https://www.oesterreich.gv.at/…“ oder „Begleite mich: <Link>“.
+
+**So läuft es:** Junels öffnet die Seite im eingebauten Browser (oben aufklappbar) und legt einen **Plan mit Häkchen** an. Über dem Chat siehst du immer, bei welchem Schritt ihr seid und was Junels gerade tut („klickt [4]“, „füllt Feld aus“ …). Fehlende Angaben fragt Junels nach; vor dem Absenden fragt es dich.
+
+**Das machst immer du:** Anmelden (ID Austria, Passkey, Passwörter), Captchas, Unterschriften und **Zahlungen**. Junels übergibt dann mit einem Hinweis – du erledigst es im Browser und tippst auf „Weiter“. Bezahl-Knöpfe drückt Junels nie.
+
+**Warten & melden:** In Warteschlangen (Tickets, Termine) sag „Sag mir, wenn ich dran bin“ – Junels beobachtet die Seite und schickt eine Benachrichtigung. Junels muss dafür geöffnet bleiben (Hintergrund geht). Telefon-Warteschleifen kann keine App übernehmen.
+
+**Als Vorlage:** Geschafften Ablauf mit „Als Vorlage“ speichern – beim nächsten Mal geht es schneller.
+
+**Modell:** Mit einem Cloud-Modell (Einstellungen → KI-Anbieter) klappt das deutlich zuverlässiger; Junels fragt beim Start, ob es dafür genutzt werden darf. Prozesse laufen ohne dich – für Amtswege daher im Chat begleiten lassen.''',
+  ),
+  HelpArticle(
     id: 'apps',
     category: 'Chat',
     icon: Icons.apps,
     title: 'Apps öffnen & steuern',
     summary: 'Spotify & Co. per Sprache oder Chat – nur freigegebene Apps, ohne Kaufen oder Bezahlen.',
     keywords: 'app öffnen spotify musik abspielen pause weiter freigabe whitelist steuern',
-    body: '''Unter Einstellungen → Agent → *Apps steuern* gibst du Apps frei. Danach z. B.: „Spiel Musik auf Spotify“, „Pause“, „Nächster Titel“, „Such auf Spotify nach Jazz“.
+    body: '''Unter Einstellungen → Agent → *Apps steuern* gibst du Apps frei. Danach z. B.: „Spiel Musik auf Spotify“, „Pause“, „Nächster Titel“, „Such auf Spotify nach Jazz“, „Spiel Jazz auf Spotify“ (spielt das Gesuchte direkt).
 
 **Was Junels darf:** App öffnen, Wiedergabe steuern (Abspielen, Pause, Weiter, Zurück) und – wenn du es erlaubst – eine Suche in der App öffnen.
 

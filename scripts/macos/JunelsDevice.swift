@@ -85,6 +85,34 @@ enum JunelsDevice {
             } else { result(true) }
           }
         }
+      case "playSearch":
+        // Spotify: Link (spotify:playlist:…) per AppleScript abspielen; ohne Link nur die Suche öffnen
+        let id = a["id"] as? String ?? "com.spotify.client"
+        let safeId = id.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
+        guard let uri = a["uri"] as? String, uri.range(of: "^spotify:[a-z]+:[A-Za-z0-9]+$", options: .regularExpression) != nil else {
+          result(FlutterError(code: "app", message: "Kein abspielbarer Link gefunden", details: nil)); return
+        }
+        let running = !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty
+        let playIt = {
+          DispatchQueue.global(qos: .userInitiated).async {
+            var err: NSDictionary?
+            NSAppleScript(source: "tell application id \"\(safeId)\" to play track \"\(uri)\"")?.executeAndReturnError(&err)
+            DispatchQueue.main.async {
+              if let err = err {
+                result(FlutterError(code: "app", message: (err[NSAppleScript.errorMessage] as? String) ?? "Steuern nicht erlaubt (Systemeinstellungen → Datenschutz → Automation)", details: nil))
+              } else { result(true) }
+            }
+          }
+        }
+        if running {
+          playIt()
+        } else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+          NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { playIt() }
+          }
+        } else {
+          result(FlutterError(code: "app", message: "App nicht installiert", details: nil))
+        }
       case "openInApp":
         guard let s = a["url"] as? String, let u = URL(string: s) else { result(false); return }
         if let id = a["id"] as? String, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
