@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'dart:convert';
 
 import '../llama_engine.dart';
+import '../documents/design.dart' show designReferencesIn;
+import '../documents/slide_plan.dart';
 import 'grammar.dart';
 import 'network_tools.dart' show moreCardsMarker;
 import 'tool.dart';
@@ -87,11 +89,16 @@ class AgentRunner {
     this.sampling = SamplingParams.precise,
     this.chatSampling = const SamplingParams(),
     this.blockCjk = true,
+    this.requiredTool,
   });
 
   /// Chinesische/japanische/koreanische Schriftzeichen in der Ausgabe sperren
   /// (verhindert das Abdriften von Qwen-Modellen ins Chinesische).
   final bool blockCjk;
+
+  /// Der Nutzer will eine Datei (z. B. create_presentation): Der Agent darf nicht
+  /// mit einer bloßen Beschreibung aufhören – erst nachhaken, notfalls selbst erstellen.
+  final String? requiredTool;
 
   final AgentBackend engine;
   final String systemPrompt;
@@ -331,6 +338,9 @@ class AgentRunner {
     var answerNext = false; // Werkzeug meldet: Ergebnis reicht → nur noch antworten
     final seenCalls = <String, String>{}; // gleiche Aufrufe nicht wiederholen
     final failures = <String, int>{}; // erfolglose Aufrufe je Werkzeug
+    final need = requiredTool != null && activeTools.any((t) => t.name == requiredTool) ? requiredTool : null;
+    var delivered = false; // Pflicht-Werkzeug erfolgreich genutzt
+    var nudges = 0;
 
     for (var step = 1; step <= maxSteps + 1; step++) {
       if (_stopped) {
@@ -428,9 +438,39 @@ class AgentRunner {
         continue;
       }
       if (obj.containsKey('final_answer')) {
-        emit(FinalAnswer(obj['final_answer'].toString(), thought: thought));
+        final answer = obj['final_answer'].toString();
+        if (need != null && !delivered) {
+          if (nudges < 2 && step < maxSteps) {
+            // nur beschrieben statt erstellt → nachhaken
+            nudges++;
+            answerNext = false;
+            scratch.add(ChatMessage('assistant', text));
+            hint = _deliverHint(need, ctx);
+            continue;
+          }
+          final made = await _deliverFallback(need, answer, input, ctx, emit, step);
+          if (made != null) {
+            emit(FinalAnswer(made, thought: thought));
+            emit(AgentFinished(AgentStopReason.answered));
+            return;
+          }
+        }
+        emit(FinalAnswer(answer, thought: thought));
         emit(AgentFinished(step > maxSteps ? AgentStopReason.stepLimit : AgentStopReason.answered));
         return;
+      }
+
+      // Design-Vorlagen nicht im Browser öffnen – das Präsentations-Tool übernimmt sie selbst
+      final callUrl = (obj['args'] is Map ? ((obj['args'] as Map)['url'] ?? (obj['args'] as Map)['query'] ?? '') : '').toString();
+      if (need != null &&
+          !delivered &&
+          (obj['action'] == 'browser' || obj['action'] == 'web_fetch') &&
+          callUrl.isNotEmpty &&
+          designReferencesIn(callUrl).isNotEmpty) {
+        scratch.add(ChatMessage('assistant', text));
+        scratch.add(ChatMessage('user',
+            'Beobachtung: Nicht nötig – Design-Vorlagen (auch Links) übernimmt $need selbst. ${_deliverHint(need, ctx)}'));
+        continue;
       }
 
       final toolName = (obj['action'] ?? '').toString();
@@ -498,11 +538,62 @@ class AgentRunner {
       if (observation.length > observationLimit) {
         observation = '${observation.substring(0, observationLimit)}\n[… gekürzt]';
       }
+      if (toolName == need && !isError && !observation.startsWith('Fehler')) delivered = true;
       emit(ToolResult(step, toolName, shown, isError: isError, duration: sw.elapsed));
       scratch.add(ChatMessage('user', 'Beobachtung ($toolName):\n$observation'));
     }
     emit(AgentFinished(AgentStopReason.stepLimit,
         message: 'Das Modell hat nach ${maxSteps + 1} Schritten keine gültige Antwort geliefert.'));
+  }
+
+  String _deliverHint(String tool, ToolContext ctx) {
+    final refs = designReferencesIn(ctx.userRequest);
+    return switch (tool) {
+      'create_presentation' => 'Der Nutzer will eine fertige PowerPoint-Datei – keine Beschreibung, keinen Folienplan und keine Anleitung. '
+          'Rufe JETZT create_presentation auf: title = Titel; content = alle Folien in Markdown, jede Folie beginnt mit "# Folientitel", '
+          'darunter der echte Folientext als Stichpunkte (keine Angaben wie Layout, Grafik-Idee oder Stil)'
+          '${refs.isEmpty ? '' : '; vorlage = ${refs.join(' ')}'}. Das Design übernimmt das Tool.',
+      'create_document' => 'Der Nutzer will eine fertige Datei – keine Beschreibung. Rufe JETZT create_document mit title und dem '
+          'vollständigen Inhalt in Markdown auf.',
+      _ => 'Der Nutzer will ein Ergebnis als Datei. Rufe JETZT $tool auf.',
+    };
+  }
+
+  /// Letzter Ausweg: Aus der Antwort (z. B. Folienplan) selbst die Datei erstellen.
+  Future<String?> _deliverFallback(
+      String need, String answer, String input, ToolContext ctx, void Function(AgentEvent) emit, int step) async {
+    final tool = activeTools.where((t) => t.name == need).firstOrNull;
+    if (tool == null) return null;
+    final args = <String, dynamic>{};
+    if (need == 'create_presentation') {
+      final slides = slidesFromPlan(answer);
+      if (slides.title.isEmpty && slides.content.isEmpty) return null;
+      args['title'] = slides.title.isNotEmpty ? slides.title : _titleFrom(input);
+      args['content'] = slides.content;
+      final refs = designReferencesIn(ctx.userRequest);
+      if (refs.isNotEmpty) args['vorlage'] = refs.join(' ');
+    } else if (need == 'create_document') {
+      if (answer.trim().length < 80) return null;
+      args['title'] = _titleFrom(input);
+      args['content'] = answer;
+    } else {
+      return null;
+    }
+    emit(ToolCalled(step, need, args, 'Datei aus dem Entwurf erstellen'));
+    final sw = Stopwatch()..start();
+    try {
+      final obs = await tool.run(args, ctx).timeout(tool.timeout ?? toolTimeout);
+      emit(ToolResult(step, need, obs, duration: sw.elapsed));
+      return obs.startsWith('Fehler') ? null : obs.split(moreCardsMarker).first.trim();
+    } catch (e) {
+      emit(ToolResult(step, need, 'Fehler: $e', isError: true, duration: sw.elapsed));
+      return null;
+    }
+  }
+
+  String _titleFrom(String input) {
+    final m = RegExp(r'(?:über|zu|zum|zur|für|mit dem titel|titel)\s+[„"]?([^.!?\n„"“]{3,60})', caseSensitive: false).firstMatch(input);
+    return (m?.group(1) ?? 'Präsentation').trim();
   }
 
   /// Baut den Prompt und kürzt, bis er in den Context passt:

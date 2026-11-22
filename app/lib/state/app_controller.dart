@@ -1643,7 +1643,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           'erstelle es mit create_document, create_presentation, create_chart bzw. generate_image. '
           '${imageModel != null ? 'Für Bilder in Folien/Dokumenten schreibe ![kurze englische Bildbeschreibung](auto) – sie werden automatisch erzeugt. ' : ''}'
           'Bilder und Diagramme zuerst erzeugen, dann im Dokument/den Folien mit ![](dateiname.png) einbinden. '
-          'Schreibe Inhalte vollständig und gut gegliedert. Die Dateien erscheinen automatisch im Chat – '
+          'Schreibe Inhalte vollständig und gut gegliedert. Beschreibe Folien oder Dokumente nie nur (kein Folienplan, '
+          'keine Anleitung zum Selbermachen) – erstelle die Datei. Links zu Design-Vorlagen oder Beispielbildern nicht öffnen, '
+          'sondern bei create_presentation als vorlage angeben. Die Dateien erscheinen automatisch im Chat – '
           'in der final_answer nur kurz sagen, was erstellt wurde.');
     }
     if ((tools ?? activeTools).any((t) => t.name == 'browser')) {
@@ -1669,7 +1671,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       'kurz (meist 1–3 Sätze), ohne Markdown, Listen, Tabellen, Emojis oder Links. Wiederhole die Frage nicht, '
       'beginne sofort mit der Antwort. Sagt der Nutzer „weiter“, setze deine vorige Antwort fort. Du heißt ${settings.agentName}.]';
 
-  AgentRunner _makeRunner(AgentBackend eng, String system, {List<AgentTool>? tools}) {
+  AgentRunner _makeRunner(AgentBackend eng, String system, {List<AgentTool>? tools, String? requiredTool}) {
     final profile = activeProfile;
     final browsing = (tools ?? activeTools).any((t) => t.name == 'browser');
     return AgentRunner(
@@ -1683,7 +1685,21 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       observationLimit: device.deviceClass == DeviceClass.s ? (browsing ? 1800 : 1000) : (browsing ? 3000 : 2000),
       sampling: SamplingParams(temperature: profile.temperature.clamp(0.0, 0.5), topP: 0.9),
       chatSampling: SamplingParams(temperature: profile.temperature),
+      requiredTool: requiredTool,
     );
+  }
+
+  static final _makeVerb = RegExp(r'erstell|mach|bau|generier|erzeug|schreib|gestalt|überarbeit|entwirf|entwerf|anlegen|leg .* an|exportier|als (pdf|powerpoint|pptx|datei)|brauche|hätte gern|möchte',
+      caseSensitive: false);
+  static final _deckWord = RegExp(r'präsentation|powerpoint|folien|pptx|slides|foliensatz|slide ?deck', caseSensitive: false);
+  static final _docWord = RegExp(r'\bpdf\b|word-?dokument|dokument|handout|bericht als', caseSensitive: false);
+
+  /// Verlangt die Nachricht eine Datei? → Werkzeug, das der Agent dafür nutzen muss.
+  static String? requiredToolFor(String text) {
+    if (!_makeVerb.hasMatch(text)) return null;
+    if (_deckWord.hasMatch(text)) return 'create_presentation';
+    if (_docWord.hasMatch(text)) return 'create_document';
+    return null;
   }
 
   /// Auslöser je Werkzeug: Nur wenn die Nachricht danach klingt, bekommt das Modell
@@ -3291,7 +3307,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     ];
     // kurze Nachfrage („wien“, „und morgen?“): Werkzeuge auch nach der vorigen Frage wählen
     final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
-    final gateText = looksLikeFollowUp(input) ? '$prevUser $input' : input;
+    // Design-Vorschläge/Links zur vorigen Präsentation („hier sind Design-Vorschläge …“) gehören dazu
+    final designFollowUp = (designReferencesIn(input).isNotEmpty || wantsDesign(input)) &&
+        !_deckWord.hasMatch(input) &&
+        requiredToolFor(prevUser) != null;
+    final gateText = looksLikeFollowUp(input) || designFollowUp ? '$prevUser $input' : input;
+    final requiredTool = requiredToolFor(gateText);
     // Gesprächsmodus: gleicher Verlauf und gleicher System-Prompt wie im Chat – so bleibt der
     // vorgerechnete Teil (Cache) gültig und die erste Antwort kommt ohne langes Vorrechnen.
     // Routinen: jede Ausführung für sich (kein Verlauf).
@@ -3300,6 +3321,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     var runTools = toolsFor(gateText,
         hasImages: docs.any((d) => isImageFile(d.name)), hasDocs: docs.any((d) => !isImageFile(d.name)));
     if (conv.internetOff) runTools = [for (final t in runTools) if (!t.requiresNetwork) t];
+    // Links sind hier Design-Vorlagen: die übernimmt das Präsentations-Tool – kein Browser nötig
+    if (requiredTool != null) {
+      final urls = RegExp(r'https?://\S+').allMatches(input).map((m) => m.group(0)!).toList();
+      if (urls.isNotEmpty && urls.every((u) => designReferencesIn(u).isNotEmpty)) {
+        runTools = [for (final t in runTools) if (!const {'browser', 'web_fetch', 'site_search', 'web_search'}.contains(t.name)) t];
+      }
+      if (!runTools.any((t) => t.name == requiredTool)) {
+        final t = activeTools.where((t) => t.name == requiredTool).firstOrNull;
+        if (t != null) runTools = [...runTools, t];
+      }
+    }
     // Browser nur im Chat mit offener App; dann ersetzt er die einfache Shop-Suche
     if (voice || headless) {
       runTools = [for (final t in runTools) if (t.name != 'browser') t];
@@ -3339,7 +3371,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
     if (voice) turnInput = '$turnInput\n\n${voiceTurnHint()}';
-    var runner = _makeRunner(eng, system, tools: runTools);
+    var runner = _makeRunner(eng, system, tools: runTools, requiredTool: requiredTool);
     _runner = runner;
     running = true;
     runStarted = DateTime.now();
@@ -3370,6 +3402,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         notifyListeners();
       },
     );
+    ctx.userRequest = gateText.trim();
 
     // Angehängte Bilder einmal ansehen (Bildverständnis), die Beschreibung bekommt der Agent als Text
     final unseen = [for (final d in docs) if (d.path != null && isImageFile(d.name) && !_imageNotes.containsKey(d.path)) d];

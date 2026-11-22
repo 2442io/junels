@@ -55,6 +55,20 @@ bool _isImage(Uint8List b) =>
         (b[0] == 0x47 && b[1] == 0x49) || // GIF
         (b[0] == 0x52 && b[1] == 0x49 && b[8] == 0x57)); // WEBP
 
+/// Vorschaubilder einer Vorlagen-Seite: og:image plus bis zu 2 Folien-Vorschauen.
+List<String> previewImagesOf(String html, Uri base) {
+  final out = <String>[];
+  final og = previewImageOf(html, base);
+  if (og != null) out.add(og);
+  for (final m in RegExp(r'''(?:src|data-src|href)=["']([^"']+?(?:thumb|slide|preview)[^"']*?\.(?:jpe?g|png|webp))''', caseSensitive: false)
+      .allMatches(html)) {
+    final u = base.resolve(m.group(1)!.replaceAll('&amp;', '&')).toString();
+    if (!out.contains(u)) out.add(u);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
 /// Vorschaubild einer Webseite (og:image / twitter:image), z. B. Vorlagen-Seiten.
 String? previewImageOf(String html, Uri base) {
   for (final re in [
@@ -123,7 +137,7 @@ Future<ResolvedDesign> resolveDesign({
   }
 
   for (final r in refs) {
-    if (!seen.add(r) || seen.length > 5) continue;
+    if (!seen.add(r.split('#').first) || seen.length > 6) continue;
     try {
       if (r.startsWith('http://') || r.startsWith('https://')) {
         if (!networkOk) continue;
@@ -138,9 +152,18 @@ Future<ResolvedDesign> resolveDesign({
         var (bytes, mime) = await fetchBytes(uri);
         if (!_isImage(bytes) && !_isZip(bytes) && (mime.contains('html') || bytes.length < 3 * 1024 * 1024)) {
           // Vorlagen-Seite: Vorschaubild verwenden
-          final img = previewImageOf(String.fromCharCodes(bytes.take(400000)), uri);
-          if (img == null) continue;
-          (bytes, mime) = await fetchBytes(Uri.parse(img));
+          final imgs = previewImagesOf(String.fromCharCodes(bytes.take(600000)), uri);
+          if (imgs.isEmpty) {
+            notes.add('Auf ${uri.host} fand ich kein Vorschaubild.');
+            continue;
+          }
+          for (final img in imgs) {
+            try {
+              final (b, _) = await fetchBytes(Uri.parse(img));
+              await useBytes(b, Uri.parse(img).path);
+            } catch (_) {}
+          }
+          continue;
         }
         await useBytes(bytes, uri.path);
       } else {

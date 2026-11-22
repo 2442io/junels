@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.2', [
+    'Präsentationen werden jetzt zuverlässig als Datei erstellt: Beschreibt der Agent nur Folien oder schreibt eine Anleitung, wird er zum Erstellen angehalten – notfalls baut die App die PowerPoint selbst aus dem Folienplan',
+    'Design-Links (z. B. slidesgo) werden nicht mehr im Browser geöffnet, sondern direkt als Vorlage übernommen – inklusive Folien-Vorschauen für genauere Farben',
+    'Design-Vorschläge als Folgenachricht („hier sind Design-Vorschläge …“) gehören automatisch zur vorigen Präsentation',
+  ]),
   ('1.31.1', [
     'Drei neue Reise-Designs: Landschaft (Berge, Sonne), Vintage (Scrapbook mit Klebestreifen) und Nacht (Sterne, Mond, dunkle Folien) – der Agent wählt passend zur Stimmung',
   ]),

@@ -27,6 +27,7 @@ export 'src/documents/raster.dart';
 export 'src/documents/ai_label.dart';
 export 'src/documents/design.dart';
 export 'src/documents/office_read.dart';
+export 'src/documents/slide_plan.dart';
 export 'src/downloader.dart';
 export 'src/gguf_header.dart';
 export 'src/image_gen.dart';

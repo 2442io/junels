@@ -263,6 +263,48 @@ Future<void> main() async {
     check(streamed.isNotEmpty && streamed.first.thought!.length < 'Ich rechne.'.length, 'Gedanke wird live gestreamt');
   });
 
+  await group('Agent: Datei statt Beschreibung', () async {
+    final dir = Directory.systemTemp.createTempSync('deliver');
+    final plan = '**Folie 1: Okzitanien (Titel)**\n* **Text:** „Dein Abenteuer im Süden.“\n* **Grafik-Idee:** Karte.\n'
+        '**Folie 2: Highlights**\n* **Layout:** Raster\n* Wandern in den Pyrenäen\n* Kajak am Lac de Sainte-Croix\n\n---\n**Anleitung zur Umsetzung:**\n1. Öffne PowerPoint.';
+    final planJson = jsonEncode({'thought': 'Plan', 'final_answer': plan});
+    // 1) Modell beschreibt nur → nachhaken → dann ruft es das Tool
+    final b1 = ScriptedBackend([
+      planJson,
+      jsonEncode({'thought': 'Jetzt', 'action': 'create_presentation', 'args': {'title': 'Okzitanien', 'content': '# A\n- x\n# B\n- y'}}),
+      '{"thought": "ok", "final_answer": "Fertig."}',
+    ]);
+    final r1 = AgentRunner(engine: b1, systemPrompt: 'T', tools: [CreatePresentationTool(OutputSpace(dir))], requiredTool: 'create_presentation');
+    final e1 = await r1.run(history: const [], userInput: 'Erstelle eine Powerpoint über Okzitanien', context: ToolContext()).toList();
+    check(e1.whereType<ToolCalled>().any((e) => e.tool == 'create_presentation') && b1.prompts[1].contains('fertige PowerPoint'),
+        'Nur beschrieben → Agent wird zum Erstellen angehalten');
+    // 2) Modell bleibt stur → App erstellt die Präsentation selbst aus dem Plan
+    final dir2 = Directory.systemTemp.createTempSync('deliver2');
+    final b2 = ScriptedBackend([planJson, planJson, planJson]);
+    final r2 = AgentRunner(engine: b2, systemPrompt: 'T', tools: [CreatePresentationTool(OutputSpace(dir2))], requiredTool: 'create_presentation');
+    final e2 = await r2.run(history: const [], userInput: 'Erstelle eine Powerpoint über Okzitanien', context: ToolContext()).toList();
+    final pptx = dir2.listSync().whereType<File>().where((f) => f.path.endsWith('.pptx')).toList();
+    check(pptx.length == 1 && e2.whereType<FinalAnswer>().single.text.contains('PowerPoint'), 'Fallback: Präsentation aus dem Folienplan');
+    final txt = officeText(pptx.single.readAsBytesSync(), 'pptx');
+    check(txt.contains('Wandern in den Pyrenäen') && !txt.contains('Grafik-Idee') && !txt.contains('Öffne PowerPoint'),
+        'Plan-Angaben (Layout, Anleitung) nicht auf den Folien');
+    // 3) Design-Links nicht im Browser öffnen
+    final b3 = ScriptedBackend([
+      jsonEncode({'thought': 'ansehen', 'action': 'web_fetch', 'args': {'url': 'https://slidesgo.com/de/theme/peru-reise-tour'}}),
+      jsonEncode({'thought': 'Jetzt', 'action': 'create_presentation', 'args': {'title': 'Peru', 'content': '# A\n- x'}}),
+      '{"thought": "ok", "final_answer": "Fertig."}',
+    ]);
+    final r3 = AgentRunner(engine: b3, systemPrompt: 'T', tools: [WebFetchTool(), CreatePresentationTool(OutputSpace(Directory.systemTemp.createTempSync('d3')))],
+        requiredTool: 'create_presentation');
+    final e3 = await r3
+        .run(history: const [], userInput: 'Erstelle eine Präsentation, Design wie https://slidesgo.com/de/theme/peru-reise-tour',
+            context: ToolContext(requestNetwork: (_) async => false))
+        .toList();
+    check(!e3.whereType<ToolCalled>().any((e) => e.tool == 'web_fetch') && b3.prompts[1].contains('vorlage = https://slidesgo.com'),
+        'Design-Links gehen an die Präsentation, nicht in den Browser');
+    check(slidesFromPlan('## Einleitung\n- a\n## Schluss\n- b').content.startsWith('# Einleitung'), 'Plan mit Markdown-Überschriften');
+  });
+
   await group('Anbieter-API: OpenAI-kompatibel, Anthropic, Gemini', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final bodies = <Map<String, dynamic>>[];
