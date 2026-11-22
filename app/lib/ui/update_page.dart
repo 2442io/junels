@@ -1,5 +1,7 @@
 // Updates: Hinweis im Menü und Installation direkt aus der App.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
@@ -7,6 +9,7 @@ import '../state/native_files.dart';
 import '../state/update_service.dart';
 import '../version.dart';
 import 'info_pages.dart';
+import 'theme.dart';
 
 Future<void> openUpdates(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const UpdatePage()));
@@ -61,12 +64,11 @@ class _UpdatePageState extends State<UpdatePage> {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Updates')),
+      appBar: AppBar(title: const Text('Updates & Versionsverlauf')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text('Installiert: Junels $appVersion (Build $appBuild)', style: t.titleMedium),
-          TextButton(onPressed: () => openChangelog(context), child: const Text('Versionsverlauf ansehen')),
           const SizedBox(height: 8),
           if (!up.supported)
             const Text('Updates in der App gibt es auf Android und Mac.')
@@ -110,7 +112,7 @@ class _UpdatePageState extends State<UpdatePage> {
                             builder: (context, p, _) => FilledButton.icon(
                               icon: const Icon(Icons.download),
                               label: const Text('Jetzt aktualisieren'),
-                              onPressed: p != null ? null : up.install,
+                              onPressed: p != null ? null : () => _install(context, up),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -161,8 +163,32 @@ class _UpdatePageState extends State<UpdatePage> {
               ),
             ],
           ],
+          const SectionLabel('Was ist neu', padding: EdgeInsets.fromLTRB(4, 24, 4, 8)),
+          const ChangelogList(),
         ],
       ),
     );
+  }
+
+  /// Mac: Junels muss beendet sein, sonst lässt Finder die App nicht ersetzen.
+  Future<void> _install(BuildContext context, UpdateService up) async {
+    if (Platform.isMacOS) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Update installieren'),
+          content: const Text('Junels lädt die neue Version, öffnet das Installationsfenster und beendet sich dann selbst – '
+              'eine geöffnete App kann macOS nicht ersetzen.\n\n'
+              'Danach im Fenster Junels auf „Programme“ ziehen und „Ersetzen“ wählen, dann Junels starten. '
+              'Löschen ist nicht nötig – Chats, Einstellungen und Modelle bleiben erhalten.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Laden und beenden')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    await up.install(quitAfterOpen: Platform.isMacOS);
   }
 }

@@ -134,7 +134,7 @@ class UpdateService {
   }
 
   /// Neue Version herunterladen und installieren.
-  Future<void> install() async {
+  Future<void> install({bool quitAfterOpen = false}) async {
     final info = available.value;
     if (info == null || progress.value != null) return;
     error.value = null;
@@ -157,12 +157,17 @@ class UpdateService {
       await sink.close();
       status.value = Platform.isAndroid
           ? 'Download fertig – bitte die Installation bestätigen.'
-          : 'Download fertig – ziehe Junels im geöffneten Fenster in „Programme“ und starte neu.';
+          : 'Download fertig – Junels beendet sich jetzt. Im geöffneten Fenster Junels auf „Programme“ ziehen und „Ersetzen“ wählen.';
       appLog('Update', '${info.version} heruntergeladen (${(got / 1e6).toStringAsFixed(0)} MB)');
       if (Platform.isAndroid) {
         await NativeFiles.installApk(file.path);
       } else {
         await NativeFiles.open(file.path);
+        if (quitAfterOpen) {
+          appLog('Update', 'Beende für die Installation');
+          await Future<void>.delayed(const Duration(milliseconds: 1500));
+          exit(0);
+        }
       }
     } catch (e) {
       error.value = '$e'.replaceFirst('Exception: ', '');

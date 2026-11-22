@@ -163,6 +163,44 @@ Future<void> main() async {
     check(huge.level == FitLevel.refuse, '5-GB-Modell wird auf 1-GB-Gerät abgelehnt');
   });
 
+  await group('Automatische Modellwahl', () async {
+    bool cx(String s, {int docs = 0, bool prev = false}) => assessTask(s, docChars: docs, previousComplex: prev).complex;
+    check(!cx('Hallo, wie geht es dir?') && !cx('Wie wird das Wetter morgen in Wien?') && !cx('Was ist 15 % von 2340?'),
+        'Alltagsfragen → schnelles Modell');
+    check(!cx('Wer ist der Bürgermeister von Graz?') && !cx('Stell einen Timer auf 10 Minuten'), 'kurze Fakten → schnell');
+    check(cx('Analysiere die Vor- und Nachteile von On-Prem- gegenüber Cloud-KI für eine Behörde und gib eine Empfehlung.'),
+        'Analyse → starkes Modell (${assessTask('Analysiere die Vor- und Nachteile von On-Prem- gegenüber Cloud-KI')})');
+    check(cx('Schreib mir ein Python-Skript, das alle PDFs in einem Ordner umbenennt'), 'Code → stark');
+    check(cx('Erstelle eine Präsentation mit 8 Folien über lokale KI im Unternehmen'), 'Präsentation → stark');
+    check(cx('Fasse das zusammen', docs: 12000), 'langes Dokument → stark');
+    check(cx('und was ist mit den Kosten?', prev: true) && !cx('und was ist mit den Kosten?'), 'Nachfrage bleibt beim starken Modell');
+    check(cx('1. Ziele festlegen\n2. Budget prüfen\n3. Team planen\nWie gehe ich vor?'), 'mehrteiliger Auftrag → stark');
+    check(cx('Warum ist der Himmel blau? Und warum sind Sonnenuntergänge rot?'), 'Erklärung mit Folgefragen → stark');
+
+    const gb = 1 << 30;
+    final meta = <String, Object>{
+      'general.architecture': 'llama',
+      'llama.block_count': 32,
+      'llama.attention.head_count': 32,
+      'llama.attention.head_count_kv': 8,
+      'llama.embedding_length': 4096,
+      'llama.context_length': 8192,
+    };
+    GgufInfo m(int size) => GgufInfo(path: 'x', fileSize: size, version: 3, tensorCount: 0, metadata: meta);
+    final big = DeviceProfile.detect(totalMemoryOverride: 32 * gb);
+    final p1 = planResidency(big, m(2 * gb), 4096, m(7 * gb), 4096, available: 24 * gb);
+    check(p1.residency == Residency.both, 'Mac mit 32 GB: beide geladen (${p1.message})');
+    final phone = DeviceProfile.detect(totalMemoryOverride: 8 * gb);
+    final p2 = planResidency(phone, m(2 * gb), 4096, m(3 * gb), 4096, available: 5 * gb);
+    check(p2.residency == Residency.swap, 'Handy mit 8 GB: Wechsel bei Bedarf (${p2.message})');
+    final p3 = planResidency(phone, m(2 * gb), 4096, m(9 * gb), 4096, available: 5 * gb);
+    check(p3.residency == Residency.fastOnly, 'zu großes Modell: nur das schnelle');
+    final pair = pickModelPair<int>([3, 9, 5], (x) => x);
+    check(pair != null && pair.$1 == 3 && pair.$2 == 9, 'Paar: kleinstes + größtes');
+    check(pickModelPair<int>([4, 5], (x) => x) == null, 'ähnlich große Modelle: keine Auswahl');
+    check(pickModelPair<int>([3, 9, 20], (x) => x, fits: (x) => x < 10)!.$2 == 9, 'nur Modelle, die passen');
+  });
+
   await group('Agent: Tool-Ablauf (gescriptet)', () async {
     final backend = ScriptedBackend([
       '{"thought": "Ich rechne.", "action": "calculator", "args": {"expression": "17*23"}}',
@@ -803,12 +841,18 @@ Future<void> main() async {
     stampAiLabel(rgba, w, h);
     int lum(int x, int y) => rgba[(y * w + x) * 4];
     var dark = 0;
-    for (var y = h - 60; y < h; y++) {
-      for (var x = w - 160; x < w; x++) {
+    for (var y = h - 30; y < h; y++) {
+      for (var x = w - 90; x < w; x++) {
         if (lum(x, y) < 60) dark++;
       }
     }
-    check(dark > 1500 && lum(10, 10) == 255, 'EU-Symbol „AI GENERATED“ im Bild ($dark dunkle Pixel)');
+    var darkElsewhere = 0;
+    for (var y = 0; y < h - 30; y++) {
+      for (var x = 0; x < w; x++) {
+        if (lum(x, y) < 250) darkElsewhere++;
+      }
+    }
+    check(dark > 300 && darkElsewhere == 0, 'EU-Symbol klein in der Ecke ($dark dunkle Pixel, sonst unverändert)');
     final png = encodePngRgba(w, h, rgba, text: aiImageMetadata(prompt: 'lavender fields'));
     check(latin1.decode(png, allowInvalid: true).contains('AI-Generated') && latin1.decode(png, allowInvalid: true).contains('EU AI Act'),
         'Maschinenlesbare Kennzeichnung (PNG tEXt)');

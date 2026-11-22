@@ -36,7 +36,7 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Programme"
 DMG="$ROOT/dist/OfflineAgent-$VER-macos.dmg"
 rm -f "$DMG"
-hdiutil create -volname "Offline Agent" -srcfolder "$STAGE" -ov -format UDZO "$DMG" > /dev/null
+hdiutil create -volname "Junels" -srcfolder "$STAGE" -ov -format UDZO "$DMG" > /dev/null
 rm -rf "$STAGE"
 
 if [ -n "${DEVELOPER_ID:-}" ] && [ -n "${NOTARY_PROFILE:-}" ]; then

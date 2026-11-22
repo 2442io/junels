@@ -373,6 +373,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     _memTimer?.cancel();
     _scheduleTimer?.cancel();
     engine?.dispose();
+    strongEngine?.dispose();
+    _swapBack?.cancel();
+    _strongIdle?.cancel();
+    _typingDebounce?.cancel();
     if (initialized && initError == null) voice.dispose();
     super.dispose();
   }
@@ -638,8 +642,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> loadModel(StoredModel m) async {
+  Future<void> loadModel(StoredModel m, {bool remember = true}) async {
     if (status == EngineStatus.loading || running) return;
+    if (remember) _swapBack?.cancel();
+    if (strongResident?.id == m.id) await _disposeStrong();
     status = EngineStatus.loading;
     loadStarted = DateTime.now();
     statusMessage = 'Lade ${m.displayName} …';
@@ -666,11 +672,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       status = EngineStatus.ready;
       statusMessage = '${m.displayName} geladen in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s'
           '${fit.level == FitLevel.warn ? ' – ${fit.message}' : ''}';
-      settings.lastModelId = m.id;
-      await storage.saveSettings(settings);
+      if (remember) {
+        settings.lastModelId = m.id;
+        await storage.saveSettings(settings);
+      }
       appLog('Modell', '${m.displayName} geladen in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s, '
           'Context ${engine!.contextSize}, ${device.threads} Threads');
-      if (!headless) unawaited(warmUp());
+      if (!headless) unawaited(warmUp().then((_) => _preloadStrongIfRoomy()));
     } catch (e) {
       engine = null;
       loadedModel = null;
@@ -2221,7 +2229,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Sendet die Nutzernachricht an [index] erneut (optional mit neuem Text);
   /// alles danach im Chat wird verworfen.
-  Future<void> resendFrom(int index, {String? newText, bool cloud = false}) async {
+  Future<void> resendFrom(int index, {String? newText, bool cloud = false, bool strong = false}) async {
     final conv = current;
     if (conv == null || running || index < 0 || index >= conv.entries.length) return;
     final entry = conv.entries[index];
@@ -2231,7 +2239,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     conv.entries.removeRange(index, conv.entries.length);
     await storage.saveConversation(conv);
     notifyListeners();
-    await send(text, voice: entry.viaVoice, forceCloud: cloud);
+    await send(text, voice: entry.viaVoice, forceCloud: cloud, forceStrong: strong);
   }
 
   /// „Mit Cloud beantworten“ unter einer Antwort: fragt nach Freigabe und beantwortet neu.
@@ -2346,13 +2354,216 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       };
 
   /// Wählt das Modell für eine Antwort: (Backend, Anzeige, ist Cloud).
-  Future<(AgentBackend?, String?, bool)> _backendFor(Conversation conv, {bool forceCloud = false}) async {
+  Future<(AgentBackend?, String?, bool)> _backendFor(Conversation conv,
+      {bool forceCloud = false, String input = '', int docChars = 0, bool forceStrong = false, bool voice = false}) async {
     final r = settings.routing;
     Future<(AgentBackend?, String?, bool)> remote(ProviderConfig? p, bool cloud) async =>
         p == null ? (null, null, cloud) : (await remoteBackend(p), '${cloud ? 'Cloud' : 'On-Prem'} · ${p.name} · ${p.model}', cloud);
     if (forceCloud || r == 'cloud' || (r == 'hybrid' && conv.cloudAllowed)) return remote(cloudProvider, true);
     if (r == 'onprem' || (r == 'hybrid' && settings.hybridFirst == 'onprem')) return remote(onPremProvider, false);
-    return (engine, null, false);
+    final (e, v) = await _localFor(conv, input, docChars: docChars, forceStrong: forceStrong, voice: voice);
+    return (e, v, false);
+  }
+
+  // ------------------------------------------------- Automatische Modellwahl
+
+  /// Großes Modell, wenn es dauerhaft neben dem kleinen geladen bleibt (Speicherplan „beide“).
+  LlamaEngine? strongEngine;
+  StoredModel? strongResident;
+
+  /// Letzter Speicherplan (für die Anzeige in den Einstellungen).
+  ModelPlan? modelPlan;
+  final Map<String, bool> _complexConv = {};
+  final Map<String, GgufInfo> _infoCache = {};
+  Timer? _swapBack;
+  Timer? _strongIdle;
+  Timer? _typingDebounce;
+  bool _loadingStrong = false;
+
+  /// Text für die Anzeige über dem Eingabefeld, solange ein Modell gewechselt/geladen wird.
+  String? get modelSwitching {
+    if (_loadingStrong) return statusMessage ?? 'Lade Modell für komplexe Aufgaben …';
+    if (status == EngineStatus.loading && modelPair != null) return statusMessage ?? 'Modell wird geladen …';
+    return null;
+  }
+
+  /// Schnelles und starkes Modell (null = keine automatische Wahl möglich/gewünscht).
+  (StoredModel, StoredModel)? get modelPair {
+    if (!settings.autoModel) return null;
+    final f = models.where((m) => m.id == settings.fastModelId).firstOrNull;
+    final st = models.where((m) => m.id == settings.strongModelId).firstOrNull;
+    if (f != null && st != null && f.id != st.id) return (f, st);
+    final budget = device.memoryBudget();
+    final auto = pickModelPair<StoredModel>(models, (m) => m.sizeBytes,
+        fits: (m) => DeviceProfile.estimateRuntimeBytes(m.sizeBytes) <= budget);
+    if (auto == null) return null;
+    return (f ?? auto.$1, st ?? auto.$2);
+  }
+
+  Future<GgufInfo> _info(StoredModel m) async => _infoCache[m.path] ??= await GgufInfo.read(m.path);
+
+  int _ctxFor(GgufInfo info) {
+    var ctx = device.clampContext(contextTarget, info);
+    for (final c in [ctx, 8192, 4096, 2048]) {
+      if (c <= ctx && device.checkFit(info, c).level == FitLevel.ok) return c;
+    }
+    return math.min(ctx, 2048);
+  }
+
+  Future<ModelPlan?> refreshModelPlan() async {
+    final pair = modelPair;
+    if (pair == null) {
+      modelPlan = null;
+      return null;
+    }
+    try {
+      final a = await _info(pair.$1), b = await _info(pair.$2);
+      // Bereits geladene Modelle zählen zum verfügbaren Speicher dazu
+      final loaded = (engine != null ? DeviceProfile.estimateRuntimeBytes(loadedModel?.sizeBytes ?? 0) : 0) +
+          (strongEngine != null ? DeviceProfile.estimateRuntimeBytes(strongResident?.sizeBytes ?? 0) : 0);
+      modelPlan = planResidency(device, a, _ctxFor(a), b, _ctxFor(b), available: LlamaEngine.availableMemory() + loaded);
+    } catch (e) {
+      appLog('Modellwahl', 'Speicherplan: $e', error: true);
+      modelPlan = null;
+    }
+    return modelPlan;
+  }
+
+  String _modelLabel(StoredModel? m) => 'Lokal · ${m?.displayName ?? 'Modell'}';
+
+  /// Wählt das lokale Modell für eine Anfrage.
+  Future<(AgentBackend?, String?)> _localFor(Conversation conv, String input,
+      {int docChars = 0, bool forceStrong = false, bool voice = false}) async {
+    final pair = modelPair;
+    if (pair == null) return (engine as AgentBackend?, null);
+    final (fast, strong) = pair;
+    final a = assessTask(input, docChars: docChars, previousComplex: _complexConv[conv.id] ?? false);
+    final complex = forceStrong || a.complex;
+    _complexConv[conv.id] = complex;
+    final plan = modelPlan ?? await refreshModelPlan();
+    appLog('Modellwahl', '${complex ? 'komplex' : 'einfach'} – $a · Plan ${plan?.residency.name}');
+    if (complex && plan != null && plan.residency != Residency.fastOnly) {
+      if (plan.residency == Residency.both || strongEngine != null) {
+        if (strongEngine == null) await _loadStrongResident(strong);
+        if (strongEngine != null) {
+          _touchStrong();
+          return (strongEngine as AgentBackend?, _modelLabel(strong));
+        }
+      } else if (!voice || loadedModel?.id == strong.id) {
+        // Wechsel: kleines Modell freigeben, großes laden; später automatisch zurück
+        if (loadedModel?.id != strong.id) {
+          statusMessage = 'Komplexe Aufgabe – lade ${strong.displayName} …';
+          notifyListeners();
+          await loadModel(strong, remember: false);
+        }
+        if (loadedModel?.id == strong.id) {
+          _scheduleSwapBack(fast);
+          return (engine as AgentBackend?, _modelLabel(strong));
+        }
+      }
+    }
+    if (engine == null) await _ensureEngine();
+    // Einfache Frage, während gerade das große Modell geladen ist: einfach damit antworten (kein Hin und Her)
+    if (loadedModel?.id == strong.id) _scheduleSwapBack(fast);
+    return (engine as AgentBackend?, _modelLabel(loadedModel));
+  }
+
+  Future<void> _loadStrongResident(StoredModel m) async {
+    if (_loadingStrong || strongResident?.id == m.id) return;
+    _loadingStrong = true;
+    final prev = statusMessage;
+    statusMessage = 'Lade ${m.displayName} für komplexe Aufgaben …';
+    notifyListeners();
+    try {
+      final info = await _info(m);
+      final sw = Stopwatch()..start();
+      strongEngine = await LlamaEngine.load(device.engineConfig(m.path, _ctxFor(info)));
+      strongResident = m;
+      appLog('Modellwahl', '${m.displayName} zusätzlich geladen in ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s');
+      _touchStrong();
+    } catch (e) {
+      strongEngine = null;
+      strongResident = null;
+      appLog('Modellwahl', '${m.displayName} konnte nicht zusätzlich geladen werden: $e', error: true);
+    } finally {
+      _loadingStrong = false;
+      statusMessage = prev;
+      _pollMemory();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _disposeStrong() async {
+    _strongIdle?.cancel();
+    final e = strongEngine;
+    strongEngine = null;
+    strongResident = null;
+    if (e != null) await e.dispose();
+  }
+
+  /// Großes Modell nach längerer Pause freigeben (Speicher und Akku schonen).
+  void _touchStrong() {
+    _strongIdle?.cancel();
+    _strongIdle = Timer(Duration(minutes: device.isMobile ? 5 : 30), () async {
+      if (running) return _touchStrong();
+      appLog('Modellwahl', '${strongResident?.displayName} nach Pause freigegeben');
+      await _disposeStrong();
+      _pollMemory();
+      notifyListeners();
+    });
+  }
+
+  /// Nach dem Wechsel aufs große Modell: nach einer Pause zurück zum schnellen.
+  void _scheduleSwapBack(StoredModel fast) {
+    _swapBack?.cancel();
+    _swapBack = Timer(Duration(minutes: device.isMobile ? 3 : 8), () async {
+      if (running || status == EngineStatus.loading) return _scheduleSwapBack(fast);
+      if (loadedModel?.id == fast.id) return;
+      appLog('Modellwahl', 'Pause – zurück zu ${fast.displayName}');
+      await loadModel(fast);
+    });
+  }
+
+  /// Desktop mit genug Speicher: großes Modell im Hintergrund vorladen.
+  Future<void> _preloadStrongIfRoomy() async {
+    final pair = modelPair;
+    if (pair == null || headless || strongEngine != null || loadedModel?.id == pair.$2.id) return;
+    final plan = await refreshModelPlan();
+    if (plan?.residency == Residency.both && !device.isMobile) await _loadStrongResident(pair.$2);
+  }
+
+  /// Beim Tippen: Sieht die Anfrage komplex aus, das große Modell schon vorbereiten.
+  void typingHint(String text) {
+    _typingDebounce?.cancel();
+    if (text.trim().length < 25 || modelPair == null) return;
+    _typingDebounce = Timer(const Duration(milliseconds: 700), () async {
+      final pair = modelPair;
+      final conv = current;
+      if (pair == null || running || status == EngineStatus.loading || _loadingStrong) return;
+      if (!assessTask(text, previousComplex: conv == null ? false : (_complexConv[conv.id] ?? false)).complex) return;
+      final plan = modelPlan ?? await refreshModelPlan();
+      if (plan == null || plan.residency == Residency.fastOnly) return;
+      if (plan.residency == Residency.both) {
+        if (strongEngine == null) await _loadStrongResident(pair.$2);
+      } else if (loadedModel?.id != pair.$2.id) {
+        appLog('Modellwahl', 'Komplexe Eingabe erkannt – lade ${pair.$2.displayName} schon beim Tippen');
+        statusMessage = 'Bereite ${pair.$2.displayName} vor …';
+        notifyListeners();
+        await loadModel(pair.$2, remember: false);
+        _scheduleSwapBack(pair.$1);
+      }
+    });
+  }
+
+  Future<void> setAutoModel({bool? enabled, String? fastId, String? strongId}) async {
+    if (enabled != null) settings.autoModel = enabled;
+    if (fastId != null) settings.fastModelId = fastId.isEmpty ? null : fastId;
+    if (strongId != null) settings.strongModelId = strongId.isEmpty ? null : strongId;
+    await storage.saveSettings(settings);
+    if (!settings.autoModel) await _disposeStrong();
+    await refreshModelPlan();
+    notifyListeners();
+    unawaited(_preloadStrongIfRoomy());
   }
 
   /// Erzeugt die Antwort an [index] neu.
@@ -2920,7 +3131,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       Conversation? target,
       bool noHistory = false,
       List<Attachment>? withDocs,
-      bool forceCloud = false}) async {
+      bool forceCloud = false,
+      bool forceStrong = false}) async {
     if (!canChat && !forceCloud || input.trim().isEmpty) {
       onAnswer?.call('', true);
       return;
@@ -2943,7 +3155,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final conv = target ?? _ensureConversation();
     runningConvId = conv.id;
-    final (eng0, via, usedCloud) = await _backendFor(conv, forceCloud: forceCloud);
+    final (eng0, via, usedCloud) = await _backendFor(conv,
+        forceCloud: forceCloud,
+        input: input,
+        docChars: (withDocs ?? attachments).fold<int>(0, (n, d) => n + d.content.length),
+        forceStrong: forceStrong,
+        voice: voice);
+    if (statusMessage != null && statusMessage!.startsWith('Komplexe Aufgabe')) statusMessage = null;
     if (eng0 == null) {
       runningConvId = null;
       conv.entries
@@ -3266,6 +3484,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           .catchError((_) {}));
     }
     if (eng is RemoteBackend) eng.close();
+    // Schnelles Modell ist gescheitert → automatisch mit dem starken Modell wiederholen
+    final pairNow = modelPair;
+    if (!usedCloud && !forceStrong && !voice && !headless && pairNow != null && via == _modelLabel(pairNow.$1) &&
+        current?.id == conv.id && answer.text != '_(gestoppt)_' && (answer.error != null || answer.text.trim().isEmpty)) {
+      final i = conv.entries.indexOf(answer);
+      if (i > 0) {
+        appLog('Modellwahl', 'Schnelles Modell ohne Antwort – wiederhole mit ${pairNow.$2.displayName}');
+        await resendFrom(i - 1, strong: true);
+        return;
+      }
+    }
     // Hybrid: Lokal hat nicht geklappt → Cloud anbieten bzw. nach Freigabe fragen
     if (!usedCloud && settings.routing == 'hybrid' && cloudProvider != null && !headless) {
       final failed = answer.error != null || answer.text.trim().isEmpty || answer.text == '_(gestoppt)_';

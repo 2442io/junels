@@ -377,6 +377,28 @@ API-Schlüssel liegen im **Tresor**, nie in den App-Dateien.
 Welcher Anbieter geantwortet hat, steht unter jeder Antwort.''',
   ),
   HelpArticle(
+    id: 'auto-model',
+    category: 'Modelle & Anbieter',
+    icon: Icons.alt_route,
+    title: 'Automatische Modellwahl',
+    summary: 'Schnelles Modell für den Alltag, starkes für komplexe Aufgaben – ohne Speicher zu verschwenden.',
+    open: 'settings:models',
+    keywords: 'modell wahl automatisch qwen gemma schnell stark komplex wechsel speicher vorladen ram',
+    body: '''Sind zwei Sprachmodelle unterschiedlicher Größe installiert (z. B. **Qwen** klein und **Gemma** groß), wählt Junels je Anfrage:
+
+- **Schnell** – Grüße, Wetter, Fakten, Rechnen, kurze Fragen.
+- **Stark** – Analysen, Vergleiche, Code, Präsentationen und Berichte, lange Texte, angehängte Dokumente, mehrteilige Aufträge. Nachfragen bleiben beim starken Modell.
+- Klappt eine Antwort mit dem schnellen Modell nicht, übernimmt automatisch das starke.
+
+Die Einschätzung braucht kein zusätzliches Modell und kostet praktisch nichts.
+
+**Speicher schonen**
+- **Genug Arbeitsspeicher** (meist am Mac): beide bleiben geladen, der Wechsel ist sofort. Das große Modell wird nach 30 Minuten Pause freigegeben.
+- **Wenig Arbeitsspeicher** (meist am Handy): es ist nur eines geladen. Erkennt Junels schon **beim Tippen** eine komplexe Anfrage, lädt es das große Modell im Voraus – meist ist es fertig, bevor du sendest. Nach ein paar Minuten Pause geht es zurück zum schnellen Modell.
+
+Unter jeder Antwort steht, welches Modell geantwortet hat. Einstellen und Modelle selbst festlegen: Einstellungen → Lokale Modelle → Automatische Modellwahl.''',
+  ),
+  HelpArticle(
     id: 'agent',
     category: 'Modelle & Anbieter',
     icon: Icons.smart_toy_outlined,
@@ -457,7 +479,7 @@ Der Agent kann – jeweils mit Rückfrage – **Termine** abfragen und eintragen
     keywords: 'ki kennzeichnung ai generated eu ai act symbol hinweis fehler bild wasserzeichen transparenz',
     body: '''Junels kennzeichnet KI-Inhalte nach dem **EU AI Act** (Art. 50) mit den offiziellen EU-Symbolen:
 
-- **Bilder**, die der Agent erzeugt, tragen unten rechts das Symbol **„AI GENERATED“** – fest im Bild, damit es auch beim Teilen oder Herunterladen sichtbar bleibt. Zusätzlich steht die Kennzeichnung maschinenlesbar in der Bilddatei.
+- **Bilder**, die der Agent erzeugt, tragen klein in der Ecke unten rechts das Symbol **„AI GENERATED“** – fest im Bild, damit es auch beim Teilen oder Herunterladen sichtbar bleibt. Zusätzlich steht die Kennzeichnung maschinenlesbar in der Bilddatei.
 - **Antworten** im Chat und im Gesprächsmodus haben unten das Symbol **„AI“** mit dem Hinweis „Mit KI erzeugt · KI kann Fehler machen“.
 - **Dokumente und Präsentationen** (PDF, PowerPoint) haben auf jeder Seite bzw. Folie eine Fußzeile mit demselben Hinweis.
 
@@ -486,9 +508,11 @@ Bitte prüfe wichtige Angaben – Zahlen, Termine, Namen, rechtliche oder medizi
     keywords: 'update version installieren protokoll log fehler versionsverlauf',
     body: '''**Updates**: Gibt es eine neue Version, erscheint oben in der Seitenleiste ein Hinweis. Ein Tipp lädt und installiert sie – deine Modelle und Chats bleiben erhalten.
 
-**Protokoll**: Unter Einstellungen → Darstellung & App → Protokoll siehst du Fehler, Lade- und Antwortzeiten. Du kannst es kopieren und teilen.
+**Am Mac**: „Jetzt aktualisieren“ lädt die neue Version, öffnet das Installationsfenster und beendet Junels – eine geöffnete App kann macOS nicht ersetzen. Dann Junels auf „Programme“ ziehen, „Ersetzen“ wählen und neu starten. Löschen ist nicht nötig.
 
-**Versionsverlauf**: Was ist neu in jeder Version.''',
+**Versionsverlauf**: steht auf derselben Seite unter „Was ist neu“ (Einstellungen → Darstellung & App → Updates & Versionsverlauf).
+
+**Protokoll**: Unter Einstellungen → Darstellung & App → Protokoll siehst du Fehler, Lade- und Antwortzeiten. Du kannst es kopieren und teilen.''',
   ),
   HelpArticle(
     id: 'appearance',

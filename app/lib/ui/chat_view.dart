@@ -620,9 +620,13 @@ class _AssistantMessage extends StatelessWidget {
               child: Row(
                 children: [
                   if (entry.via != null) ...[
-                    StatusChip(entry.via!.split(' · ').take(2).join(' · '),
-                        color: entry.via!.startsWith('Cloud') ? AppColors.of(context).blue : AppColors.of(context).violet,
-                        icon: entry.via!.startsWith('Cloud') ? Icons.cloud_outlined : Icons.dns_outlined,
+                    StatusChip(entry.via!.startsWith('Lokal') ? entry.via!.substring(8) : entry.via!.split(' · ').take(2).join(' · '),
+                        color: entry.via!.startsWith('Cloud')
+                            ? AppColors.of(context).blue
+                            : (entry.via!.startsWith('Lokal') ? AppColors.of(context).mint : AppColors.of(context).violet),
+                        icon: entry.via!.startsWith('Cloud')
+                            ? Icons.cloud_outlined
+                            : (entry.via!.startsWith('Lokal') ? Icons.memory : Icons.dns_outlined),
                         dense: true),
                     const SizedBox(width: 8),
                   ],
@@ -950,6 +954,18 @@ class _InputBarState extends State<_InputBar> {
   final _ctrl = TextEditingController();
   late final _focus = FocusNode(onKeyEvent: _onKey);
   ValueNotifier<String?>? _pending;
+  String _lastHint = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // Komplexe Eingabe → passendes Modell schon beim Tippen vorbereiten
+    _ctrl.addListener(() {
+      if (_ctrl.text == _lastHint) return;
+      _lastHint = _ctrl.text;
+      if (mounted) AppScope.read(context).typingHint(_ctrl.text);
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -1268,7 +1284,8 @@ class _InputBarState extends State<_InputBar> {
                             ),
                     );
                     final route = app.routingLabel;
-                    return AnimatedBuilder(
+                    final switching = app.modelSwitching;
+                    final composer = AnimatedBuilder(
                       animation: _focus,
                       builder: (context, child) => Container(
                         decoration: BoxDecoration(
@@ -1306,6 +1323,18 @@ class _InputBarState extends State<_InputBar> {
                         ],
                       ),
                     );
+                    if (switching == null) return composer;
+                    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                        child: Row(children: [
+                          SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.6, color: c.mint)),
+                          const SizedBox(width: 8),
+                          Expanded(child: MonoText(switching, size: 11, color: c.muted)),
+                        ]),
+                      ),
+                      composer,
+                    ]);
                   }),
                 ],
               ),

@@ -358,6 +358,9 @@ class AppSettings {
     this.smtpUser = '',
     this.smtpFrom = '',
     this.routing = 'local',
+    this.autoModel = true,
+    this.fastModelId,
+    this.strongModelId,
     this.hybridFirst = 'local',
     this.onPremId,
     this.cloudId,
@@ -419,6 +422,11 @@ class AppSettings {
   String smtpFrom;
   bool get smtpReady => smtpHost.isNotEmpty && smtpUser.isNotEmpty;
 
+  /// Automatische Modellwahl: einfache Fragen → schnelles, komplexe → starkes Modell
+  bool autoModel;
+  String? fastModelId;
+  String? strongModelId;
+
   /// Wer antwortet: local | onprem | cloud | hybrid (erst lokal/On-Prem, Cloud nach Freigabe)
   String routing;
 
@@ -468,6 +476,9 @@ class AppSettings {
         'smtpUser': smtpUser,
         'smtpFrom': smtpFrom,
         'routing': routing,
+        'autoModel': autoModel,
+        if (fastModelId != null) 'fastModelId': fastModelId,
+        if (strongModelId != null) 'strongModelId': strongModelId,
         'hybridFirst': hybridFirst,
         if (onPremId != null) 'onPremId': onPremId,
         if (cloudId != null) 'cloudId': cloudId,
@@ -511,6 +522,9 @@ class AppSettings {
         smtpUser: j['smtpUser'] as String? ?? '',
         smtpFrom: j['smtpFrom'] as String? ?? '',
         routing: j['routing'] as String? ?? 'local',
+        autoModel: j['autoModel'] as bool? ?? true,
+        fastModelId: j['fastModelId'] as String?,
+        strongModelId: j['strongModelId'] as String?,
         hybridFirst: j['hybridFirst'] as String? ?? 'local',
         onPremId: j['onPremId'] as String?,
         cloudId: j['cloudId'] as String?,

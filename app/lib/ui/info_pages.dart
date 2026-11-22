@@ -3,6 +3,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import 'theme.dart';
+import 'update_page.dart';
 import 'package:flutter/services.dart';
 
 import '../state/native_files.dart';
@@ -10,6 +13,14 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.29.0', [
+    'Automatische Modellwahl: Alltagsfragen beantwortet das schnelle Modell (z. B. Qwen), Analysen, Code, Präsentationen und lange Texte das starke (z. B. Gemma); scheitert das schnelle, übernimmt das starke',
+    'Speicherschonend: mit genug Arbeitsspeicher bleiben beide geladen, sonst wird das große Modell schon beim Tippen einer komplexen Anfrage geladen und nach einer Pause wieder freigegeben',
+    'Unter jeder Antwort steht, welches Modell geantwortet hat',
+    'KI-Symbol in Bildern kleiner und dichter am Rand',
+    'Updates und Versionsverlauf auf einer Seite',
+    'Mac: Junels beendet sich beim Update selbst – die App lässt sich dann einfach ersetzen, Löschen ist nicht mehr nötig',
+  ]),
   ('1.28.0', [
     'KI-Kennzeichnung nach EU-Vorgaben: erzeugte Bilder tragen das offizielle Symbol „AI GENERATED“ fest im Bild (bleibt beim Teilen erhalten) und eine maschinenlesbare Kennzeichnung in der Datei',
     'Unter jeder Antwort – auch im Gesprächsmodus – das EU-Symbol „AI“ mit dem Hinweis „Mit KI erzeugt · KI kann Fehler machen“',
@@ -234,43 +245,56 @@ const changelog = <(String, List<String>)>[
   ]),
 ];
 
-Future<void> openChangelog(BuildContext context) => Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => Scaffold(
-        appBar: AppBar(title: const Text('Versionsverlauf')),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text('Installiert: Junels $appVersion (Build $appBuild)', style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 12),
-            for (final (v, items) in changelog)
-              Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text('Version $v', style: Theme.of(context).textTheme.titleMedium),
-                      if (v == appVersion) ...[
-                        const SizedBox(width: 8),
-                        const Chip(label: Text('installiert'), visualDensity: VisualDensity.compact),
-                      ],
-                    ]),
-                    const SizedBox(height: 6),
-                    for (final i in items)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('•  '),
-                          Expanded(child: Text(i)),
-                        ]),
-                      ),
-                  ]),
-                ),
-              ),
+/// Versionsverlauf steht jetzt auf der Seite „Updates & Versionsverlauf“.
+Future<void> openChangelog(BuildContext context) => openUpdates(context);
+
+/// Versionsverlauf: die neuesten [expanded] Versionen offen, ältere eingeklappt.
+class ChangelogList extends StatelessWidget {
+  const ChangelogList({super.key, this.expanded = 3});
+  final int expanded;
+
+  Widget _version(BuildContext context, String v, List<String> items) {
+    final t = Theme.of(context).textTheme;
+    final c = AppColors.of(context);
+    return Panel(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('Version $v', style: t.titleSmall),
+          if (v == appVersion) ...[
+            const SizedBox(width: 8),
+            StatusChip('installiert', color: c.mint, soft: c.mintSoft, dense: true),
           ],
+        ]),
+        const SizedBox(height: 6),
+        for (final i in items)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('•  ', style: t.bodyMedium),
+              Expanded(child: Text(i, style: t.bodyMedium)),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = changelog.take(expanded).toList();
+    final older = changelog.skip(expanded).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final (v, items) in recent) _version(context, v, items),
+      if (older.isNotEmpty)
+        ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+          title: Text('Ältere Versionen (${older.length})'),
+          children: [for (final (v, items) in older) _version(context, v, items)],
         ),
-      ),
-    ));
+    ]);
+  }
+}
 
 Future<void> openLog(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LogPage()));

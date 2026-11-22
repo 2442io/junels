@@ -177,7 +177,10 @@ class SettingsBody extends StatelessWidget {
         );
     switch (id) {
       case 'models':
-        return group(null, [_ModelSection(app: app)]);
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          group(null, [_ModelSection(app: app)]),
+          group('Automatische Modellwahl', [_AutoModelSection(app: app)]),
+        ]);
       case 'providers':
         return const ProvidersSettings();
       case 'agent':
@@ -228,10 +231,10 @@ class SettingsBody extends StatelessWidget {
           group('App', [
             _NavTile(
               icon: Icons.system_update_outlined,
-              title: 'Updates',
+              title: 'Updates & Versionsverlauf',
               subtitle: app.updates.available.value != null
                   ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
-                  : (app.updates.hasToken ? 'Automatische Prüfung aktiv' : 'In der App aktualisieren – einrichten'),
+                  : 'Installiert: $appVersion · Was ist neu?',
               onTap: () => openUpdates(context),
             ),
             _NavTile(
@@ -239,12 +242,6 @@ class SettingsBody extends StatelessWidget {
               title: 'Protokoll',
               subtitle: 'Fehler und Zeiten einsehen',
               onTap: () => openLog(context),
-            ),
-            _NavTile(
-              icon: Icons.new_releases_outlined,
-              title: 'Versionsverlauf',
-              subtitle: 'Was ist neu?',
-              onTap: () => openChangelog(context),
             ),
           ]),
         ]);
@@ -789,5 +786,121 @@ class _SettingsSection extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+
+/// Einfache Fragen → schnelles Modell, komplexe → starkes Modell.
+class _AutoModelSection extends StatefulWidget {
+  const _AutoModelSection({required this.app});
+  final AppController app;
+  @override
+  State<_AutoModelSection> createState() => _AutoModelSectionState();
+}
+
+class _AutoModelSectionState extends State<_AutoModelSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.app.refreshModelPlan().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final pair = app.modelPair;
+    final plan = app.modelPlan;
+    final models = [...app.models]..sort((a, b) => a.sizeBytes.compareTo(b.sizeBytes));
+    String gb(int b) => '${(b / (1 << 30)).toStringAsFixed(1)} GB';
+    Widget pick(String label, String? value, String hint, ValueChanged<String> onChanged) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: DropdownButtonFormField<String>(
+            initialValue: models.any((m) => m.id == value) ? value : '',
+            isExpanded: true,
+            decoration: InputDecoration(labelText: label, helperText: hint),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('Automatisch')),
+              for (final m in models) DropdownMenuItem(value: m.id, child: Text('${m.displayName} · ${gb(m.sizeBytes)}', overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) => onChanged(v ?? ''),
+          ),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        title: const Text('Modell je Aufgabe wählen'),
+        subtitle: const Text('Alltagsfragen beantwortet das schnelle Modell, Analysen, Code, Präsentationen und lange Texte das starke. '
+            'Scheitert das schnelle, übernimmt automatisch das starke.'),
+        value: app.settings.autoModel,
+        onChanged: (v) => app.setAutoModel(enabled: v),
+      ),
+      if (app.settings.autoModel) ...[
+        if (models.length < 2)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+            child: Text('Dafür braucht es zwei Sprachmodelle unterschiedlicher Größe – z. B. Qwen (schnell) und Gemma (stark). '
+                'Im Systemcheck ein zweites laden.', style: t.bodySmall?.copyWith(color: c.amber)),
+          )
+        else ...[
+          const SizedBox(height: 8),
+          pick('Schnell (Alltag)', app.settings.fastModelId, pair == null ? '' : 'Jetzt: ${pair.$1.displayName}',
+              (v) => app.setAutoModel(fastId: v)),
+          DropdownButtonFormField<String>(
+            initialValue: models.any((m) => m.id == app.settings.strongModelId) ? app.settings.strongModelId : '',
+            isExpanded: true,
+            decoration: InputDecoration(labelText: 'Stark (komplexe Aufgaben)', helperText: pair == null ? '' : 'Jetzt: ${pair.$2.displayName}'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('Automatisch')),
+              for (final m in models) DropdownMenuItem(value: m.id, child: Text('${m.displayName} · ${gb(m.sizeBytes)}', overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) => app.setAutoModel(strongId: v ?? ''),
+          ),
+          const SizedBox(height: 12),
+          if (pair == null)
+            Text('Die installierten Modelle sind zu ähnlich groß oder das größte passt nicht in den Speicher.', style: t.bodySmall)
+          else if (plan != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: plan.residency == Residency.both ? c.mintSoft : c.raised,
+                borderRadius: BorderRadius.circular(Ui.r),
+              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(
+                    plan.residency == Residency.both
+                        ? Icons.layers_outlined
+                        : (plan.residency == Residency.swap ? Icons.swap_horiz : Icons.warning_amber_rounded),
+                    size: 20,
+                    color: plan.residency == Residency.both ? c.mint : c.muted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(
+                        switch (plan.residency) {
+                          Residency.both => 'Beide geladen',
+                          Residency.swap => 'Wechsel bei Bedarf',
+                          Residency.fastOnly => 'Nur das schnelle Modell',
+                        },
+                        style: t.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(plan.message, style: t.bodySmall),
+                    if (plan.residency == Residency.swap)
+                      Text('Schon beim Tippen einer komplexen Anfrage wird gewechselt; nach einigen Minuten Pause geht es zurück zum schnellen Modell.',
+                          style: t.bodySmall),
+                    if (app.strongResident != null) ...[
+                      const SizedBox(height: 4),
+                      MonoText('geladen: ${app.loadedModel?.displayName ?? '–'} + ${app.strongResident!.displayName}'),
+                    ],
+                  ]),
+                ),
+              ]),
+            ),
+        ],
+      ],
+    ]);
   }
 }

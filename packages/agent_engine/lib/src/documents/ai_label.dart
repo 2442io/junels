@@ -22,14 +22,14 @@ Map<String, String> aiImageMetadata({String prompt = '', String generator = 'Sta
     };
 
 /// Stempelt das EU-Symbol „AI GENERATED“ unten rechts in ein RGBA-Bild (in place).
-/// Breite ca. 28 % der Bildbreite, mindestens 96 px; mit Rand, damit es nicht abgeschnitten wird.
+/// Klein am Rand: ca. 13 % der Bildbreite (mindestens 64 px, damit es lesbar bleibt), dicht an der Ecke.
 void stampAiLabel(Uint8List rgba, int w, int h) {
   if (w < 64 || h < 32) return;
   final lw0 = euAiGeneratedWidth, lh0 = euAiGeneratedHeight;
-  var lw = (w * 0.28).round().clamp(96, lw0 * 2);
+  var lw = (w * 0.13).round().clamp(64, lw0);
   if (lw > w - 8) lw = w - 8;
   final lh = (lw * lh0 / lw0).round();
-  final margin = (w * 0.025).round().clamp(4, 40);
+  final margin = (w * 0.012).round().clamp(3, 16);
   final x0 = w - lw - margin;
   final y0 = h - lh - margin;
   if (x0 < 0 || y0 < 0) return;
