@@ -16,6 +16,8 @@ enum ProviderKind {
   gemini('Google Gemini', 'https://generativelanguage.googleapis.com/v1beta', 'gemini-2.5-flash', false),
   mistral('Mistral', 'https://api.mistral.ai/v1', 'mistral-medium-latest', false),
   openrouter('OpenRouter', 'https://openrouter.ai/api/v1', 'openrouter/auto', false),
+  /// api.2442.io: wählt selbst einen freien Anbieter; „Modell“ = Favoriten in Reihenfolge (z. B. groq,gemini).
+  api2442('2442 API', 'https://api.2442.io', '', false),
   ollama('Ollama (On-Prem)', 'http://192.168.1.10:11434/v1', 'qwen3:8b', true),
   compatible('OpenAI-kompatibler Server (On-Prem)', 'http://192.168.1.10:8000/v1', '', true);
 
@@ -27,7 +29,7 @@ enum ProviderKind {
   /// Läuft typischerweise im eigenen Netz.
   final bool onPrem;
 
-  bool get openAiStyle => this != anthropic && this != gemini;
+  bool get openAiStyle => this != anthropic && this != gemini && this != api2442;
   bool get needsKey => !onPrem;
 }
 
@@ -59,7 +61,7 @@ class ProviderConfig {
 
   int get effectiveContext => contextSize > 0 ? contextSize : (onPrem ? 32768 : 128000);
 
-  String get label => '$name · $model';
+  String get label => kind == ProviderKind.api2442 && model.trim().isEmpty ? '$name · automatisch' : '$name · $model';
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -156,6 +158,7 @@ class RemoteBackend implements AgentBackend {
             'http-referer': 'https://github.com/2442io/junels',
             'x-title': 'Junels',
           },
+        ProviderKind.api2442 => {if (apiKey?.isNotEmpty ?? false) 'x-api-key': apiKey!},
         _ => {if (apiKey?.isNotEmpty ?? false) 'authorization': 'Bearer $apiKey'},
       };
 
@@ -309,6 +312,23 @@ class RemoteBackend implements AgentBackend {
 
     Future<void> run() async {
       try {
+        if (config.kind == ProviderKind.api2442) {
+          final r = await _ask2442(msgs, json: json);
+          if (_stop) {
+            out.add(DoneEvent(FinishReason.stopped, stats()));
+            return;
+          }
+          emit(r.$1);
+          if (filter != null && text.isEmpty) {
+            final wrapped = jsonEncode({'thought': '', 'final_answer': filter.raw.toString().trim()});
+            text.write(wrapped);
+            out.add(TokenEvent(wrapped));
+          } else if (!json && r.$2 != null) {
+            emit('\n\n_${r.$2}_');
+          }
+          out.add(DoneEvent(FinishReason.done, stats()));
+          return;
+        }
         final (uri, body) = _request(msgs, json: json, s: sampling, maxTokens: maxTokens);
         final req = await _client.postUrl(uri);
         _req = req;
@@ -374,6 +394,46 @@ class RemoteBackend implements AgentBackend {
     return out.stream;
   }
 
+  /// 2442-API: eine Frage, eine Antwort (ohne Streaming). Der Verlauf wird zu einem Text.
+  /// Ergebnis: (Antwort, Hinweis bei erschöpften Favoriten).
+  Future<(String, String?)> _ask2442(List<ChatMessage> msgs, {required bool json}) async {
+    final b = StringBuffer();
+    for (final m in msgs) {
+      final who = switch (m.role) { 'system' => 'Anweisungen', 'assistant' => 'Assistent', _ => 'Nutzer' };
+      b.writeln('### $who\n${m.content.trim()}\n');
+    }
+    if (json) {
+      b.writeln('ANTWORTFORMAT: Antworte ausschließlich mit genau einem JSON-Objekt im oben beschriebenen Format – '
+          'ohne Text davor oder danach und ohne Codeblock.');
+    }
+    b.write('### Assistent\n');
+    final favs = config.model.split(RegExp(r'[,;\s]+')).where((f) => f.isNotEmpty).toList();
+    var base = config.baseUrl.trim();
+    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+    final uri = Uri.parse(base.endsWith('.php') ? base : '$base/api.php');
+    final req = await _client.postUrl(uri);
+    _req = req;
+    req.headers.contentType = ContentType.json;
+    req.headers.set('accept', 'application/json');
+    if (apiKey?.isNotEmpty ?? false) req.headers.set('x-api-key', apiKey!);
+    req.add(utf8.encode(jsonEncode({'question': b.toString(), if (favs.isNotEmpty) 'favorites': favs})));
+    final res = await req.close().timeout(const Duration(seconds: 120));
+    final body = await res.transform(utf8.decoder).join();
+    Map? j;
+    try {
+      final d = jsonDecode(body);
+      if (d is Map) j = d;
+    } catch (_) {}
+    if (j == null || j['success'] != true || j['answer'] == null) {
+      final why = ((j?['error_detail'] as Map?)?['message'] ?? j?['message'] ?? j?['error'] ??
+              (res.statusCode != 200 ? 'HTTP ${res.statusCode}' : 'Keine gültige Antwort erhalten.'))
+          .toString();
+      throw RemoteException('${config.name}: $why');
+    }
+    final note = (j['notification'] as String?)?.trim();
+    return ('${j['answer']}', note == null || note.isEmpty ? null : note);
+  }
+
   String _friendly(Object e) {
     final s = e.toString();
     if (e is SocketException || s.contains('SocketException')) {
@@ -403,6 +463,10 @@ class RemoteBackend implements AgentBackend {
 
   /// Verfügbare Modelle abfragen (für die Auswahl in den Einstellungen).
   Future<List<String>> listModels() async {
+    if (config.kind == ProviderKind.api2442) {
+      // Keine Modellliste: Favoriten in Reihenfolge, leer = zufälliger freier Anbieter
+      return const ['groq', 'gemini', 'openrouter', 'mistral', 'cerebras', 'groq,gemini', 'gemini,groq,openrouter'];
+    }
     final uri = switch (config.kind) {
       ProviderKind.gemini => _uri('/models').replace(queryParameters: {'pageSize': '200'}),
       _ => _uri('/models'),

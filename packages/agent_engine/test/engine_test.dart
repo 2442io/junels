@@ -305,6 +305,45 @@ Future<void> main() async {
     check(slidesFromPlan('## Einleitung\n- a\n## Schluss\n- b').content.startsWith('# Einleitung'), 'Plan mit Markdown-Überschriften');
   });
 
+  await group('Anbieter: 2442 API', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    Map<String, dynamic>? got;
+    String? key;
+    var fail = false;
+    server.listen((req) async {
+      got = jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
+      key = req.headers.value('x-api-key');
+      req.response.headers.contentType = ContentType.json;
+      req.response.write(jsonEncode(fail
+          ? {'success': false, 'message': 'Rate-Limit erreicht'}
+          : {'success': true, 'answer': got!['question'].toString().contains('ANTWORTFORMAT') ? '{"thought":"","final_answer":"Blau."}' : 'Weil Licht gestreut wird.', 'notification': 'groq hat keine freien Credits mehr.'}));
+      await req.response.close();
+    });
+    final cfg = ProviderConfig(id: 'x', kind: ProviderKind.api2442, name: '2442', baseUrl: 'http://127.0.0.1:${server.port}', model: 'groq, gemini');
+    final b = RemoteBackend(cfg, apiKey: 'ai2442_test');
+    final p = await b.formatChat(const [ChatMessage('system', 'Sei kurz.'), ChatMessage('user', 'Warum ist der Himmel blau?')]);
+    final text = StringBuffer();
+    await for (final e in b.generate(p)) {
+      if (e is TokenEvent) text.write(e.text);
+    }
+    check(key == 'ai2442_test' && (got!['favorites'] as List).join(',') == 'groq,gemini' && got!['question'].toString().contains('Sei kurz.'),
+        '2442: Schlüssel, Favoriten und Verlauf gesendet');
+    check(text.toString().startsWith('Weil Licht') && text.toString().contains('keine freien Credits'), '2442: Antwort + Hinweis');
+    final js = StringBuffer();
+    await for (final e in b.generate(p, grammar: 'root ::= final_answer')) {
+      if (e is TokenEvent) js.write(e.text);
+    }
+    check(jsonDecode(js.toString())['final_answer'] == 'Blau.', '2442: Agenten-Format (JSON)');
+    fail = true;
+    String? err;
+    await for (final e in b.generate(p)) {
+      if (e is DoneEvent && e.reason == FinishReason.error) err = e.error;
+    }
+    check(err != null && err.contains('Rate-Limit'), '2442: Fehlermeldung statt Absturz');
+    b.close();
+    await server.close(force: true);
+  });
+
   await group('Anbieter-API: OpenAI-kompatibel, Anthropic, Gemini', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final bodies = <Map<String, dynamic>>[];

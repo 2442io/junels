@@ -13,6 +13,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.6', [
+    'Neuer KI-Anbieter „2442 API“ (api.2442.io): mit API-Schlüssel, optionalen Favoriten (z. B. groq,gemini) und Hinweis, wenn ein Favorit keine Credits mehr hat',
+  ]),
   ('1.31.5', [
     'Mac: Nach dem Update startet Junels wieder zuverlässig – die alte Version beendet sich jetzt sofort, statt beim Aufräumen der KI-Engine hängen zu bleiben',
   ]),

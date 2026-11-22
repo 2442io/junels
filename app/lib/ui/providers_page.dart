@@ -318,7 +318,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
   Future<void> _save() async {
     final app = AppScope.read(context);
     final nav = Navigator.of(context);
-    if (_url.text.trim().isEmpty || _model.text.trim().isEmpty) {
+    if (_url.text.trim().isEmpty || (_model.text.trim().isEmpty && _kind != ProviderKind.api2442)) {
       setState(() => _status = 'Adresse und Modell angeben.');
       return;
     }
@@ -375,7 +375,9 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                   controller: _url,
                   decoration: InputDecoration(
                     labelText: 'API-Adresse',
-                    helperText: _kind.onPrem ? 'z. B. http://192.168.1.10:11434/v1 (Ollama) oder http://server:1234/v1 (LM Studio)' : null,
+                    helperText: _kind.onPrem
+                        ? 'z. B. http://192.168.1.10:11434/v1 (Ollama) oder http://server:1234/v1 (LM Studio)'
+                        : (_kind == ProviderKind.api2442 ? 'Schlüssel erzeugen: api.2442.io/keys (beginnt mit ai2442_)' : null),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -397,7 +399,17 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                 const SizedBox(height: 12),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(
-                    child: _models.isEmpty
+                    child: _kind == ProviderKind.api2442
+                        ? TextField(
+                            controller: _model,
+                            decoration: const InputDecoration(
+                              labelText: 'Favoriten (optional)',
+                              hintText: 'z. B. groq,gemini',
+                              helperText: 'Reihenfolge = Priorität. Leer = die API wählt einen freien Anbieter.',
+                              helperMaxLines: 2,
+                            ),
+                          )
+                        : _models.isEmpty
                         ? TextField(controller: _model, decoration: const InputDecoration(labelText: 'Modell'))
                         : DropdownButtonFormField<String>(
                             initialValue: _models.contains(_model.text) ? _model.text : null,
@@ -408,7 +420,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                           ),
                   ),
                   const SizedBox(width: 8),
-                  Padding(
+                  if (_kind != ProviderKind.api2442) Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: OutlinedButton.icon(
                       onPressed: _busy ? null : _loadModels,
