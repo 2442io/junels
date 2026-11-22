@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.35.0', [
+    'Posteingang lesen: Mit dem Mail-Konto (IMAP) prüft Junels unbeantwortete und ungelesene Mails – nur Absender, Betreff, Datum, ohne etwas im Postfach zu ändern',
+    '„Was ist liegengeblieben?“ zeigt jetzt auch unbeantwortete Mails (ohne Newsletter) – auch ohne MCP-Werkzeug',
+    'Neuer Chat: jeder Klick öffnet einen weiteren neuen Chat, beliebig viele',
+  ]),
   ('1.34.0', [
     'Chats anheften und in Ordnern bzw. Projekten sortieren; Chats umbenennen (⋯ an jedem Chat)',
     'Eigene Designs speichern (Firmen-CI): aus PowerPoint mit Folienmaster, Word, Excel, Logo oder von Hand – als Standard oder per Name',

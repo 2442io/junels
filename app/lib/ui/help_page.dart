@@ -197,7 +197,8 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
 - **Vorhaben** aus deinen Chats („muss noch …“, „bis Freitag …“)
 - **Fehlgeschlagene Prozesse** und **Beobachtungen** mit Fehlern oder ungelesenen Meldungen
 - **Termine** der nächsten 7 Tage, die Vorbereitung brauchen könnten
-- **Mails, Aufgaben, Tickets** – wenn ein passendes Werkzeug verbunden ist (MCP-Store, z. B. Gmail, Slack, Jira, Notion)
+- **Unbeantwortete Mails** aus deinem Posteingang (ohne Newsletter) – dafür im Mail-Konto „Posteingang lesen“ einschalten (Einstellungen → Verbindungen → Tresor & Konten). Junels liest nur Absender, Betreff und Datum und ändert nichts im Postfach.
+- **Aufgaben, Tickets, weitere Postfächer** – wenn ein passendes Werkzeug verbunden ist (MCP-Store, z. B. Gmail, Slack, Jira, Notion)
 
 Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt. Tipp: Als geplante Aufgabe jeden Freitag laufen lassen.''',
   ),

@@ -44,5 +44,6 @@ export 'src/vad.dart';
 export 'src/watch.dart';
 export 'src/flow.dart';
 export 'src/agent/design_resolver.dart';
+export 'src/agent/mail_inbox.dart';
 export 'src/model_router.dart';
 export 'src/http_call.dart';

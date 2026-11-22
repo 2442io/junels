@@ -288,6 +288,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         CreatePresentationTool(out),
         EditFileTool(out),
         LooseEndsTool(this),
+        MailInboxTool(imapAccount),
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
@@ -1261,23 +1262,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void newConversation() {
     // Auch während eine Antwort läuft: die läuft im eigenen Chat weiter.
-    // Der neue Chat steht sofort in der Liste; höchstens ein leerer Entwurf.
-    final draft = conversations.where((c) => c.entries.isEmpty && !isRoutineChat(c)).firstOrNull;
+    // Jeder Klick legt einen neuen Chat an, der sofort in der Liste steht.
     final pending = current == null ? _attachments.remove('') : null;
-    if (draft != null) {
-      conversations
-        ..remove(draft)
-        ..insert(0, draft);
-      draft.updated = DateTime.now();
-      current = draft;
-    } else {
-      final c = Conversation(id: newId());
-      conversations.insert(0, c);
-      current = c;
-    }
-    if (pending != null) _attachments[current!.id] = pending;
+    final c = Conversation(id: newId());
+    conversations.insert(0, c);
+    current = c;
+    if (pending != null) _attachments[c.id] = pending;
     notifyListeners();
   }
+
 
   // ---------------------------------------------------------------- Eigene Designs
 
@@ -1860,6 +1853,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
     'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
+    'mail_inbox': RegExp(r'\bmails?\b|e-?mails?|posteingang|inbox|unbeantwortet|ungelesen|nachrichten von|hat .* geschrieben|liegengeblieben|unerledigt'),
     'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
     'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
     'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
@@ -1907,6 +1901,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (pw == null || pw.isEmpty) return null;
     return SmtpAccount(
         host: settings.smtpHost, port: settings.smtpPort, user: settings.smtpUser, password: pw, from: settings.smtpFrom);
+  }
+
+  /// Posteingang (IMAP): gleicher Benutzer und dasselbe Passwort wie beim Versand.
+  Future<ImapAccount?> imapAccount() async {
+    if (!settings.imapReady) return null;
+    final pw = await Vault.read('smtp:${settings.smtpUser}');
+    if (pw == null || pw.isEmpty) return null;
+    return ImapAccount(host: settings.imapHost, port: settings.imapPort, user: settings.smtpUser, password: pw);
+  }
+
+  Future<void> saveImap({required bool enabled, required String host, required int port}) async {
+    settings
+      ..imapEnabled = enabled
+      ..imapHost = host.trim()
+      ..imapPort = port;
+    await storage.saveSettings(settings);
+    notifyListeners();
   }
 
   Future<void> saveSmtp({required String host, required int port, required String user, required String password, String from = ''}) async {

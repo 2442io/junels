@@ -373,6 +373,9 @@ class AppSettings {
     this.smtpPort = 465,
     this.smtpUser = '',
     this.smtpFrom = '',
+    this.imapEnabled = false,
+    this.imapHost = '',
+    this.imapPort = 993,
     this.routing = 'local',
     this.autoModel = true,
     this.fastModelId,
@@ -396,7 +399,7 @@ class AppSettings {
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
-              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'create_chart', 'generate_image', 'look_at_image',
+              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
@@ -438,6 +441,12 @@ class AppSettings {
   String smtpUser;
   String smtpFrom;
   bool get smtpReady => smtpHost.isNotEmpty && smtpUser.isNotEmpty;
+
+  /// Posteingang lesen (IMAP, nur Kopfzeilen) – mit demselben Konto wie der Versand.
+  bool imapEnabled;
+  String imapHost;
+  int imapPort;
+  bool get imapReady => imapEnabled && imapHost.isNotEmpty && smtpUser.isNotEmpty;
 
   /// Automatische Modellwahl: einfache Fragen → schnelles, komplexe → starkes Modell
   bool autoModel;
@@ -495,6 +504,9 @@ class AppSettings {
         'smtpPort': smtpPort,
         'smtpUser': smtpUser,
         'smtpFrom': smtpFrom,
+        'imapEnabled': imapEnabled,
+        'imapHost': imapHost,
+        'imapPort': imapPort,
         'routing': routing,
         'autoModel': autoModel,
         if (fastModelId != null) 'fastModelId': fastModelId,
@@ -542,6 +554,9 @@ class AppSettings {
         smtpPort: (j['smtpPort'] as num?)?.toInt() ?? 465,
         smtpUser: j['smtpUser'] as String? ?? '',
         smtpFrom: j['smtpFrom'] as String? ?? '',
+        imapEnabled: j['imapEnabled'] as bool? ?? false,
+        imapHost: j['imapHost'] as String? ?? '',
+        imapPort: (j['imapPort'] as num?)?.toInt() ?? 993,
         routing: j['routing'] as String? ?? 'local',
         autoModel: j['autoModel'] as bool? ?? true,
         fastModelId: j['fastModelId'] as String?,
@@ -563,7 +578,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 12;
+  static const toolsVersion = 13;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -582,6 +597,7 @@ class AppSettings {
     if (from < 9) enabledTools.add('browser');
     if (from < 11) enabledTools.add('edit_file');
     if (from < 12) enabledTools.add('find_loose_ends');
+    if (from < 13) enabledTools.add('mail_inbox');
   }
 }
 

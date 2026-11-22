@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:agent_engine/agent_engine.dart' show modelCatalog, cleanModelText;
+import 'package:agent_engine/agent_engine.dart' show modelCatalog, cleanModelText, ImapAccount;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
@@ -1567,6 +1567,9 @@ Future<void> showMailAccountDialog(BuildContext context) async {
   final pw = TextEditingController();
   final host = TextEditingController(text: st.smtpHost);
   final port = TextEditingController(text: '${st.smtpPort}');
+  final imapHost = TextEditingController(text: st.imapHost);
+  final imapPort = TextEditingController(text: '${st.imapPort}');
+  var imapOn = st.imapEnabled;
   await showDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
@@ -1576,15 +1579,19 @@ Future<void> showMailAccountDialog(BuildContext context) async {
           host.text = g.$1;
           port.text = '${g.$2}';
         }
+        if (imapHost.text.isEmpty || imapHost.text == ImapAccount.guessHost(st.smtpUser, smtpHost: st.smtpHost)) {
+          imapHost.text = ImapAccount.guessHost(v, smtpHost: host.text) ?? '';
+        }
       }
 
       return AlertDialog(
-        title: const Text('E-Mails direkt senden'),
+        title: const Text('Mail-Konto'),
         content: SizedBox(
           width: 480,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Mit deinem Mail-Konto schickt Junels freigegebene E-Mails selbst ab – nur nach deinem Tipp auf „Senden“.'),
+              const Text('Mit deinem Mail-Konto schickt Junels freigegebene E-Mails selbst ab – nur nach deinem Tipp auf „Senden“ – '
+                  'und kann auf Wunsch deinen Posteingang ansehen.'),
               const SizedBox(height: 8),
               TextField(controller: user, decoration: const InputDecoration(labelText: 'Deine E-Mail-Adresse'), onChanged: guess),
               TextField(
@@ -1601,6 +1608,24 @@ Future<void> showMailAccountDialog(BuildContext context) async {
                 const SizedBox(width: 8),
                 Expanded(child: TextField(controller: port, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number)),
               ]),
+              const SizedBox(height: 6),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Posteingang lesen'),
+                subtitle: const Text('Nur Absender, Betreff, Datum und Status – für „Was ist liegengeblieben?“ und Fragen zu Mails. '
+                    'Junels ändert nichts im Postfach.'),
+                value: imapOn,
+                onChanged: (v) => setS(() {
+                  imapOn = v;
+                  if (v && imapHost.text.isEmpty) imapHost.text = ImapAccount.guessHost(user.text, smtpHost: host.text) ?? '';
+                }),
+              ),
+              if (imapOn)
+                Row(children: [
+                  Expanded(flex: 3, child: TextField(controller: imapHost, decoration: const InputDecoration(labelText: 'Posteingang (IMAP)'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(controller: imapPort, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number)),
+                ]),
               const SizedBox(height: 10),
               Row(children: [
                 const Icon(Icons.lock_outline, size: 16),
@@ -1632,6 +1657,7 @@ Future<void> showMailAccountDialog(BuildContext context) async {
               if (user.text.trim().isEmpty || host.text.trim().isEmpty) return;
               await app.saveSmtp(
                   host: host.text, port: int.tryParse(port.text) ?? 465, user: user.text, password: pw.text, from: user.text);
+              await app.saveImap(enabled: imapOn, host: imapHost.text, port: int.tryParse(imapPort.text) ?? 993);
               if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Speichern'),

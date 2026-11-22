@@ -263,6 +263,60 @@ Future<void> main() async {
     check(streamed.isNotEmpty && streamed.first.thought!.length < 'Ich rechne.'.length, 'Gedanke wird live gestreamt');
   });
 
+  await group('Posteingang (IMAP, nur lesend)', () async {
+    check(decodeMimeWords('=?UTF-8?B?UHLDpHNlbnRhdGlvbg==?= fertig') == 'Präsentation fertig' &&
+        decodeMimeWords('=?ISO-8859-1?Q?Gr=FC=DFe_aus_Wien?=') == 'Grüße aus Wien', 'MIME-Betreffs dekodiert');
+    check(ImapAccount.guessHost('max@gmail.com') == 'imap.gmail.com' && ImapAccount.guessHost('a@firma.at', smtpHost: 'smtp.firma.at') == 'imap.firma.at',
+        'IMAP-Server abgeleitet');
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final cmds = <String>[];
+    server.listen((sock) {
+      sock.write('* OK IMAP4rev1 bereit\r\n');
+      sock.cast<List<int>>().transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
+        cmds.add(line);
+        final tag = line.split(' ').first;
+        final c = line.substring(tag.length + 1);
+        if (c.startsWith('LOGIN')) {
+          sock.write(c.contains('"falsch"') ? '$tag NO [AUTHENTICATIONFAILED] Invalid credentials\r\n' : '$tag OK eingeloggt\r\n');
+        } else if (c.startsWith('EXAMINE')) {
+          sock.write('* 3 EXISTS\r\n$tag OK [READ-ONLY] EXAMINE fertig\r\n');
+        } else if (c.startsWith('UID SEARCH')) {
+          sock.write('* SEARCH 11 12 13\r\n$tag OK SEARCH fertig\r\n');
+        } else if (c.startsWith('UID FETCH')) {
+          String msg(int n, String flags, String hdr) {
+            final body = '$hdr\r\n\r\n';
+            return '* $n FETCH (UID ${10 + n} FLAGS ($flags) BODY[HEADER.FIELDS (FROM SUBJECT DATE)] {${utf8.encode(body).length}}\r\n$body)\r\n';
+          }
+          sock.write(msg(1, r'\Seen', 'From: "Anna Huber" <anna@firma.at>\r\nSubject: =?UTF-8?B?QW5nZWJvdCBmw7xyIGRpZSBSZWlzZQ==?=\r\nDate: Thu, 19 Nov 2026 09:12:00 +0100'));
+          sock.write(msg(2, '', 'From: Newsletter <news@shop.at>\r\nSubject: Rabatt!\r\nList-Unsubscribe: <mailto:x@shop.at>\r\nDate: Fri, 20 Nov 2026 10:00:00 +0100'));
+          sock.write(msg(3, '', 'From: Chef <chef@firma.at>\r\nSubject: Termin\r\n Montag?\r\nDate: Sat, 21 Nov 2026 18:30:00 +0100'));
+          sock.write('$tag OK FETCH fertig\r\n');
+        } else if (c.startsWith('LOGOUT')) {
+          sock.write('* BYE\r\n$tag OK tschüss\r\n');
+          sock.close();
+        }
+      });
+    });
+    final acc = ImapAccount(host: '127.0.0.1', port: server.port, user: 'ich@firma.at', password: 'geheim', secure: false);
+    final mails = await fetchInbox(acc, days: 7, unansweredOnly: true, now: DateTime(2026, 11, 22));
+    check(mails.length == 3 && mails.first.from == 'Chef' && mails.first.subject == 'Termin Montag?' && mails.last.subject == 'Angebot für die Reise',
+        'Kopfzeilen gelesen, neueste zuerst');
+    check(mails[1].bulk && !mails.first.seen && mails.last.seen, 'Newsletter und Gelesen-Status erkannt');
+    check(cmds.any((c) => c.contains('EXAMINE INBOX')) && cmds.any((c) => c.contains('UNANSWERED') && c.contains('SINCE 15-Nov-2026')) &&
+        cmds.any((c) => c.contains('BODY.PEEK')) && !cmds.any((c) => c.contains('STORE') || c.contains('SELECT')),
+        'nur lesend (EXAMINE, BODY.PEEK, kein STORE)');
+    final out = await MailInboxTool(() async => acc).run({'filter': 'unbeantwortet', 'tage': 7}, ToolContext(requestNetwork: (_) async => true));
+    check(out.contains('Chef') && out.contains('Angebot') && !out.contains('Rabatt') && out.contains('1 Newsletter'), 'Werkzeug blendet Newsletter aus');
+    var err = '';
+    try {
+      await fetchInbox(ImapAccount(host: '127.0.0.1', port: server.port, user: 'ich', password: 'falsch', secure: false));
+    } catch (e) {
+      err = '$e';
+    }
+    check(err.contains('Anmeldung'), 'falsches Passwort: verständlicher Fehler');
+    await server.close();
+  });
+
   await group('Eigene Designs', () async {
     final sample = buildPptx(title: 'CI', slides: splitSlides('# A\n- x').slides, design: designById('business'));
     final made = await designFromSample(sample, 'Firma.pptx', name: 'Firmen-CI');

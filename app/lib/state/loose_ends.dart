@@ -101,11 +101,30 @@ class LooseEndsTool extends AgentTool {
       } catch (_) {}
     }
 
-    // ---- Mails, Tickets … über MCP
+    // ---- Mails: eigener Posteingang (IMAP, nur Kopfzeilen) und/oder MCP-Werkzeuge
+    var mailChecked = false;
+    final acc = await app.imapAccount();
+    if (acc != null) {
+      try {
+        await ctx.ensureNetwork('Posteingang lesen (${acc.host})');
+        final mails = (await fetchInbox(acc, days: days.clamp(1, 30), unansweredOnly: true)).where((m) => !m.bulk).toList();
+        mailChecked = true;
+        // Nur, was älter als ein paar Stunden ist – frisch Eingetroffenes ist noch nicht „liegengeblieben“
+        final old = mails.where((m) => m.date == null || now.difference(m.date!).inHours >= 4).toList();
+        if (old.isNotEmpty) {
+          out.add('UNBEANTWORTETE MAILS (${old.length}, ohne Newsletter):\n${old.take(12).map((m) => '- ${m.line}').join('\n')}');
+        }
+      } catch (e) {
+        out.add('POSTEINGANG: konnte nicht gelesen werden ($e).');
+      }
+    }
     final mcp = [for (final t in app.mcpTools) if (looseEndsMcp.hasMatch('${t.name} ${t.title} ${t.description}')) t.name];
-    final hint = mcp.isEmpty
-        ? 'Kein Werkzeug für Mails oder Aufgaben verbunden – Mails kann ich nicht prüfen (verbinden über Einstellungen → MCP-Store, z. B. Gmail).'
-        : 'Prüfe JETZT zusätzlich mit ${mcp.take(6).join(', ')}: unbeantwortete Mails, offene Aufgaben/Tickets der letzten $days Tage.';
+    final hint = mcp.isNotEmpty
+        ? 'Prüfe JETZT zusätzlich mit ${mcp.take(6).join(', ')}: ${mailChecked ? '' : 'unbeantwortete Mails, '}offene Aufgaben/Tickets der letzten $days Tage.'
+        : mailChecked
+            ? ''
+            : 'Mails konnte ich nicht prüfen: Kein Posteingang eingerichtet (Einstellungen → Verbindungen → Tresor & Konten → Mail-Konto → „Posteingang lesen“) '
+                'und kein Mail-Werkzeug verbunden.';
 
     if (out.isEmpty) return 'In Chats, Prozessen, Beobachtungen und Kalender ist nichts liegengeblieben (letzte $days Tage). $hint';
     return '${out.join('\n\n')}\n\n$hint\n\nFasse danach übersichtlich zusammen: was am dringendsten ist zuerst, je Punkt ein konkreter nächster Schritt.';
