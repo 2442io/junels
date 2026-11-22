@@ -13,6 +13,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.38.3', [
+    'Eigene Designs: auch aus einer PDF übernehmen (Farben von der ersten Seite)',
+  ]),
   ('1.38.2', [
     'SSO-Anmeldung springt nach dem Login direkt per App-Link zurück in Junels – kein endlos ladender Browser mehr (braucht Agent-API v2)',
     'Der Anmelde-Code gilt nur einmal, 10 Minuten und nur zusammen mit einem geheimen Prüfwert dieses Geräts',

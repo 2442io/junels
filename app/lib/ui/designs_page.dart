@@ -21,7 +21,7 @@ class DesignsPage extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     final pick = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pptx', 'potx', 'docx', 'dotx', 'xlsx', 'png', 'jpg', 'jpeg', 'webp'],
+      allowedExtensions: const ['pptx', 'potx', 'docx', 'dotx', 'xlsx', 'pdf', 'png', 'jpg', 'jpeg', 'webp'],
     );
     final path = pick?.files.single.path;
     if (path == null || !context.mounted) return;
@@ -76,7 +76,7 @@ class DesignsPage extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.upload_file_outlined),
                 title: const Text('Aus Datei übernehmen'),
-                subtitle: const Text('PowerPoint (mit Folienmaster), Word, Excel oder ein Bild/Logo'),
+                subtitle: const Text('PowerPoint (mit Folienmaster), Word, Excel, PDF oder ein Bild/Logo'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _fromFile(context);

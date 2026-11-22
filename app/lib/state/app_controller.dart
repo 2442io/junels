@@ -1503,6 +1503,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Für „Design aus Datei“ (Farben aus Bildern brauchen den Bild-Decoder der App).
   Future<(SlideDesign, Uint8List?)?> designFromFile(String path, String name) async {
+    if (path.toLowerCase().endsWith('.pdf')) {
+      // PDF: erste Seite als Bild rendern (PDFKit / PdfRenderer) und Farben daraus übernehmen
+      final tmp = Directory('${(await getTemporaryDirectory()).path}/design_pdf');
+      if (await tmp.exists()) await tmp.delete(recursive: true);
+      await tmp.create(recursive: true);
+      final copy = await File(path).copy('${tmp.path}/vorlage.pdf');
+      final pages = await NativeFiles.pdfPages(copy.path, width: 1280, maxPages: 1);
+      if (pages.isEmpty) return null;
+      final png = await File(pages.first).readAsBytes();
+      return designFromSample(png, 'vorlage.png', name: name, decodeImage: _decodeRgba);
+    }
     final bytes = await File(path).readAsBytes();
     return designFromSample(bytes, path.split(Platform.pathSeparator).last, name: name, decodeImage: _decodeRgba);
   }
