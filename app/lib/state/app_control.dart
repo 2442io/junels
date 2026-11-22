@@ -45,7 +45,7 @@ String? searchLinkFor(String id, String query, {required bool android}) {
   final q = Uri.encodeComponent(query.trim());
   if (q.isEmpty) return null;
   final l = id.toLowerCase();
-  if (l.contains('spotify')) return android ? 'https://open.spotify.com/search/$q' : 'spotify:search:$q';
+  if (l.contains('spotify')) return 'spotify:search:$q';
   if (l.contains('youtube.music') || l.contains('youtubemusic')) return 'https://music.youtube.com/search?q=$q';
   if (l.contains('youtube')) return 'https://www.youtube.com/results?search_query=$q';
   if (l.contains('com.apple.music') || l == 'com.apple.music') return 'music://music.apple.com/search?term=$q';
@@ -81,6 +81,7 @@ class AppControlTool extends AgentTool {
     final names = allowed().map((a) => a.name).join(', ');
     return 'Öffnet freigegebene Apps und steuert die Wiedergabe. Freigegeben: ${names.isEmpty ? '(keine)' : names}. '
         'aktion: oeffnen, abspielen_pause, abspielen, pause, weiter, zurueck, suchen (nur wenn für die App erlaubt; suche = Text). '
+        '„Such nach Jazz“ ohne App-Namen = suchen in der freigegebenen Musik-App (app leer lassen). '
         'Kann nichts tippen, kaufen, bestellen oder bezahlen.';
   }
 
@@ -101,8 +102,16 @@ class AppControlTool extends AgentTool {
   }
 
   /// Prüft eine Aktion. Ergebnis: (App, Link oder null) oder Ausnahme mit verständlichem Grund.
+  /// Ohne (passenden) App-Namen: die App, in der gesucht werden darf – Musik-Apps zuerst.
+  AllowedApp? defaultSearchApp() {
+    final ok = allowed().where((a) => a.links && !a.sensitive && searchLinkFor(a.id, 'x', android: android) != null).toList();
+    return ok.where((a) => RegExp(r'spotify|music|musik|deezer|tidal', caseSensitive: false).hasMatch('${a.id} ${a.name}')).firstOrNull ??
+        ok.firstOrNull;
+  }
+
   (AllowedApp, String?) check(String appName, String action, String query) {
-    final app = find(appName);
+    var app = find(appName);
+    if (app == null && action == 'suchen') app = defaultSearchApp();
     if (app == null) {
       throw ToolException('„$appName“ ist nicht freigegeben. Hinweis für den Nutzer: Einstellungen → Apps steuern → App hinzufügen.');
     }

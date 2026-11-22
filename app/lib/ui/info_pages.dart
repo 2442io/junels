@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.38.4', [
+    'Apps steuern: „Such nach Jazz“ funktioniert jetzt – auch ohne App-Namen (nimmt die freigegebene Musik-App)',
+    'Spotify-Suche öffnet direkt in der App; am Mac wird Spotify vorher gestartet, damit die Suche nicht verloren geht',
+    'Android: Spotify, YouTube Music, Deezer & Co. werden zusätzlich direkt gesucht und erscheinen in der Liste',
+  ]),
   ('1.38.3', [
     'Eigene Designs: auch aus einer PDF übernehmen (Farben von der ersten Seite)',
   ]),

@@ -2044,7 +2044,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
     'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
-    'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|spiel|abspielen|play|pause|nächste[rn]? (lied|titel|song)|weiter|lauter|musik|playlist|podcast|youtube'),
+    'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|spiel|abspielen|play|pause|nächste[rn]? (lied|titel|song)|weiter|lauter|musik|playlist|podcast|youtube|\bsuch|\bfind|\bhör|jazz|song|lied|album|künstler|band\b'),
     'mail_inbox': RegExp(r'\bmails?\b|e-?mails?|posteingang|inbox|unbeantwortet|ungelesen|nachrichten von|hat .* geschrieben|liegengeblieben|unerledigt'),
     'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
     'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),

@@ -122,8 +122,20 @@ object JunelsDevice {
                 "listApps" -> {
                     val pm = ctx.packageManager
                     val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                    val apps = pm.queryIntentActivities(i, 0)
+                    val found = pm.queryIntentActivities(i, 0)
                         .map { mapOf("name" to it.loadLabel(pm).toString(), "id" to it.activityInfo.packageName) }
+                        .toMutableList()
+                    // Bekannte Apps zusätzlich direkt nachsehen (falls die Liste sie nicht liefert)
+                    for (pkg in listOf("com.spotify.music", "com.google.android.apps.youtube.music", "com.google.android.youtube",
+                                       "deezer.android.app", "com.aspiro.tidal", "com.apple.android.music", "au.com.shiftyjelly.pocketcasts")) {
+                        try {
+                            if (pm.getLaunchIntentForPackage(pkg) != null) {
+                                val info = pm.getApplicationInfo(pkg, 0)
+                                found.add(mapOf("name" to pm.getApplicationLabel(info).toString(), "id" to pkg))
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                    val apps = found
                         .distinctBy { it["id"] }
                         .filter { it["id"] != ctx.packageName }
                         .sortedBy { it["name"]?.lowercase() }
@@ -163,7 +175,12 @@ object JunelsDevice {
                         ctx.startActivity(view)
                         result.success(true)
                     } catch (e: Throwable) {
-                        result.error("app", "Kann den Link in der App nicht öffnen", null)
+                        try {  // ohne festes Paket noch einmal (das System wählt die passende App)
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            result.success(true)
+                        } catch (e2: Throwable) {
+                            result.error("app", "Kann den Link in der App nicht öffnen", null)
+                        }
                     }
                 }
                 // Tresor: Geheimnisse (Passwörter, Tokens) mit einem Schlüssel aus dem Android-Keystore verschlüsselt

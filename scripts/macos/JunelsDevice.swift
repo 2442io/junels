@@ -88,8 +88,21 @@ enum JunelsDevice {
       case "openInApp":
         guard let s = a["url"] as? String, let u = URL(string: s) else { result(false); return }
         if let id = a["id"] as? String, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
-          NSWorkspace.shared.open([u], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, err in
-            DispatchQueue.main.async { result(err == nil) }
+          // Läuft die App noch nicht, verliert z. B. Spotify den Link beim Kaltstart: erst starten, kurz warten, dann öffnen
+          let running = !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty
+          let openLink = {
+            NSWorkspace.shared.open([u], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, err in
+              DispatchQueue.main.async {
+                if let err = err { result(FlutterError(code: "app", message: err.localizedDescription, details: nil)) } else { result(true) }
+              }
+            }
+          }
+          if running {
+            openLink()
+          } else {
+            NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
+              DispatchQueue.main.asyncAfter(deadline: .now() + 4) { openLink() }
+            }
           }
         } else {
           result(NSWorkspace.shared.open(u))
