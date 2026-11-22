@@ -1,0 +1,33 @@
+# Schnelle Prüfung ohne App-Build: Analyse (Fehler im Dart-Code) und Engine-Tests ohne Modell.
+# Läuft bei jedem Push auf einen Entwicklungszweig (dev/…) – dauert wenige Minuten.
+name: Prüfung
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['dev/**']
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Abhängigkeiten
+        run: |
+          flutter config --no-analytics
+          (cd packages/agent_engine && flutter pub get)
+          (cd app && flutter pub get)
+      - name: Analyse Engine
+        working-directory: packages/agent_engine
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyse App
+        working-directory: app
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Engine-Tests (ohne Modell)
+        working-directory: packages/agent_engine
+        run: dart run test/engine_test.dart 2>&1 | tail -150
