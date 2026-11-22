@@ -43,7 +43,7 @@ class WebSearchTool extends AgentTool {
     final (hits, used, errors) = await searchAllEngines(q, fetcher);
     if (hits.isEmpty) {
       return 'Websuche ohne Ergebnis (${errors.join('; ')}). '
-          'Sag dem Nutzer den Grund. Für Produkte/Preise kann site_search (z. B. geizhals) helfen.';
+          'Sag dem Nutzer den Grund und erfinde keine Treffer oder Links. Für Produkte/Preise kann site_search (z. B. geizhals) helfen.';
     }
     String fmt(SearchHit h) => '- ${h.title}\n${h.snippet.isEmpty ? '' : '  ${h.snippet}\n'}  Link: ${h.url}';
     return [
@@ -58,6 +58,47 @@ class WebSearchTool extends AgentTool {
   /// Fragt die Suchmaschinen der Reihe nach ab: (Treffer, benutzte Maschine, Fehler).
   static Future<(List<SearchHit>, String, List<String>)> searchAllEngines(
       String q, Future<String> Function(Uri) fetcher) async {
+    var (hits, used, errors) = await _searchEngines(q, fetcher);
+    if (hits.isNotEmpty) return (hits, used, errors);
+    // Nichts gefunden: vereinfachte Anfrage (ohne Datum, Anführungszeichen, Füllwörter) …
+    final simple = simplifyQuery(q);
+    if (simple.isNotEmpty && simple != q) {
+      final (h2, u2, e2) = await _searchEngines(simple, fetcher);
+      if (h2.isNotEmpty) return (h2, '$u2, vereinfacht: „$simple“', errors);
+      errors.addAll(e2.map((e) => '$e (vereinfacht)'));
+    }
+    // … und zuletzt die Nachrichtensuche (Google News), die praktisch nie sperrt
+    try {
+      final rss = Uri.https('news.google.com', '/rss/search', {'q': simple.isEmpty ? q : simple, 'hl': 'de', 'gl': 'AT', 'ceid': 'AT:de'});
+      final items = extractFeedItems(await fetcher(rss), rss);
+      if (items.isNotEmpty) {
+        return ([for (final i in items.take(12)) SearchHit(i.title, i.link, [i.summary, i.date].where((x) => x.isNotEmpty).join(' · '))], 'Google News', errors);
+      }
+      errors.add('Google News: keine Treffer');
+    } catch (e) {
+      errors.add('Google News: $e');
+    }
+    return (hits, used, errors);
+  }
+
+  /// Suchanfrage vereinfachen: Datum/Uhrzeit, Operatoren und Füllwörter weg, höchstens 6 Wörter.
+  static String simplifyQuery(String q) {
+    const stop = {
+      'bitte', 'such', 'suche', 'suchen', 'finde', 'mir', 'mal', 'nach', 'die', 'der', 'das', 'aktuelle', 'aktuellen', 'neueste',
+      'neuesten', 'heute', 'jetzt', 'von', 'zu', 'zum', 'zur', 'über', 'im', 'in', 'und', 'oder', 'ein', 'eine', 'den', 'dem',
+      'was', 'wie', 'ist', 'gibt', 'es', 'news', 'informationen', 'infos', 'gestartet',
+    };
+    final words = q
+        .replaceAll(RegExp(r'\b\d{1,2}\.\d{1,2}\.(\d{2,4})?|\b\d{1,2}:\d{2}\b|\b20\d\d\b'), ' ')
+        .replaceAll(RegExp(r'site:\S+|["„“”()]|\s-\S+'), ' ')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length > 1 && !stop.contains(w.toLowerCase().replaceAll(RegExp(r'[^\p{L}\d]', unicode: true), '')))
+        .take(6)
+        .toList();
+    return words.join(' ').trim();
+  }
+
+  static Future<(List<SearchHit>, String, List<String>)> _searchEngines(String q, Future<String> Function(Uri) fetcher) async {
     List<SearchHit> hits = [];
     final errors = <String>[];
     var used = '';
@@ -68,12 +109,14 @@ class WebSearchTool extends AgentTool {
       ('Mojeek', Uri.https('www.mojeek.com', '/search', {'q': q}), parseMojeek),
     ]) {
       try {
-        hits = engine.$3(await fetcher(engine.$2));
+        final html = await fetcher(engine.$2);
+        hits = engine.$3(html);
         if (hits.isNotEmpty) {
           used = engine.$1;
           break;
         }
-        errors.add('${engine.$1}: keine Treffer');
+        final blocked = detectBlockPage(html);
+        errors.add('${engine.$1}: ${blocked != null ? 'gesperrt ($blocked)' : 'keine Treffer'}');
       } catch (e) {
         errors.add('${engine.$1}: $e');
       }

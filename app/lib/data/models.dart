@@ -342,6 +342,7 @@ class AppSettings {
     this.darkMode,
     this.sttModelId,
     this.ttsVoiceId,
+    this.systemVoice = '',
     this.sttLanguage = 'auto',
     this.autoSpeak = false,
     this.sendAfterVoice = true,
@@ -399,7 +400,8 @@ class AppSettings {
 
   // Sprache
   String? sttModelId; // Katalog-ID des Whisper-Modells
-  String? ttsVoiceId; // Katalog-ID der Piper-Stimme
+  String? ttsVoiceId; // Katalog-ID der Piper-Stimme ('__system__' = Stimme des Geräts)
+  String systemVoice; // Stimme des Geräts: „Name|Locale“ (leer = Standard)
   String sttLanguage; // auto | de | en
   bool autoSpeak; // Antworten automatisch vorlesen
   bool sendAfterVoice; // nach Spracheingabe sofort senden
@@ -450,6 +452,7 @@ class AppSettings {
         'darkMode': darkMode,
         'sttModelId': sttModelId,
         'ttsVoiceId': ttsVoiceId,
+        'systemVoice': systemVoice,
         'sttLanguage': sttLanguage,
         'autoSpeak': autoSpeak,
         'sendAfterVoice': sendAfterVoice,
@@ -492,6 +495,7 @@ class AppSettings {
         darkMode: j['darkMode'] as bool?,
         sttModelId: j['sttModelId'] as String?,
         ttsVoiceId: j['ttsVoiceId'] as String?,
+        systemVoice: j['systemVoice'] as String? ?? '',
         sttLanguage: j['sttLanguage'] as String? ?? 'auto',
         autoSpeak: j['autoSpeak'] as bool? ?? false,
         sendAfterVoice: j['sendAfterVoice'] as bool? ?? true,

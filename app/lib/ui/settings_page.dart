@@ -644,15 +644,28 @@ class _VoiceSection extends StatelessWidget {
             onChanged: (v) => app.setVoiceSettings(sendAfterVoice: v),
           ),
         ],
-        if (tts.isNotEmpty) ...[
+        ...[
           _row(context, 'Stimme', DropdownButton<String>(
-            value: tts.any((e) => e.id == app.settings.ttsVoiceId) ? app.settings.ttsVoiceId : null,
+            value: app.settings.ttsVoiceId == '__system__' || tts.any((e) => e.id == app.settings.ttsVoiceId) ? app.settings.ttsVoiceId : null,
             hint: const Text('wählen'),
             isDense: true,
             underline: const SizedBox(),
-            items: [for (final e in tts) DropdownMenuItem(value: e.id, child: Text(e.name.replaceFirst('Piper ', '')))],
+            items: [
+              const DropdownMenuItem(value: '__system__', child: Text('Stimme des Geräts (schnell)')),
+              for (final e in tts) DropdownMenuItem(value: e.id, child: Text(e.name.replaceFirst('Piper ', ''))),
+            ],
             onChanged: (v) => app.setVoiceSettings(ttsVoiceId: v),
           )),
+          if (app.settings.ttsVoiceId == '__system__' || app.ttsVoicePath == null)
+            _row(
+              context,
+              'Gerätestimme',
+              TextButton(
+                onPressed: () => _pickSystemVoice(context, app),
+                child: Text(app.settings.systemVoice.isEmpty ? 'Standard – ändern' : app.settings.systemVoice.split('|').first,
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
             child: Row(children: [
@@ -660,6 +673,10 @@ class _VoiceSection extends StatelessWidget {
                 child: Text(
                   () {
                     final id = app.settings.ttsVoiceId ?? '';
+                    if (id == '__system__') {
+                      return 'Spricht die Sprachausgabe des Geräts: kein Warten, keine Pausen. Am Handy meist die beste Wahl '
+                          '(Android: „Sprachausgabe von Google“, Stimme mit hoher Qualität offline laden).';
+                    }
                     if (app.voice.output.engineLabel == 'Systemstimme') {
                       return 'Zuletzt sprach die Systemstimme (die gewählte Stimme war nicht verfügbar).';
                     }
@@ -687,6 +704,38 @@ class _VoiceSection extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  Future<void> _pickSystemVoice(BuildContext context, AppController app) async {
+    final lang = app.settings.sttLanguage == 'en' ? 'en' : 'de';
+    final voices = await app.voice.output.systemVoices(lang);
+    if (!context.mounted) return;
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Stimme des Geräts'),
+        children: [
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Standard der Sprache')),
+          if (voices.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Keine Stimmen gefunden. Android: Einstellungen → Sprachausgabe → „Sprachausgabe von Google“ → Sprachdaten installieren.'),
+            ),
+          for (final (name, loc) in voices)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, '$name|$loc'),
+              child: Row(children: [
+                Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
+                if (name.contains('network')) const Text('  online', style: TextStyle(fontSize: 11)),
+                if (name.contains('local')) const Text('  offline', style: TextStyle(fontSize: 11)),
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    await app.setVoiceSettings(systemVoice: picked);
+    await app.speakText('Hallo! So klinge ich.');
   }
 
   Widget _row(BuildContext context, String label, Widget child) => Padding(
