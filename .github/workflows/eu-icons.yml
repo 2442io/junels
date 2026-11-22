@@ -1,0 +1,15 @@
+name: EU-KI-Symbole holen
+on:
+  push:
+    branches: [ai-label]
+jobs:
+  get:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          mkdir x && cd x
+          curl -sSL -A "Mozilla/5.0" -o svg.zip "https://ec.europa.eu/newsroom/dae/redirection/document/129546"
+          file svg.zip; unzip -o -q svg.zip || true
+          find . -type f | sort
+          for f in $(find . -name '*.svg' | tr ' ' '?'); do :; done
+          find . -name '*.svg' -print0 | while IFS= read -r -d '' f; do echo "SVG-BEGIN $f"; base64 -w0 "$f"; echo; echo "SVG-END"; done
