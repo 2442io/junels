@@ -13,6 +13,14 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.34.0', [
+    'Chats anheften und in Ordnern bzw. Projekten sortieren; Chats umbenennen (⋯ an jedem Chat)',
+    'Eigene Designs speichern (Firmen-CI): aus PowerPoint mit Folienmaster, Word, Excel, Logo oder von Hand – als Standard oder per Name',
+    'Liegengebliebenes aufspüren: offene Rückfragen, Vorhaben, fehlgeschlagene Prozesse, Beobachtungen, Termine und – mit verbundenem Werkzeug – Mails und Tickets',
+    'Android: Widget „Frag Junels“ für den Startbildschirm (neuer Chat oder Gespräch per Mikrofon)',
+    'Mac: „An Junels senden“ im Dienste-Menü für markierten Text und Links; Kurzbefehle per junels://frage?text=…',
+    'Sicherung: alle Chats, Prozesse, Beobachtungen, Einstellungen, Gedächtnis und Designs als ZIP exportieren und wiederherstellen',
+  ]),
   ('1.33.0', [
     '„Folie 3 überarbeiten“: einzelne Folien oder Abschnitte einer erstellten Präsentation bzw. eines PDFs gezielt ändern, einfügen oder löschen – Design und Rest bleiben',
     'Vorschau erstellter PowerPoints und PDFs im Artefakt-Bereich: Folien als Bilder, groß zum Durchblättern',

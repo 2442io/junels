@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../documents/design.dart';
+import '../documents/design_library.dart';
 import '../documents/office_read.dart';
 import 'network_tools.dart' show browserUserAgent;
 import 'tool.dart';
@@ -94,10 +95,22 @@ Future<ResolvedDesign> resolveDesign({
   Future<(Uint8List, String)> Function(Uri)? fetch,
 }) async {
   final fetchBytes = fetch ?? httpGetBytes;
-  final base = design != null && design.trim().isNotEmpty && design != 'auto' && builtInDesigns.any((d) => d.id == design.trim().toLowerCase())
-      ? designById(design)
-      : designForTopic('$topic ${ctx.userRequest}');
   final notes = <String>[];
+  // Eigenes Design: ausdrücklich gewählt, im Auftrag genannt („in unserem Firmen-CI“) oder als Standard hinterlegt
+  final named = DesignLibrary.byId(design) ??
+      DesignLibrary.user.where((u) => u.name.length > 2 && ctx.userRequest.toLowerCase().contains(u.name.toLowerCase())).firstOrNull;
+  final explicitBuiltIn = design != null && design.trim().isNotEmpty && design != 'auto' && builtInDesigns.any((d) => d.id == design.trim().toLowerCase());
+  final own = named ?? (explicitBuiltIn || designReferencesIn(ctx.userRequest).isNotEmpty ? null : DesignLibrary.standard);
+  if (own != null && (reference ?? '').trim().isEmpty && !ctx.attachments.any((a) => RegExp(r'\.(pptx|potx|docx|dotx|xlsx)$', caseSensitive: false).hasMatch(a.name))) {
+    Uint8List? bytes;
+    PptxTemplate? tpl;
+    if (own.templatePath != null && File(own.templatePath!).existsSync()) {
+      bytes = File(own.templatePath!).readAsBytesSync();
+      tpl = PptxTemplate.parse(bytes);
+    }
+    return ResolvedDesign(own.design.copyWith(source: 'dein Design „${own.name}“'), tpl, notes, templateBytes: tpl == null ? null : bytes);
+  }
+  final base = explicitBuiltIn ? designById(design) : designForTopic('$topic ${ctx.userRequest}');
 
   // Vorlagen sammeln: ausdrücklich genannt, Links in der Bitte, passende Anhänge
   final refs = <String>[
@@ -188,4 +201,36 @@ Future<ResolvedDesign> resolveDesign({
         base: base, source: 'Farben aus ${fromImages == 1 ? 'deinem Beispielbild' : 'deinen $fromImages Beispielbildern'}, Stil „${base.name}“');
   }
   return ResolvedDesign(result, template, notes, templateBytes: templateBytes);
+}
+
+
+/// Eigenes Design aus einer Beispieldatei (PowerPoint, Word, Excel oder Bild) anlegen.
+/// Ergebnis: Design + (bei PowerPoint) die Vorlage zum Aufbewahren.
+Future<(SlideDesign, Uint8List?)?> designFromSample(Uint8List bytes, String fileName,
+    {required String name, ImageDecoder? decodeImage, String? id}) async {
+  final lower = fileName.toLowerCase();
+  SlideDesign? d;
+  Uint8List? tpl;
+  final base = designById('standard');
+  if (_isZip(bytes)) {
+    if (lower.endsWith('.pptx') || lower.endsWith('.potx')) {
+      final t = PptxTemplate.parse(bytes);
+      if (t?.theme != null) {
+        d = designFromOffice(t!.theme!, base: base, source: 'aus $fileName');
+        tpl = t.wide ? bytes : null;
+      }
+    }
+    if (d == null) {
+      final th = OfficeTheme.fromOffice(readZip(bytes));
+      if (th != null) d = designFromOffice(th, base: base, source: 'aus $fileName');
+    }
+  } else if (_isImage(bytes) && decodeImage != null) {
+    final img = await decodeImage(bytes);
+    if (img != null) d = designFromPalette(extractPalette(img.$3, img.$1, img.$2), base: base, source: 'Farben aus $fileName');
+  }
+  if (d == null) return null;
+  final j = d.toJson()
+    ..['id'] = id ?? DesignLibrary.idFor(name)
+    ..['name'] = name;
+  return (SlideDesign.fromJson(j), tpl);
 }

@@ -9,9 +9,12 @@ import 'package:flutter/services.dart';
 import 'voice_service.dart' show appLog;
 
 class SharedContent {
-  SharedContent(this.text, this.files);
+  SharedContent(this.text, this.files, {this.send = false});
   final String text;
   final List<(String path, String name)> files;
+
+  /// Gleich als Frage abschicken (Kurzbefehl „junels://frage?text=…“).
+  final bool send;
 }
 
 class DeviceBridge implements DeviceActions {
@@ -62,7 +65,7 @@ class DeviceBridge implements DeviceActions {
     ];
     final text = (a['text'] as String? ?? '').trim();
     if (text.isEmpty && files.isEmpty) return null;
-    return SharedContent(text, files);
+    return SharedContent(text, files, send: a['send'] == true);
   }
 
   Future<T?> _call<T>(String method, [Map<String, Object?>? args]) async {

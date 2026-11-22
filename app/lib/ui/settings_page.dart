@@ -19,6 +19,8 @@ import 'providers_page.dart';
 import 'sync_page.dart';
 import 'system_check.dart';
 import 'tasks_page.dart';
+import 'backup_page.dart';
+import 'designs_page.dart';
 import 'theme.dart';
 import 'update_page.dart';
 
@@ -195,6 +197,14 @@ class SettingsBody extends StatelessWidget {
                   : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Werkzeuge',
               onTap: () => openMcp(context),
             ),
+            _NavTile(
+              icon: Icons.palette_outlined,
+              title: 'Eigene Designs',
+              subtitle: DesignLibrary.user.isEmpty
+                  ? 'Firmen-CI oder Lieblingsstil für Präsentationen und PDFs speichern'
+                  : '${DesignLibrary.user.length} gespeichert${DesignLibrary.standard != null ? ' · Standard: ${DesignLibrary.standard!.name}' : ''}',
+              onTap: () => openDesigns(context),
+            ),
           ]),
           group('Werkzeuge', [_ToolSection(app: app)]),
         ]);
@@ -236,6 +246,12 @@ class SettingsBody extends StatelessWidget {
                   ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
                   : 'Installiert: $appVersion · Was ist neu?',
               onTap: () => openUpdates(context),
+            ),
+            _NavTile(
+              icon: Icons.archive_outlined,
+              title: 'Sicherung',
+              subtitle: 'Alle Chats, Prozesse und Einstellungen exportieren oder wiederherstellen',
+              onTap: () => openBackup(context),
             ),
             _NavTile(
               icon: Icons.receipt_long_outlined,
@@ -543,6 +559,7 @@ class _ToolSection extends StatelessWidget {
     'create_document': Icons.picture_as_pdf_outlined,
     'create_presentation': Icons.slideshow_outlined,
     'edit_file': Icons.edit_document,
+    'find_loose_ends': Icons.pending_actions_outlined,
     'create_chart': Icons.bar_chart,
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,

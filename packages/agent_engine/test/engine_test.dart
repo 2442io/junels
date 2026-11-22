@@ -263,6 +263,26 @@ Future<void> main() async {
     check(streamed.isNotEmpty && streamed.first.thought!.length < 'Ich rechne.'.length, 'Gedanke wird live gestreamt');
   });
 
+  await group('Eigene Designs', () async {
+    final sample = buildPptx(title: 'CI', slides: splitSlides('# A\n- x').slides, design: designById('business'));
+    final made = await designFromSample(sample, 'Firma.pptx', name: 'Firmen-CI');
+    check(made != null && made.$1.id == 'eigen-firmen-ci' && made.$1.primary == '1F3A60' && made.$2 != null, 'Design aus PowerPoint angelegt');
+    final tplFile = File('${Directory.systemTemp.createTempSync('ci').path}/ci.pptx')..writeAsBytesSync(made!.$2!);
+    DesignLibrary.user
+      ..clear()
+      ..add(UserDesign(design: made.$1, templatePath: tplFile.path));
+    DesignLibrary.defaultId = made.$1.id;
+    final look = await resolveDesign(ctx: ToolContext()..userRequest = 'Präsentation über unsere Reise', topic: 'Reise');
+    check(look.design.id == 'eigen-firmen-ci' && look.template != null, 'Standard-Design gilt (statt Reise-Design), mit Folienmaster');
+    final ex = await resolveDesign(ctx: ToolContext()..userRequest = 'Präsentation über unsere Reise', topic: 'Reise', design: 'reise');
+    check(ex.design.id == 'reise', 'Ausdrücklich gewählter Stil geht vor');
+    DesignLibrary.defaultId = null;
+    final byName = await resolveDesign(ctx: ToolContext()..userRequest = 'Mach das im Firmen-CI', topic: 'x');
+    check(byName.design.id == 'eigen-firmen-ci', 'Design per Name im Auftrag');
+    check(CreatePresentationTool(OutputSpace(Directory.systemTemp)).params[2].values.contains('eigen-firmen-ci'), 'Eigenes Design im Werkzeug wählbar');
+    DesignLibrary.user.clear();
+  });
+
   await group('Dateien gezielt ändern', () async {
     final dir = Directory.systemTemp.createTempSync('edit');
     final out = OutputSpace(dir);

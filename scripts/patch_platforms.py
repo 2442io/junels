@@ -47,6 +47,71 @@ def edit_plist(path: Path, fn):
 
 # --------------------------------------------------------------------- Android
 
+def _widget_resources(res: Path):
+    """Startbildschirm-Widget: Layout, Hintergrund, Beschreibung."""
+    for d in ("layout", "drawable", "xml"):
+        (res / d).mkdir(parents=True, exist_ok=True)
+    (res / "drawable/junels_widget_bg.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#F21C2024" />
+    <corners android:radius="28dp" />
+</shape>
+''')
+    (res / "drawable/junels_widget_mic_bg.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FF7FD1A8" />
+</shape>
+''')
+    (res / "layout/junels_widget.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="6dp"
+    android:background="@drawable/junels_widget_bg">
+    <TextView
+        android:id="@+id/junels_widget_ask"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp"
+        android:text="Frag Junels …"
+        android:textColor="#CCFFFFFF"
+        android:textSize="16sp" />
+    <ImageView
+        android:id="@+id/junels_widget_mic"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:padding="10dp"
+        android:background="@drawable/junels_widget_mic_bg"
+        android:contentDescription="Gespräch starten"
+        android:src="@android:drawable/ic_btn_speak_now" />
+</LinearLayout>
+''')
+    (res / "xml/junels_widget_info.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal"
+    android:widgetCategory="home_screen"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/junels_widget"
+    android:description="@string/junels_widget_desc" />
+''')
+    values = res / "values"
+    values.mkdir(parents=True, exist_ok=True)
+    (values / "junels_strings.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="junels_widget_desc">Neuen Chat öffnen oder per Mikrofon ein Gespräch starten</string>
+</resources>
+''')
+
+
 def patch_android():
     android = APP / "android"
     if not android.exists():
@@ -119,6 +184,14 @@ def patch_android():
             m = re.search(r'(<activity[^>]*android:name="\.MainActivity".*?</intent-filter>)', s, re.S)
             if m:
                 s = s[:m.end()] + share + s[m.end():]
+        if ".JunelsWidget" not in s:
+            s = s.replace("</application>",
+                          '    <receiver android:name=".JunelsWidget" android:exported="false" android:label="Frag Junels">\n'
+                          '            <intent-filter>\n'
+                          '                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />\n'
+                          '            </intent-filter>\n'
+                          '            <meta-data android:name="android.appwidget.provider" android:resource="@xml/junels_widget_info" />\n'
+                          '        </receiver>\n    </application>', 1)
         if ".AgentService" not in s:
             s = s.replace("</application>",
                           '    <service android:name=".AgentService" android:exported="false"\n'
@@ -128,6 +201,7 @@ def patch_android():
     edit(android / "app/src/main/AndroidManifest.xml", manifest)
 
     res = android / "app/src/main/res/xml"
+    _widget_resources(android / "app/src/main/res")
     res.mkdir(parents=True, exist_ok=True)
     (res / "junels_file_paths.xml").write_text(
         '<?xml version="1.0" encoding="utf-8"?>\n<paths>\n    <cache-path name="shared" path="shared/" />\n</paths>\n')
@@ -139,7 +213,7 @@ def patch_android():
     src = ROOT / "scripts/android"
     for kt in sorted(android.glob("app/src/main/kotlin/**/MainActivity.kt")):
         pkg = re.search(r"^package\s+([\w.]+)", kt.read_text(), re.M).group(1)
-        for name in ("MainActivity.kt", "AgentService.kt", "JunelsNative.kt", "AlarmReceiver.kt", "JunelsDevice.kt"):
+        for name in ("MainActivity.kt", "AgentService.kt", "JunelsNative.kt", "AlarmReceiver.kt", "JunelsDevice.kt", "JunelsWidget.kt"):
             (kt.parent / name).write_text((src / name).read_text().replace("__PACKAGE__", pkg))
         log(f"Hintergrunddienst eingesetzt ({pkg})")
 
@@ -312,6 +386,13 @@ def patch_macos():
       NSAppleEventManager.shared().setEventHandler(
         DockTarget.shared, andSelector: #selector(DockTarget.openDocuments(_:withReplyEvent:)),
         forEventClass: AEEventClass(0x6165_7674), andEventID: AEEventID(0x6F64_6F63))  // 'aevt' / 'odoc'
+      // junels://frage?text=… (Kurzbefehle-App, Links)
+      NSAppleEventManager.shared().setEventHandler(
+        JunelsServices.shared, andSelector: #selector(JunelsServices.handleURL(_:withReplyEvent:)),
+        forEventClass: AEEventClass(0x4755_524C), andEventID: AEEventID(0x4755_524C))  // 'GURL' / 'GURL'
+      // Dienste-Menü: markierten Text oder Links an Junels senden
+      NSApp.servicesProvider = JunelsServices.shared
+      NSUpdateDynamicServices()
     }
   }
 '''
@@ -363,6 +444,16 @@ def patch_macos():
             "CFBundleTypeRole": "Viewer",
             "LSHandlerRank": "Alternate",
             "LSItemContentTypes": ["com.adobe.pdf", "public.image", "public.plain-text", "net.daringfireball.markdown"],
+        }]
+        # Links junels://frage?text=… (Kurzbefehle-App, Raycast, Alfred …)
+        d["CFBundleURLTypes"] = [{"CFBundleURLName": "io.junels.link", "CFBundleURLSchemes": ["junels"]}]
+        # Dienste-Menü: markierten Text/Links aus jeder App an Junels senden
+        d["NSServices"] = [{
+            "NSMenuItem": {"default": "An Junels senden"},
+            "NSMessage": "sendToJunels",
+            "NSPortName": DISPLAY_NAME,
+            "NSSendTypes": ["public.utf8-plain-text", "public.plain-text", "public.url", "public.file-url", "NSStringPboardType"],
+            "NSRequiredContext": {},
         }]
 
     edit_plist(mac / "Runner/Info.plist", mac_info)

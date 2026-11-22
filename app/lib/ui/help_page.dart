@@ -126,7 +126,7 @@ Bei Bildern schlägt Junels passende Aufträge vor: **Zusammenfassen**, **Text a
 
 Damit der Agent Bilder sehen kann, braucht das Modell eine Bild-Erweiterung („Vision“). Fehlt sie, bietet Junels den Download an.
 
-Aus anderen Apps: **Teilen → Junels** (Android) bzw. Dateien aufs Dock-Symbol ziehen (Mac).''',
+Aus anderen Apps: **Teilen → Junels** (Android) bzw. Dateien aufs Dock-Symbol ziehen (Mac). Am Mac geht auch: Text oder Link markieren → Rechtsklick → **Dienste → An Junels senden**.''',
   ),
   HelpArticle(
     id: 'internet',
@@ -185,6 +185,23 @@ Unter **Metriken** siehst du, wie schnell das Modell arbeitet (Tokens pro Sekund
 Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein und aus, am Handy öffnet er sich von rechts.''',
   ),
   HelpArticle(
+    id: 'loose-ends',
+    category: 'Chat',
+    icon: Icons.pending_actions_outlined,
+    title: 'Liegengebliebenes aufspüren',
+    summary: 'Offene Rückfragen, Vorhaben, Fehler, Termine und Mails auf einen Blick.',
+    keywords: 'liegengeblieben offen unerledigt vergessen nachfassen aufgaben mails tickets',
+    body: '''Frag z. B. „Was ist bei mir liegengeblieben?“ oder nutze die Vorlage *Liegengebliebenes*. Junels sammelt:
+
+- **Rückfragen**, auf die der Agent noch auf deine Antwort wartet, und **abgebrochene Antworten**
+- **Vorhaben** aus deinen Chats („muss noch …“, „bis Freitag …“)
+- **Fehlgeschlagene Prozesse** und **Beobachtungen** mit Fehlern oder ungelesenen Meldungen
+- **Termine** der nächsten 7 Tage, die Vorbereitung brauchen könnten
+- **Mails, Aufgaben, Tickets** – wenn ein passendes Werkzeug verbunden ist (MCP-Store, z. B. Gmail, Slack, Jira, Notion)
+
+Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt. Tipp: Als geplante Aufgabe jeden Freitag laufen lassen.''',
+  ),
+  HelpArticle(
     id: 'designs',
     category: 'Chat',
     icon: Icons.palette_outlined,
@@ -199,6 +216,9 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
 - **Beispielbilder oder Links** (z. B. Vorlagen-Seiten wie slidesgo): Der Agent liest die Farben aus den Bildern. Für Links fragt er vorher nach der Internet-Freigabe.
 
 Die Rückmeldung nach dem Erstellen sagt, welches Design verwendet wurde.
+
+**Eigene Designs (z. B. Firmen-CI)**
+Unter Einstellungen → Agent → *Eigene Designs* legst du Designs an – aus einer PowerPoint (inklusive Folienmaster), Word, Excel, einem Logo/Bild oder von Hand mit Farben und Schriften. Als *Standard* gilt es für alle neuen Präsentationen und PDFs; sonst nennst du es beim Namen („im Firmen-CI“).
 
 **Gezielt ändern statt neu erstellen**
 Sag z. B. „Überarbeite Folie 3: mehr zu Kulinarik“, „Lösche Folie 5“ oder „Ändere im Bericht den Abschnitt Fazit“. Der Agent ändert nur diese Stelle – Design und übrige Folien bleiben gleich. Die Nummern entsprechen PowerPoint (1 = Titelfolie).
@@ -492,6 +512,9 @@ Einrichten unter Einstellungen → Gerät & Verbindungen → Abgleich.''',
 
 - **Heimatort** für Wetter und Morgen-Übersicht.
 - **Schnellstart**: Knöpfe auf dem Startbildschirm (Android) bzw. im Dock-Menü (Mac).
+- **Widget (Android)**: „Frag Junels …“ öffnet einen neuen Chat, das Mikrofon startet ein Gespräch – lange auf den Startbildschirm drücken → Widgets → Junels.
+- **Kurzbefehl (Mac)**: In der Kurzbefehle-App „URL öffnen“ mit `junels://frage?text=…` stellt sofort eine Frage, `junels://sprechen` startet ein Gespräch, `junels://neu` einen neuen Chat. Funktioniert auch aus Raycast, Alfred oder per Tastenkürzel.
+- **Sicherung**: Einstellungen → App → Sicherung – alle Chats, Prozesse und Einstellungen als ZIP exportieren oder wiederherstellen (auch zum Umziehen auf ein anderes Gerät).
 - **Beobachtete Ordner**: neue PDFs landen automatisch in der Wissensbasis.
 
 Der Agent kann – jeweils mit Rückfrage – **Termine** abfragen und eintragen, **Kontakte** suchen, **anrufen** und am Mac **Dateien** suchen, umbenennen und verschieben.''',

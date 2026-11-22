@@ -295,6 +295,8 @@ class Conversation {
     this.cloudAllowed = false,
     this.routing,
     this.hybridTarget,
+    this.pinned = false,
+    this.folder,
   })  : entries = entries ?? [],
         artifacts = artifacts ?? [],
         updated = updated ?? DateTime.now();
@@ -311,6 +313,8 @@ class Conversation {
   bool cloudAllowed; // Cloud-Anbieter für den ganzen Chat freigegeben
   String? routing; // KI-Modus nur für diesen Chat (null = Einstellung)
   String? hybridTarget; // Hybrid: danach onprem | cloud (null = Einstellung)
+  bool pinned; // oben angeheftet
+  String? folder; // Ordner/Projekt in der Seitenleiste
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -323,6 +327,8 @@ class Conversation {
         if (cloudAllowed) 'cloudAllowed': true,
         if (routing != null) 'routing': routing,
         if (hybridTarget != null) 'hybridTarget': hybridTarget,
+        if (pinned) 'pinned': true,
+        if (folder != null) 'folder': folder,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -336,6 +342,8 @@ class Conversation {
         cloudAllowed: j['cloudAllowed'] as bool? ?? false,
         routing: j['routing'] as String?,
         hybridTarget: j['hybridTarget'] as String?,
+        pinned: j['pinned'] as bool? ?? false,
+        folder: j['folder'] as String?,
       );
 }
 
@@ -388,7 +396,7 @@ class AppSettings {
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
-              'create_document', 'create_presentation', 'edit_file', 'create_chart', 'generate_image', 'look_at_image',
+              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
@@ -555,7 +563,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 11;
+  static const toolsVersion = 12;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -573,6 +581,7 @@ class AppSettings {
     if (from < 10 && !enabledTools.contains('browser')) enabledTools.add('browser');
     if (from < 9) enabledTools.add('browser');
     if (from < 11) enabledTools.add('edit_file');
+    if (from < 12) enabledTools.add('find_loose_ends');
   }
 }
 
@@ -581,6 +590,7 @@ const promptPresets = <(String, String)>[
   ('Zusammenfassen', 'Fasse die angehängte Datei in 5 Stichpunkten zusammen.'),
   ('Suchen', 'Suche in den angehängten Dateien nach: '),
   ('Tabelle', 'Erstelle aus den Daten eine Markdown-Tabelle und lege sie als Artefakt ab.'),
+  ('Liegengebliebenes', 'Was ist bei mir liegengeblieben? Prüfe Chats, Prozesse, Termine und Mails.'),
   ('Präsentation', 'Erstelle eine Präsentation mit 6 Folien zum Thema: '),
   ('PDF-Bericht', 'Schreibe einen kurzen Bericht als PDF über: '),
   ('Bild', 'Erzeuge ein Bild: '),

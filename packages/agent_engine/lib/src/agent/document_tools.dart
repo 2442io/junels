@@ -9,6 +9,7 @@ import '../documents/md_blocks.dart';
 import '../documents/pdf_writer.dart';
 import '../documents/pptx_writer.dart';
 import '../documents/design.dart';
+import '../documents/design_library.dart';
 import '../documents/office_read.dart';
 import 'design_resolver.dart';
 import 'tool.dart';
@@ -270,14 +271,19 @@ class CreatePresentationTool extends AgentTool {
       'Vorher mit generate_image erzeugte Bilder kommen automatisch auf Folien ohne Bild. '
       'Baue einen roten Faden: Einstieg → Etappen → Abschluss, Folientitel als Stationen. '
       'design: passender Stil (reise, reise-landschaft, reise-vintage, reise-nacht, natur, business, technik, warm, elegant, bildung, gesundheit) oder auto. '
-      'vorlage: Links oder Dateinamen von Beispielbildern oder PowerPoint/Word/Excel-Vorlagen des Nutzers – Farben, Schriften und Folienmaster werden übernommen.';
+      'vorlage: Links oder Dateinamen von Beispielbildern oder PowerPoint/Word/Excel-Vorlagen des Nutzers – Farben, Schriften und Folienmaster werden übernommen.'
+      '${DesignLibrary.describe}';
   @override
-  List<ToolParam> get params => const [
-        ToolParam('title', ParamType.string, 'Titel der Präsentation'),
-        ToolParam('content', ParamType.string, 'Folien in Markdown'),
-        ToolParam('design', ParamType.enumeration, 'Stil der Folien',
-            values: ['auto', 'reise', 'reise-landschaft', 'reise-vintage', 'reise-nacht', 'natur', 'business', 'technik', 'warm', 'elegant', 'bildung', 'gesundheit', 'standard']),
-        ToolParam('vorlage', ParamType.string, 'Design-Vorlagen: Links/Dateinamen (optional)'),
+  List<ToolParam> get params => [
+        const ToolParam('title', ParamType.string, 'Titel der Präsentation'),
+        const ToolParam('content', ParamType.string, 'Folien in Markdown'),
+        ToolParam('design', ParamType.enumeration, 'Stil der Folien', values: [
+          'auto',
+          ...DesignLibrary.user.map((u) => u.id),
+          'reise', 'reise-landschaft', 'reise-vintage', 'reise-nacht', 'natur', 'business', 'technik', 'warm', 'elegant', 'bildung',
+          'gesundheit', 'standard'
+        ]),
+        const ToolParam('vorlage', ParamType.string, 'Design-Vorlagen: Links/Dateinamen (optional)'),
       ];
 
   @override

@@ -24,6 +24,7 @@ class Sidebar extends StatefulWidget {
 class _SidebarState extends State<Sidebar> {
   final _search = TextEditingController();
   String _query = '';
+  final _openFolders = <String>{};
   bool _showAll = false;
   bool _showAllRoutines = false;
 
@@ -56,6 +57,21 @@ class _SidebarState extends State<Sidebar> {
                 c.title.toLowerCase().contains(q) || c.entries.any((e) => e.text.toLowerCase().contains(q)))
             .toList();
     final visible = _showAll || q.isNotEmpty ? chats.take(200).toList() : chats.take(12).toList();
+    final pinned = normal.where((c) => c.pinned).toList();
+    final folders = app.chatFolders;
+    final looseAll = normal.where((c) => !c.pinned && c.folder == null).toList();
+    final loose = _showAll ? looseAll.take(200).toList() : looseAll.take(12).toList();
+    Widget row(Conversation conv) => _ChatRow(
+          key: ValueKey(conv.id),
+          conv: conv,
+          selected: app.current?.id == conv.id && (active == null || active == AppSection.chat),
+          running: app.running && app.runningConvId == conv.id,
+          onTap: () {
+            app.selectConversation(conv);
+            _go(AppSection.chat);
+          },
+          onDelete: () => app.deleteConversation(conv),
+        );
 
     Widget item(AppSection s, {String? count, bool dot = false}) => _NavItem(
           icon: s.icon,
@@ -183,21 +199,28 @@ class _SidebarState extends State<Sidebar> {
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                   child: Text(q.isEmpty ? 'Noch keine Chats.' : 'Nichts gefunden.', style: t.bodySmall),
                 ),
-              for (final conv in visible)
-                _ChatRow(
-                  conv: conv,
-                  selected: app.current?.id == conv.id && (active == null || active == AppSection.chat),
-                  running: app.running && app.runningConvId == conv.id,
-                  onTap: () {
-                    app.selectConversation(conv);
-                    _go(AppSection.chat);
-                  },
-                  onDelete: () => app.deleteConversation(conv),
-                ),
-              if (q.isEmpty && chats.length > 12)
+              if (q.isNotEmpty)
+                for (final conv in visible) row(conv)
+              else ...[
+                // angeheftet
+                for (final conv in pinned) row(conv),
+                if (pinned.isNotEmpty) const SizedBox(height: 4),
+                // Ordner / Projekte
+                for (final f in folders)
+                  _FolderGroup(
+                    name: f,
+                    count: normal.where((c) => c.folder == f).length,
+                    open: _openFolders.contains(f) || normal.any((c) => c.folder == f && c.id == app.current?.id),
+                    onToggle: () => setState(() => _openFolders.contains(f) ? _openFolders.remove(f) : _openFolders.add(f)),
+                    onRename: (to) => app.renameFolder(f, to),
+                    children: [for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv)],
+                  ),
+                for (final conv in loose) row(conv),
+              ],
+              if (q.isEmpty && looseAll.length > 12)
                 TextButton(
                   onPressed: () => setState(() => _showAll = !_showAll),
-                  child: Text(_showAll ? 'Weniger anzeigen' : 'Alle ${chats.length} Chats anzeigen'),
+                  child: Text(_showAll ? 'Weniger anzeigen' : 'Alle ${looseAll.length} Chats anzeigen'),
                 ),
             ],
           ),
@@ -326,6 +349,7 @@ class _ModelPill extends StatelessWidget {
 
 class _ChatRow extends StatefulWidget {
   const _ChatRow({
+    super.key,
     required this.conv,
     required this.selected,
     required this.running,
@@ -394,12 +418,14 @@ class _ChatRowState extends State<_ChatRow> {
                   )
                 else if (_hover || widget.selected)
                   IconButton(
-                    tooltip: 'Löschen',
+                    tooltip: 'Mehr',
                     visualDensity: VisualDensity.compact,
                     iconSize: 17,
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: widget.onDelete,
+                    icon: const Icon(Icons.more_horiz),
+                    onPressed: () => _menu(context),
                   )
+                else if (conv.pinned)
+                  Padding(padding: const EdgeInsets.all(12), child: Icon(Icons.push_pin, size: 14, color: c.faint))
                 else
                   const SizedBox(width: 40),
               ]),
@@ -411,19 +437,133 @@ class _ChatRowState extends State<_ChatRow> {
   }
 
   Future<void> _menu(BuildContext context) async {
+    final app = AppScope.read(context);
+    final conv = widget.conv;
     final r = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text(widget.conv.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ListTile(title: Text(conv.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
           ListTile(
-            leading: const Icon(Icons.delete_outline),
-            title: const Text('Chat löschen'),
-            onTap: () => Navigator.pop(ctx, 'delete'),
+            leading: Icon(conv.pinned ? Icons.push_pin_outlined : Icons.push_pin),
+            title: Text(conv.pinned ? 'Lösen' : 'Anheften'),
+            onTap: () => Navigator.pop(ctx, 'pin'),
           ),
+          ListTile(
+            leading: const Icon(Icons.folder_outlined),
+            title: Text(conv.folder == null ? 'In Ordner verschieben …' : 'Ordner: ${conv.folder} – ändern …'),
+            onTap: () => Navigator.pop(ctx, 'folder'),
+          ),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Umbenennen'), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Chat löschen'), onTap: () => Navigator.pop(ctx, 'delete')),
         ]),
       ),
     );
-    if (r == 'delete') widget.onDelete();
+    if (!context.mounted) return;
+    switch (r) {
+      case 'pin':
+        await app.setPinned(conv, !conv.pinned);
+      case 'folder':
+        final f = await _pickFolder(context, app.chatFolders, conv.folder);
+        if (f != null) await app.setFolder(conv, f == '-' ? null : f);
+      case 'rename':
+        final t = await _askText(context, 'Chat umbenennen', conv.title);
+        if (t != null) await app.renameConversation(conv, t);
+      case 'delete':
+        widget.onDelete();
+    }
+  }
+}
+
+
+/// Ordner wählen oder neu anlegen. '-' = aus dem Ordner nehmen.
+Future<String?> _pickFolder(BuildContext context, List<String> folders, String? current) => showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('In Ordner verschieben'),
+        children: [
+          for (final f in folders)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, f),
+              child: Row(children: [
+                Icon(f == current ? Icons.folder : Icons.folder_outlined, size: 18),
+                const SizedBox(width: 10),
+                Expanded(child: Text(f)),
+              ]),
+            ),
+          SimpleDialogOption(
+            onPressed: () async {
+              final name = await _askText(ctx, 'Neuer Ordner', '');
+              if (ctx.mounted) Navigator.pop(ctx, name);
+            },
+            child: const Row(children: [Icon(Icons.create_new_folder_outlined, size: 18), SizedBox(width: 10), Text('Neuer Ordner …')]),
+          ),
+          if (current != null)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, '-'),
+              child: const Row(children: [Icon(Icons.folder_off_outlined, size: 18), SizedBox(width: 10), Text('Aus dem Ordner nehmen')]),
+            ),
+        ],
+      ),
+    );
+
+Future<String?> _askText(BuildContext context, String title, String initial) async {
+  final ctrl = TextEditingController(text: initial);
+  final r = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(controller: ctrl, autofocus: true, onSubmitted: (v) => Navigator.pop(ctx, v)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
+      ],
+    ),
+  );
+  ctrl.dispose();
+  return r == null || r.trim().isEmpty ? null : r.trim();
+}
+
+/// Ordner in der Chat-Liste (aufklappbar).
+class _FolderGroup extends StatelessWidget {
+  const _FolderGroup({
+    required this.name,
+    required this.count,
+    required this.open,
+    required this.onToggle,
+    required this.onRename,
+    required this.children,
+  });
+  final String name;
+  final int count;
+  final bool open;
+  final VoidCallback onToggle;
+  final void Function(String) onRename;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onToggle,
+        onLongPress: () async {
+          final t = await _askText(context, 'Ordner umbenennen', name);
+          if (t != null) onRename(t);
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
+          child: Row(children: [
+            Icon(open ? Icons.folder_open_outlined : Icons.folder_outlined, size: 17, color: c.muted),
+            const SizedBox(width: 10),
+            Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500))),
+            MonoText('$count', size: 11, color: c.faint),
+            Icon(open ? Icons.expand_less : Icons.expand_more, size: 17, color: c.faint),
+          ]),
+        ),
+      ),
+      if (open) Padding(padding: const EdgeInsets.only(left: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)),
+    ]);
   }
 }

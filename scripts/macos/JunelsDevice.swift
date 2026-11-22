@@ -59,11 +59,16 @@ enum JunelsDevice {
       case "takeLaunch":
         let files = pendingOpen
         pendingOpen = []
+        let text = pendingText
+        pendingText = nil
         var shared: Any = NSNull()
-        if !files.isEmpty {
-          shared = ["text": "", "files": files.map { ["path": $0, "name": URL(fileURLWithPath: $0).lastPathComponent] }] as [String: Any]
+        if !files.isEmpty || text != nil {
+          shared = ["text": text?.0 ?? "", "send": text?.1 ?? false,
+                    "files": files.map { ["path": $0, "name": URL(fileURLWithPath: $0).lastPathComponent] }] as [String: Any]
         }
-        result(["action": NSNull(), "shared": shared] as [String: Any])
+        let action = pendingAction
+        pendingAction = nil
+        result(["action": action ?? NSNull(), "shared": shared] as [String: Any])
       case "composeEmail":
         var c = URLComponents()
         c.scheme = "mailto"
@@ -294,7 +299,22 @@ enum JunelsDevice {
 
   static func launch(_ id: String) {
     NSApp.activate(ignoringOtherApps: true)
-    channel?.invokeMethod("launchAction", arguments: ["id": id])
+    if let ch = channel { ch.invokeMethod("launchAction", arguments: ["id": id]) } else { pendingAction = id }
+  }
+
+  static var pendingText: (String, Bool)?
+  static var pendingAction: String?
+
+  /// Text aus dem Dienste-Menü oder einem junels://-Link an den Agenten geben.
+  static func shareText(_ text: String, send: Bool = false) {
+    let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !t.isEmpty else { return }
+    NSApp.activate(ignoringOtherApps: true)
+    if let ch = channel {
+      ch.invokeMethod("shared", arguments: ["text": t, "send": send, "files": [Any]()])
+    } else {
+      pendingText = (t, send)
+    }
   }
 
   /// Dateien, die aufs Dock-Symbol gezogen oder mit „Öffnen mit“ an Junels gegeben wurden.
@@ -325,5 +345,42 @@ final class DockTarget: NSObject {
       }
     }
     JunelsDevice.open(paths)
+  }
+}
+
+
+/// Dienste-Menü („An Junels senden“) und Links junels://frage?text=… (z. B. aus der Kurzbefehle-App).
+final class JunelsServices: NSObject {
+  static let shared = JunelsServices()
+
+  @objc func sendToJunels(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+    var text = pboard.string(forType: .string) ?? ""
+    if text.isEmpty, let u = pboard.string(forType: .URL) { text = u }
+    if text.isEmpty, let urls = pboard.readObjects(forClasses: [NSURL.self]) as? [URL] {
+      let files = urls.filter { $0.isFileURL }.map { $0.path }
+      if !files.isEmpty {
+        JunelsDevice.open(files)
+        return
+      }
+      text = urls.map { $0.absoluteString }.joined(separator: "\n")
+    }
+    JunelsDevice.shareText(text)
+  }
+
+  @objc func handleURL(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+    guard let s = event.paramDescriptor(forKeyword: AEKeyword(0x2D2D_2D2D))?.stringValue,
+          let u = URLComponents(string: s) else { return }
+    let q = u.queryItems?.first(where: { ["text", "q", "frage"].contains($0.name) })?.value ?? ""
+    switch (u.host ?? "").lowercased() {
+    case "neu", "newchat", "chat":
+      JunelsDevice.launch("newchat")
+      if !q.isEmpty { JunelsDevice.shareText(q) }
+    case "sprechen", "gespraech", "gespräch", "voice":
+      JunelsDevice.launch("conversation")
+    case "einfuegen", "text":
+      JunelsDevice.shareText(q)
+    default:  // frage, ask
+      if q.isEmpty { JunelsDevice.launch("newchat") } else { JunelsDevice.shareText(q, send: true) }
+    }
   }
 }

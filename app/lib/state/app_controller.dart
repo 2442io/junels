@@ -18,6 +18,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../data/models.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
+import 'loose_ends.dart';
 import 'conversation_mode.dart';
 import 'browser_service.dart';
 import 'device_bridge.dart';
@@ -286,6 +287,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         CreateDocumentTool(out),
         CreatePresentationTool(out),
         EditFileTool(out),
+        LooseEndsTool(this),
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
@@ -329,6 +331,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       mcpServers = await storage.loadMcpServers();
       await _loadMcpSecrets();
       conversations = await storage.loadConversations();
+      await loadDesigns();
       await watchlist.load();
       await flows.load();
       await connections.load();
@@ -1276,6 +1279,106 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  // ---------------------------------------------------------------- Eigene Designs
+
+  Directory get designsDir => Directory('${storage.root.path}/designs');
+  File get _designsFile => File('${designsDir.path}/designs.json');
+
+  Future<void> loadDesigns() async {
+    try {
+      if (!await _designsFile.exists()) return;
+      final j = jsonDecode(await _designsFile.readAsString()) as Map<String, dynamic>;
+      DesignLibrary.user
+        ..clear()
+        ..addAll([for (final d in (j['designs'] as List? ?? const [])) UserDesign.fromJson((d as Map).cast())]);
+      DesignLibrary.defaultId = j['default'] as String?;
+    } catch (e) {
+      appLog('Designs', 'Laden fehlgeschlagen: $e', error: true);
+    }
+  }
+
+  Future<void> saveDesigns() async {
+    await designsDir.create(recursive: true);
+    await _designsFile.writeAsString(jsonEncode({
+      'designs': [for (final d in DesignLibrary.user) d.toJson()],
+      if (DesignLibrary.defaultId != null) 'default': DesignLibrary.defaultId,
+    }));
+    notifyListeners();
+  }
+
+  Future<void> addDesign(SlideDesign d, {Uint8List? template}) async {
+    String? path;
+    if (template != null) {
+      await designsDir.create(recursive: true);
+      final f = File('${designsDir.path}/${d.id}.pptx');
+      await f.writeAsBytes(template);
+      path = f.path;
+    }
+    DesignLibrary.user.removeWhere((u) => u.id == d.id);
+    DesignLibrary.user.add(UserDesign(design: d, templatePath: path));
+    await saveDesigns();
+  }
+
+  Future<void> removeDesign(String id) async {
+    final u = DesignLibrary.byId(id);
+    if (u?.templatePath != null) {
+      try {
+        await File(u!.templatePath!).delete();
+      } catch (_) {}
+    }
+    DesignLibrary.user.removeWhere((x) => x.id == id);
+    if (DesignLibrary.defaultId == id) DesignLibrary.defaultId = null;
+    await saveDesigns();
+  }
+
+  Future<void> setDefaultDesign(String? id) async {
+    DesignLibrary.defaultId = id;
+    await saveDesigns();
+  }
+
+  /// Für „Design aus Datei“ (Farben aus Bildern brauchen den Bild-Decoder der App).
+  Future<(SlideDesign, Uint8List?)?> designFromFile(String path, String name) async {
+    final bytes = await File(path).readAsBytes();
+    return designFromSample(bytes, path.split(Platform.pathSeparator).last, name: name, decodeImage: _decodeRgba);
+  }
+
+  // ---------------------------------------------------------------- Anheften & Ordner
+
+  Future<void> setPinned(Conversation c, bool pinned) async {
+    c.pinned = pinned;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  /// Ordner (Projekte) in der Seitenleiste: aus den Chats.
+  List<String> get chatFolders {
+    final set = <String>{for (final c in conversations) if (c.folder != null && c.folder!.trim().isNotEmpty) c.folder!};
+    return set.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  Future<void> setFolder(Conversation c, String? folder) async {
+    final f = folder?.trim();
+    c.folder = f == null || f.isEmpty ? null : f;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  Future<void> renameFolder(String from, String to) async {
+    final t = to.trim();
+    for (final c in conversations.where((c) => c.folder == from)) {
+      c.folder = t.isEmpty ? null : t;
+      await storage.saveConversation(c);
+    }
+    notifyListeners();
+  }
+
+  Future<void> renameConversation(Conversation c, String title) async {
+    if (title.trim().isEmpty) return;
+    c.title = title.trim();
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
   void selectConversation(Conversation c) {
     current = c;
     notifyListeners();
@@ -1757,6 +1860,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
     'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
+    'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
     'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
     'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
     'generate_image': RegExp(r'(erstell|generier|mal|zeichne|erzeug)\w* .*\b(bild|foto|illustration|logo|grafik)|bild von|zeichne|male mir'),
@@ -1783,6 +1887,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
                     : false))
           tool
         else if (hasDocs && (tool.name == 'knowledge_search' || tool.name == 'read_file'))
+          tool
+        // „Was ist liegengeblieben?“: auch Mail-/Aufgaben-Werkzeuge (MCP) und Kalender
+        else if ((_toolTriggers['find_loose_ends']?.hasMatch(t) ?? false) &&
+            (tool.name == 'calendar_list' || (tool.name.contains('__') && looseEndsMcp.hasMatch('${tool.name} ${tool.title} ${tool.description}'))))
           tool,
     ];
   }
@@ -2769,6 +2877,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     for (final (path, name) in c.files) {
       final err = await addAttachment(path, name);
       if (err != null) errors.add(err);
+    }
+    if (c.send && c.text.isNotEmpty && c.files.isEmpty && !running) {
+      // Kurzbefehl: neue Frage direkt stellen
+      newConversation();
+      unawaited(send(c.text));
+      appLog('Teilen', 'Frage per Kurzbefehl');
+      return;
     }
     if (c.text.isNotEmpty) pendingInput.value = c.text;
     appLog('Teilen', '${c.files.length} Datei(en)${c.text.isEmpty ? '' : ', Text'} empfangen');
