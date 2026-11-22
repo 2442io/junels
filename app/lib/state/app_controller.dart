@@ -25,6 +25,7 @@ import '../tools/chart_render.dart';
 import '../tools/save_prompt_tool.dart';
 import 'activity_log.dart';
 import 'automation.dart';
+import 'connections.dart';
 import 'memory_store.dart';
 import 'smtp.dart';
 import 'vault.dart';
@@ -139,6 +140,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Watchlist (Seiten/Themen beobachten) und Prozesse (Workflows).
   late final WatchlistService watchlist = WatchlistService(this);
   late final FlowService flows = FlowService(this);
+  late final ConnectionStore connections = ConnectionStore(this);
 
   Future<void> logActivity(Activity a) async {
     await activity.add(a);
@@ -306,6 +308,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       conversations = await storage.loadConversations();
       await watchlist.load();
       await flows.load();
+      await connections.load();
       // Nach längerer Pause mit neuem Chat starten, sonst im letzten weiterarbeiten
       final last = conversations.isNotEmpty ? conversations.first : null;
       current = last != null && DateTime.now().difference(last.updated) < idleNewChat ? last : null;
@@ -435,6 +438,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             for (final t in srv.tools)
               if (t.enabled) McpTool(srv, t, _mcpClients),
       ];
+
+  /// Ein bestimmtes Tool eines MCP-Servers (auch wenn es für den Chat ausgeschaltet ist) – für Prozesse.
+  AgentTool? mcpToolFor(String serverId, String toolName) {
+    final srv = mcpServers.where((s) => s.id == serverId).firstOrNull;
+    final spec = srv?.tools.where((t) => t.name == toolName).firstOrNull;
+    if (srv == null || spec == null) return null;
+    return McpTool(srv, spec, _mcpClients);
+  }
 
   // ------------------------------------------------------------- MCP-Server
 
@@ -2796,6 +2807,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> send(String input,
       {bool voice = false,
       void Function(String text, bool done)? onAnswer,
+      void Function(String tool)? onToolStart,
       Conversation? target,
       List<Attachment>? withDocs,
       bool forceCloud = false}) async {
@@ -2971,6 +2983,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         ..thought = 'Ich frage ${tool.title} direkt ab.';
       answer.steps.add(log);
       notifyListeners();
+      onToolStart?.call(tool.name);
       final sw = Stopwatch()..start();
       try {
         final out = await tool.run(args, ctx).timeout(const Duration(seconds: 60));
@@ -3015,6 +3028,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
               onAnswer?.call(liveAnswer, false);
             }
           case ToolCalled(:final tool, :final args, thought: final callThought):
+            onToolStart?.call(tool);
             final last = answer.steps.lastOrNull;
             if (last != null) {
               last

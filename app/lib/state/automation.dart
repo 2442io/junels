@@ -1,5 +1,8 @@
 // Watchlist und Prozesse: speichern, nach Zeitplan prüfen bzw. ausführen,
 // Ergebnisse als Push-Nachricht und im Chat „Automatik“ ablegen.
+//
+// Prozesse: Vorab-Prüfung, Live-Status je Baustein, Stoppen, verständliche Fehler
+// mit Hinweis – und auf Wunsch repariert der Agent den Baustein selbst.
 
 import 'dart:async';
 import 'dart:convert';
@@ -11,6 +14,7 @@ import '../data/models.dart';
 import 'activity_log.dart';
 import 'app_controller.dart';
 import 'background_work.dart';
+import 'connections.dart';
 import 'voice_service.dart' show appLog;
 
 String _two(int v) => v.toString().padLeft(2, '0');
@@ -87,6 +91,43 @@ class WatchlistService {
     }
   }
 
+  /// Vorschau ohne Speichern („Testen“ im Dialog).
+  Future<WatchPreview> preview(WatchItem item) => _checker.preview(item);
+
+  /// Beschreibung („Prompt“) → Suchanfrage wie bei Google. Ohne Modell: Stichwörter.
+  Future<String> deriveQuery(String description) async {
+    final d = description.trim();
+    if (d.isEmpty) return '';
+    String q = '';
+    try {
+      q = await app.automationText(
+          'Formuliere aus diesem Beobachtungswunsch EINE kurze Suchanfrage für Google News (3–8 Wörter). '
+          'Nutze bei Bedarf Google-Operatoren: "genaue Phrase", -ausschließen, OR, site:domain. '
+          'Antworte nur mit der Suchanfrage, ohne Erklärung.\n\nWunsch: $d',
+          maxTokens: 60);
+    } catch (_) {}
+    q = q.split('\n').map((l) => l.trim()).firstWhere((l) => l.isNotEmpty, orElse: () => '');
+    q = q.replaceAll(RegExp(r'^(suchanfrage|query)\s*:\s*', caseSensitive: false), '').replaceAll(RegExp(r'^[`„“]+|[`„“]+$'), '').trim();
+    if (q.isEmpty || q.length > 160) q = keywordsOf(d);
+    return q;
+  }
+
+  /// Einfache Stichwörter aus einem Satz (Rückfall ohne Modell).
+  static String keywordsOf(String text) {
+    const stop = {
+      'der', 'die', 'das', 'und', 'oder', 'ein', 'eine', 'einen', 'zu', 'zum', 'zur', 'für', 'von', 'mit', 'mir', 'mich', 'ich',
+      'neue', 'neuen', 'neuer', 'neues', 'alle', 'immer', 'wenn', 'sobald', 'bitte', 'melde', 'sag', 'informiere', 'über',
+      'auf', 'im', 'in', 'an', 'es', 'gibt', 'etwas', 'was', 'wie', 'zu', 'den', 'dem', 'des', 'bei', 'nach', 'aus', 'nur', 'keine', 'kein',
+    };
+    final words = text
+        .replaceAll(RegExp(r'[^\p{L}\p{N}\s.-]', unicode: true), ' ')
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length > 2 && !stop.contains(w.toLowerCase()))
+        .take(7)
+        .toList();
+    return words.join(' ');
+  }
+
   /// Nächster fälliger Zeitpunkt (für den Android-Wecker).
   DateTime? get nextDue {
     DateTime? best;
@@ -105,6 +146,28 @@ class WatchlistService {
     }
   }
 
+  /// Beschreibungs-Modus: Der Agent prüft, welche neuen Treffer wirklich passen.
+  Future<void> _filterRelevant(WatchItem item, WatchEvent ev) async {
+    if (ev.links.isEmpty) return;
+    final list = [for (var i = 0; i < ev.links.length; i++) '${i + 1}. ${ev.links[i]['title']}${ev.links[i]['note'] == null ? '' : ' – ${ev.links[i]['note']}'}'];
+    final r = await app.automationText(
+        'Beobachtungswunsch: "${item.target}"\n\nNeue Treffer:\n${list.join('\n')}\n\n'
+        'Welche Treffer passen wirklich zum Wunsch? Antworte nur mit den Nummern, durch Komma getrennt (z. B. 1,3). '
+        'Passt keiner, antworte 0.',
+        maxTokens: 40);
+    if (r.trim().isEmpty) return; // kein Modell: alles behalten
+    final keep = {for (final m in RegExp(r'\d+').allMatches(r)) int.parse(m.group(0)!)};
+    if (keep.length == 1 && keep.first == 0) {
+      ev.links.clear();
+      return;
+    }
+    final kept = [for (var i = 0; i < ev.links.length; i++) if (keep.contains(i + 1)) ev.links[i]];
+    if (kept.isEmpty) return; // Antwort nicht verstanden: lieber alles zeigen
+    ev.links
+      ..clear()
+      ..addAll(kept);
+  }
+
   Future<void> check(WatchItem item) async {
     if (_busy) return;
     _busy = true;
@@ -112,8 +175,18 @@ class WatchlistService {
     app.refreshUi();
     try {
       final r = await _checker.check(item);
-      final ev = r.event;
+      var ev = r.event;
       if (r.error != null) appLog('Watchlist', '${item.title}: ${r.error}', error: true);
+      if (ev != null && item.kind == WatchKind.topic && item.promptMode) {
+        await _filterRelevant(item, ev);
+        if (ev.links.isEmpty) {
+          item.events.remove(ev);
+          appLog('Watchlist', '${item.title}: neue Treffer, aber keiner passt zur Beschreibung');
+          ev = null;
+        } else {
+          ev.detail = ev.links.take(5).map((f) => '• ${f['title']}').join('\n');
+        }
+      }
       if (ev != null) {
         appLog('Watchlist', '${item.title}: ${ev.title}');
         if (item.summarize) {
@@ -129,12 +202,14 @@ class WatchlistService {
                   conversationId: 'watch:${item.id}')
               .catchError((_) {}));
         }
+        final input = '${ev.title}\n\n${ev.detail}\n\n${ev.links.map((l) => '- ${l['title']}: ${l['link']}').join('\n')}';
         // Prozesse, die auf diesen Eintrag warten
         for (final wf in app.flows.flows) {
           final t = wf.trigger;
-          if (wf.enabled && t != null && t.str('mode') == 'watch' && (t.str('watchId').isEmpty || t.str('watchId') == item.id)) {
-            unawaited(app.flows.run(wf, input: '${ev.title}\n\n${ev.detail}\n\n${ev.links.map((l) => '- ${l['title']}: ${l['link']}').join('\n')}'));
-          }
+          if (!wf.enabled || t == null || t.str('mode') != 'watch') continue;
+          final owned = item.flowId == wf.id;
+          final legacy = t.config['watchInline'] != true && item.flowId == null && (t.str('watchId').isEmpty || t.str('watchId') == item.id);
+          if (owned || legacy) unawaited(app.flows.run(wf, input: input));
         }
       }
       await save();
@@ -144,21 +219,113 @@ class WatchlistService {
       app.refreshUi();
     }
   }
+
+  /// Auslöser „Beobachten“ eines Prozesses → zugehöriger Watchlist-Eintrag.
+  WatchItem? forFlow(String flowId) => items.where((i) => i.flowId == flowId).firstOrNull;
+
+  /// Hält den Eintrag eines Prozesses mit seinem Auslöser im Gleichklang (anlegen, ändern, entfernen).
+  Future<void> syncFlow(Workflow wf) async {
+    final t = wf.trigger;
+    final existing = forFlow(wf.id);
+    final wanted = t != null && t.str('mode') == 'watch' && t.config['watchInline'] == true && t.str('watchTarget').trim().isNotEmpty;
+    if (!wanted) {
+      if (existing != null) {
+        items.remove(existing);
+        await save();
+      }
+      return;
+    }
+    final kind = t.str('watchKind', 'page') == 'topic' ? WatchKind.topic : WatchKind.page;
+    var target = t.str('watchTarget').trim();
+    if (kind == WatchKind.page && !target.startsWith('http')) target = 'https://$target';
+    final interval = (t.config['interval'] as num?)?.toInt() ?? 60;
+    final prompt = t.config['promptMode'] == true && kind == WatchKind.topic;
+    final recent = t.config['recentOnly'] == true;
+    final item = existing ?? WatchItem(id: 'wf-${wf.id}', kind: kind, title: wf.name, target: target, notify: false, summarize: false, flowId: wf.id);
+    final changed = existing == null || item.target != target || item.kind != kind || item.promptMode != prompt;
+    item
+      ..kind = kind
+      ..title = wf.name
+      ..target = target
+      ..intervalMinutes = interval < 1 ? 1 : interval
+      ..promptMode = prompt
+      ..recentOnly = recent
+      ..enabled = wf.enabled
+      ..notify = false
+      ..summarize = false
+      ..flowId = wf.id;
+    if (prompt) {
+      final q = t.str('watchQuery').trim();
+      item.query = q.isNotEmpty ? q : keywordsOf(target);
+    } else {
+      item.query = '';
+    }
+    if (changed && existing != null) {
+      // neu beginnen: die nächste Prüfung (spätestens in 30 s) merkt sich den Ausgangsstand
+      item
+        ..fingerprint = null
+        ..snapshot = ''
+        ..lastCheck = null
+        ..seenLinks.clear();
+    }
+    if (existing == null) items.insert(0, item);
+    await save();
+    unawaited(app.syncAutomationAlarms());
+  }
 }
 
 // ====================================================================== Prozesse
+
+/// Was beim Vorab-Check geprüft wurde.
+class PreflightCheck {
+  PreflightCheck(this.label, {this.ok = true, this.warn = false, this.detail = '', this.nodeId, this.fix});
+  final String label;
+  final bool ok;
+
+  /// Hinweis, aber kein Hindernis.
+  final bool warn;
+  final String detail;
+  final String? nodeId;
+
+  /// Mögliche Behebung (z. B. 'internet', 'login:<serverId>', 'conn:<id>', 'node').
+  final String? fix;
+}
+
+/// Fehler eines Bausteins mit Hinweis für Menschen.
+class FlowError {
+  FlowError(this.message, this.hint, {this.fix});
+  final String message;
+  final String hint;
+
+  /// Automatisch behebbar ohne Agent (z. B. 'internet' = Internet erlauben).
+  final String? fix;
+}
+
+class _Cancelled implements Exception {
+  @override
+  String toString() => 'Vom Nutzer gestoppt';
+}
 
 class FlowService {
   FlowService(this.app);
   final AppController app;
   final List<Workflow> flows = [];
 
-  /// Zustand je Prozess und Baustein: running | done | skipped | error
+  /// Zustand je Prozess und Baustein: pending | running | done | skipped | error | stopped
   final Map<String, Map<String, String>> state = {};
 
   /// Ergebnis je Baustein des letzten Laufs.
   final Map<String, Map<String, String>> outputs = {};
+
+  /// Fehler je Baustein des letzten Laufs.
+  final Map<String, Map<String, FlowError>> errors = {};
+
+  /// Gerade laufender Baustein und Startzeit des Laufs (für die Anzeige).
+  final Map<String, String> current = {};
+  final Map<String, DateTime> startedAt = {};
+
   final Set<String> _running = {};
+  final Map<String, Completer<void>> _cancel = {};
 
   bool isRunning(String id) => _running.contains(id);
 
@@ -191,13 +358,18 @@ class FlowService {
       flows.insert(0, wf);
     }
     await save();
+    await app.watchlist.syncFlow(wf);
     app.refreshUi();
   }
 
   Future<void> remove(Workflow wf) async {
+    stop(wf);
     flows.removeWhere((x) => x.id == wf.id);
     state.remove(wf.id);
     outputs.remove(wf.id);
+    errors.remove(wf.id);
+    final w = app.watchlist.forFlow(wf.id);
+    if (w != null) await app.watchlist.remove(w);
     await save();
     app.refreshUi();
   }
@@ -216,6 +388,45 @@ class FlowService {
     return wf;
   }
 
+  /// Prozess „Beobachten“: Auslöser mit Beobachtung → (Zusammenfassen) → Push.
+  Workflow watchFlow({
+    required String name,
+    required WatchKind kind,
+    required String target,
+    required int interval,
+    bool promptMode = false,
+    bool recentOnly = false,
+    String query = '',
+    bool summarize = true,
+    bool notify = true,
+  }) {
+    final wf = Workflow(id: newId(), name: name, description: 'Beobachtet ${kind == WatchKind.page ? 'die Seite' : 'das Thema'} „$target“.');
+    wf.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Beobachten', config: {
+      'mode': 'watch',
+      'watchInline': true,
+      'watchKind': kind == WatchKind.topic ? 'topic' : 'page',
+      'watchTarget': target,
+      'interval': interval,
+      if (promptMode) 'promptMode': true,
+      if (recentOnly) 'recentOnly': true,
+      if (query.isNotEmpty) 'watchQuery': query,
+    }));
+    var last = 'n1';
+    if (summarize) {
+      wf.nodes.add(FlowNode(id: 'n2', type: FlowNodeType.agent, title: 'Zusammenfassen', config: {
+        'prompt': 'Fasse in 2–3 Sätzen auf Deutsch zusammen, was neu ist und warum es relevant sein könnte. Keine Einleitung.\n\n{{vorher}}',
+      }));
+      wf.connect(last, 'n2');
+      last = 'n2';
+    }
+    if (notify) {
+      wf.nodes.add(FlowNode(id: 'n3', type: FlowNodeType.notify, title: 'Push-Nachricht', config: {'title': name, 'text': '{{vorher}}'}));
+      wf.connect(last, 'n3');
+    }
+    wf.layout();
+    return wf;
+  }
+
   /// Fällige Prozesse starten (Zeitplan).
   void checkDue() {
     final now = DateTime.now();
@@ -229,29 +440,240 @@ class FlowService {
 
   void _set(Workflow wf, String node, String s) {
     (state[wf.id] ??= {})[node] = s;
+    if (s == 'running') {
+      current[wf.id] = node;
+    } else if (current[wf.id] == node) {
+      current.remove(wf.id);
+    }
     app.refreshUi();
   }
 
-  /// Führt den Prozess aus. [input] ist der Inhalt des Auslösers (z. B. Watchlist-Meldung).
-  Future<void> run(Workflow wf, {String input = ''}) async {
-    if (!_running.add(wf.id)) return;
+  /// Laufenden Prozess anhalten (bricht den aktuellen Baustein ab).
+  void stop(Workflow wf) {
+    final c = _cancel[wf.id];
+    if (c == null || c.isCompleted) return;
+    c.complete();
+    // läuft gerade ein Agent-Auftrag dieses Prozesses: Modell anhalten
+    if (app.running && app.runningConvId == 'automatik') app.stop();
+    appLog('Prozesse', '${wf.name}: gestoppt');
+    app.refreshUi();
+  }
+
+  // ------------------------------------------------------------ Vorab-Check
+
+  /// Prüft vor dem Start, ob der Prozess laufen kann – ohne etwas auszulösen.
+  Stream<PreflightCheck> preflight(Workflow wf) async* {
+    final probs = wf.problems(toolNames);
+    if (wf.nodes.length < 2) yield PreflightCheck('Mindestens zwei Bausteine', ok: false, detail: 'Hänge an den Auslöser einen Baustein an.');
+    if (probs.isEmpty) {
+      yield PreflightCheck('Aufbau', detail: '${wf.nodes.length} Bausteine, alle verbunden');
+    } else {
+      for (final p in probs) {
+        final n = wf.nodes.where((x) => p.contains('„${x.title}“')).firstOrNull;
+        final loose = p.contains('mit nichts verbunden');
+        yield PreflightCheck(p, ok: false, nodeId: n?.id, fix: loose ? 'autoconnect' : 'node');
+      }
+    }
     final order = wf.order();
-    state[wf.id] = {for (final n in order) n.id: 'pending'};
-    final out = outputs[wf.id] = {};
-    final skipped = <String>{};
+    final needsModel = order.any((n) => n.type == FlowNodeType.agent);
+    if (needsModel) {
+      if (app.canChat) {
+        yield PreflightCheck('Sprachmodell bereit', detail: app.loadedModel?.displayName ?? 'KI-Anbieter');
+      } else if (app.models.isNotEmpty) {
+        yield PreflightCheck('Sprachmodell', warn: true, detail: 'Nicht geladen – wird beim Start automatisch geladen (dauert etwas).');
+      } else {
+        yield PreflightCheck('Sprachmodell', ok: false, detail: 'Für Agent-Bausteine wird ein Modell oder KI-Anbieter gebraucht (Systemcheck).');
+      }
+    }
+    final net = order.any((n) =>
+        n.type == FlowNodeType.http ||
+        n.type == FlowNodeType.mcp ||
+        (n.type == FlowNodeType.trigger && n.str('mode') == 'watch') ||
+        (n.type == FlowNodeType.tool && ([...app.tools, ...app.mcpTools].where((t) => t.name == n.str('tool')).firstOrNull?.requiresNetwork ?? false)));
+    if (net && !wf.allowInternet) {
+      yield PreflightCheck('Internet', ok: false, detail: 'Bausteine brauchen Internet, der Prozess darf aber nicht hinaus.', fix: 'internet');
+    }
+    for (final n in order) {
+      switch (n.type) {
+        case FlowNodeType.trigger:
+          if (n.str('mode') == 'watch' && n.config['watchInline'] == true && n.str('watchTarget').trim().isNotEmpty) {
+            final w = app.watchlist.forFlow(wf.id) ??
+                WatchItem(
+                    id: 'probe',
+                    kind: n.str('watchKind') == 'topic' ? WatchKind.topic : WatchKind.page,
+                    title: wf.name,
+                    target: n.str('watchTarget'),
+                    query: n.str('watchQuery'),
+                    promptMode: n.config['promptMode'] == true,
+                    recentOnly: n.config['recentOnly'] == true);
+            final p = await app.watchlist.preview(w);
+            yield PreflightCheck('„${n.title}“: Beobachtung', ok: p.ok, warn: !p.ok && p.message.contains('keine Treffer'), detail: p.message, nodeId: n.id, fix: p.ok ? null : 'node');
+          }
+        case FlowNodeType.tool:
+          final t = [...app.tools, ...app.mcpTools].where((x) => x.name == n.str('tool')).firstOrNull;
+          if (t != null) {
+            final missing = [
+              for (final p in t.params)
+                if (!p.description.contains('optional') && '${((n.config['args'] as Map?) ?? const {})[p.name] ?? ''}'.trim().isEmpty) p.name
+            ];
+            yield PreflightCheck('„${n.title}“: ${t.title}',
+                warn: missing.isNotEmpty, detail: missing.isEmpty ? 'bereit' : 'Leer: ${missing.join(', ')} – evtl. nötig', nodeId: n.id, fix: missing.isEmpty ? null : 'node');
+          }
+        case FlowNodeType.http:
+          yield await _checkHttp(n);
+        case FlowNodeType.mcp:
+          yield _checkMcp(n);
+        case FlowNodeType.agent:
+        case FlowNodeType.condition:
+        case FlowNodeType.notify:
+        case FlowNodeType.save:
+          break;
+      }
+    }
+  }
+
+  Future<PreflightCheck> _checkHttp(FlowNode n) async {
+    final label = '„${n.title}“: Web-API';
+    final connId = n.str('connection');
+    final conn = connId.isEmpty ? null : app.connections.byId(connId);
+    if (connId.isNotEmpty && conn == null) {
+      return PreflightCheck(label, ok: false, detail: 'Der gewählte Zugang existiert nicht mehr.', nodeId: n.id, fix: 'node');
+    }
+    if (conn != null) {
+      try {
+        if (conn.kind == AuthKind.oauth && !await app.connections.signedIn(conn)) {
+          return PreflightCheck(label, ok: false, detail: 'Zugang „${conn.name}“ ist nicht angemeldet.', nodeId: n.id, fix: 'conn:${conn.id}');
+        }
+        if (const {AuthKind.apiKey, AuthKind.bearer, AuthKind.basic}.contains(conn.kind) && !await app.connections.hasSecret(conn)) {
+          return PreflightCheck(label, ok: false, detail: 'Zugang „${conn.name}“: Schlüssel/Passwort fehlt.', nodeId: n.id, fix: 'conn:${conn.id}');
+        }
+      } catch (e) {
+        return PreflightCheck(label, ok: false, detail: '$e', nodeId: n.id, fix: 'conn:${conn.id}');
+      }
+    }
+    final raw = n.str('url').trim();
+    if (raw.contains('{{')) return PreflightCheck(label, warn: true, detail: 'Adresse enthält Platzhalter – wird erst beim Lauf geprüft.', nodeId: n.id);
+    final u = _resolveUrl(raw, conn);
+    if (u == null || u.host.isEmpty) return PreflightCheck(label, ok: false, detail: 'Ungültige Adresse.', nodeId: n.id, fix: 'node');
+    // Nur erreichbar? (keine Anfrage schicken, die etwas verändert)
+    try {
+      final s = await Socket.connect(u.host, u.hasPort ? u.port : (u.isScheme('https') ? 443 : 80), timeout: const Duration(seconds: 6));
+      s.destroy();
+      return PreflightCheck(label, detail: '${n.str('method', 'GET')} ${u.host} erreichbar${conn == null ? '' : ' · Zugang „${conn.name}“'}', nodeId: n.id);
+    } catch (e) {
+      return PreflightCheck(label, ok: false, detail: '${u.host} nicht erreichbar ($e)', nodeId: n.id, fix: 'node');
+    }
+  }
+
+  PreflightCheck _checkMcp(FlowNode n) {
+    final label = '„${n.title}“: MCP';
+    final srv = app.mcpServers.where((s) => s.id == n.str('server')).firstOrNull;
+    if (srv == null) return PreflightCheck(label, ok: false, detail: 'Server nicht gefunden – im Baustein wählen.', nodeId: n.id, fix: 'node');
+    if (!srv.enabled) return PreflightCheck(label, ok: false, detail: '„${srv.name}“ ist ausgeschaltet (Einstellungen → MCP).', nodeId: n.id, fix: 'mcp');
+    if (app.mcpNeedsLogin.containsKey(srv.id) && !srv.loggedIn) {
+      return PreflightCheck(label, ok: false, detail: '„${srv.name}“ verlangt eine Anmeldung.', nodeId: n.id, fix: 'login:${srv.id}');
+    }
+    if (!srv.tools.any((t) => t.name == n.str('tool'))) {
+      return PreflightCheck(label, ok: false, detail: 'Tool „${n.str('tool')}“ gibt es bei „${srv.name}“ nicht.', nodeId: n.id, fix: 'node');
+    }
+    return PreflightCheck(label, detail: '${srv.name} · ${n.str('tool')}${srv.loggedIn ? ' · angemeldet' : ''}', nodeId: n.id);
+  }
+
+  Uri? _resolveUrl(String raw, ApiConnection? conn) {
+    var url = raw.trim();
+    if (!url.startsWith('http') && conn != null && conn.baseUrl.isNotEmpty) {
+      url = '${conn.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/${url.replaceFirst(RegExp(r'^/+'), '')}';
+    } else if (!url.startsWith('http') && url.isNotEmpty) {
+      url = 'https://$url';
+    }
+    return Uri.tryParse(url);
+  }
+
+  // ------------------------------------------------------------ Ausführen
+
+  /// Was der Fehler bedeutet und was hilft.
+  FlowError _explain(FlowNode n, Object e) {
+    final msg = e is HttpCallException ? e.message : '$e'.replaceFirst('Exception: ', '');
+    final m = msg.toLowerCase();
+    if (e is HttpCallException) {
+      return FlowError(msg, e.hint.isEmpty ? 'Adresse, Methode und Zugang prüfen.' : e.hint);
+    }
+    if (m.contains('nicht ins internet') || m.contains('internet nicht erlaubt')) {
+      return FlowError(msg, 'In den Prozess-Einstellungen „Darf ins Internet“ einschalten.', fix: 'internet');
+    }
+    if (m.contains('nicht gefunden') && n.type == FlowNodeType.tool) {
+      return FlowError(msg, 'Das Werkzeug ist nicht aktiv. Im Baustein ein anderes wählen oder es in den Einstellungen einschalten.');
+    }
+    if (m.contains('kein modell') || m.contains('modell bereit')) {
+      return FlowError(msg, 'Im Systemcheck ein Sprachmodell laden oder unter Einstellungen → KI-Anbieter einen Anbieter einrichten.');
+    }
+    if (m.contains('timeout') || m.contains('zeitüberschreitung')) {
+      return FlowError(msg, 'Der Schritt hat zu lange gedauert – später erneut versuchen oder den Auftrag vereinfachen.');
+    }
+    if (m.contains('nicht angemeldet') || m.contains('anmeldung') || m.contains('401')) {
+      return FlowError(msg, 'Beim Zugang bzw. MCP-Server neu anmelden.');
+    }
+    if (m.contains('socket') || m.contains('failed host lookup') || m.contains('nicht erreichbar')) {
+      return FlowError(msg, 'Keine Verbindung – Internet und Adresse prüfen.');
+    }
+    return FlowError(msg, switch (n.type) {
+      FlowNodeType.agent => 'Auftrag klarer formulieren oder den Agenten reparieren lassen.',
+      FlowNodeType.tool => 'Werkzeug-Angaben prüfen.',
+      FlowNodeType.mcp => 'Server, Tool und Angaben prüfen.',
+      FlowNodeType.http => 'Adresse, Methode und Zugang prüfen.',
+      _ => 'Einstellungen des Bausteins prüfen.',
+    });
+  }
+
+  /// Führt den Prozess aus. [input] ist der Inhalt des Auslösers (z. B. Watchlist-Meldung).
+  /// [startAt]: ab diesem Baustein fortsetzen (vorherige Ergebnisse bleiben).
+  Future<void> run(Workflow wf, {String input = '', String? startAt}) async {
+    if (!_running.add(wf.id)) return;
+    final cancel = _cancel[wf.id] = Completer<void>();
+    final order = wf.order();
+    final prevOut = Map<String, String>.of(outputs[wf.id] ?? const {});
+    final prevState = Map<String, String>.of(state[wf.id] ?? const {});
+    final resumeIdx = startAt == null ? -1 : order.indexWhere((n) => n.id == startAt);
+    state[wf.id] = {
+      for (var i = 0; i < order.length; i++)
+        order[i].id: i < resumeIdx && (prevState[order[i].id] == 'done' || prevState[order[i].id] == 'skipped') ? prevState[order[i].id]! : 'pending'
+    };
+    errors[wf.id] = {};
+    final out = outputs[wf.id] = {
+      if (resumeIdx > 0)
+        for (var i = 0; i < resumeIdx; i++)
+          if (prevOut[order[i].id] != null) order[i].id: prevOut[order[i].id]!
+    };
+    if (resumeIdx > 0 && input.isEmpty) input = prevOut[order.first.id] ?? '';
+    final skipped = <String>{
+      if (resumeIdx > 0)
+        for (var i = 0; i < resumeIdx; i++)
+          if (prevState[order[i].id] == 'skipped') order[i].id
+    };
     final now = DateTime.now();
     wf.lastRun = now;
+    startedAt[wf.id] = now;
     final conv = app.automationConversation();
     final log = ChatEntry(role: 'assistant', via: 'Prozess · ${wf.name}');
     conv.entries
-      ..add(ChatEntry(role: 'user', text: '⚙ Prozess „${wf.name}“ gestartet${input.isEmpty ? '' : ' – ausgelöst durch die Watchlist'}'))
+      ..add(ChatEntry(
+          role: 'user',
+          text: '⚙ Prozess „${wf.name}“ ${resumeIdx > 0 ? 'fortgesetzt' : 'gestartet'}${input.isEmpty || resumeIdx > 0 ? '' : ' – ausgelöst durch die Watchlist'}'))
       ..add(log);
     app.refreshUi();
     final sw = Stopwatch()..start();
     var failed = false;
+    var stopped = false;
     String last = input;
     try {
-      for (final n in order) {
+      for (var idx = 0; idx < order.length; idx++) {
+        final n = order[idx];
+        if (idx < resumeIdx) continue;
+        if (cancel.isCompleted) {
+          stopped = true;
+          _set(wf, n.id, 'stopped');
+          continue;
+        }
         final preds = wf.prev(n.id);
         if (preds.isNotEmpty && preds.every((p) => skipped.contains(p.id))) {
           skipped.add(n.id);
@@ -277,73 +699,37 @@ class FlowService {
         app.refreshUi();
         final t0 = Stopwatch()..start();
         try {
-          String result;
-          switch (n.type) {
-            case FlowNodeType.trigger:
-              result = input.isEmpty ? 'Gestartet ${vars['datum']} ${vars['uhrzeit']}' : input;
-            case FlowNodeType.agent:
-              var prompt = Workflow.fill(n.str('prompt'), vars);
-              if (!n.str('prompt').contains('{{') && prevText.trim().isNotEmpty) prompt = '$prompt\n\nErgebnis des vorigen Schritts:\n$prevText';
-              result = await app.automationAgent(prompt, allowInternet: wf.allowInternet, conv: conv, entry: log);
-            case FlowNodeType.tool:
-              final tool = [...app.tools, ...app.mcpTools].where((t) => t.name == n.str('tool')).firstOrNull;
-              if (tool == null) throw Exception('Werkzeug „${n.str('tool')}“ nicht gefunden');
-              final rawArgs = (n.config['args'] as Map?)?.cast<String, dynamic>() ?? {};
-              final args = {for (final e in rawArgs.entries) e.key: e.value is String ? Workflow.fill(e.value as String, vars) : e.value};
-              step.args = args;
-              result = await tool
-                  .run(args, ToolContext(requestNetwork: (_) async => wf.allowInternet, propose: (a) => log.actions.add(a)))
-                  .timeout(const Duration(seconds: 90));
-              final cut = result.indexOf(moreCardsMarker);
-              if (cut >= 0) {
-                log.cards = [...log.cards, for (final c in parseResultCards(result)) c.toJson()].take(40).toList();
-                result = result.substring(0, cut);
-              }
-            case FlowNodeType.condition:
-              final needle = n.str('contains').toLowerCase().trim();
-              final hit = needle.isNotEmpty && prevText.toLowerCase().contains(needle);
-              final pass = n.config['negate'] == true ? !hit : hit;
-              result = prevText;
-              if (!pass) {
-                skipped.add(n.id);
-                step.observation = 'Bedingung nicht erfüllt – die folgenden Bausteine werden übersprungen.';
-                step.durationMs = t0.elapsedMilliseconds;
-                _set(wf, n.id, 'skipped');
-                continue;
-              }
-            case FlowNodeType.notify:
-              final text = Workflow.fill(n.str('text', '{{vorher}}'), vars).replaceAll(RegExp(r'[*_#>`]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
-              final title = Workflow.fill(n.str('title', wf.name), vars);
-              await BackgroundWork.notify(title.isEmpty ? wf.name : title, text.length > 240 ? '${text.substring(0, 240)}…' : text,
-                  conversationId: conv.id);
-              result = prevText;
-            case FlowNodeType.save:
-              final content = prevText.trim();
-              if (n.str('mode', 'memory') == 'document') {
-                final doc = app.tools.where((t) => t.name == 'create_document').firstOrNull;
-                if (doc == null) throw Exception('Werkzeug „create_document“ nicht verfügbar');
-                final title = Workflow.fill(n.str('title', '${wf.name} ${vars['datum']}'), vars);
-                result = await doc.run({'title': title, 'content': content},
-                    ToolContext(onArtifact: (a) {
-                      conv.artifacts.add(a.toJson());
-                      if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) log.files.add(a.content);
-                    }));
-              } else {
-                final note = content.length > 600 ? '${content.substring(0, 600)}…' : content;
-                await app.memory.add('${n.str('title', wf.name)}: $note', category: 'sonstiges', confirmed: true);
-                result = 'Im Gedächtnis gespeichert.';
-              }
+          final work = _exec(wf, n, vars, prevText, input, conv, log, step);
+          // Stoppen bricht das Warten sofort ab (der Schritt selbst läuft ggf. im Hintergrund aus)
+          final result = await Future.any<String?>([work, cancel.future.then<String?>((_) => throw _Cancelled())]);
+          if (result == null) {
+            // Bedingung nicht erfüllt
+            skipped.add(n.id);
+            out[n.id] = prevText;
+            step.observation = 'Bedingung nicht erfüllt – die folgenden Bausteine werden übersprungen.';
+            _set(wf, n.id, 'skipped');
+            continue;
           }
           out[n.id] = result;
           last = result;
           step.observation = result.length > 1500 ? '${result.substring(0, 1500)} …' : result;
           _set(wf, n.id, 'done');
+        } on _Cancelled {
+          stopped = true;
+          step
+            ..observation = 'Gestoppt.'
+            ..isError = true;
+          _set(wf, n.id, 'stopped');
+          skipped.add(n.id);
         } catch (e) {
           failed = true;
+          final fe = _explain(n, e);
+          (errors[wf.id] ??= {})[n.id] = fe;
           step
-            ..observation = 'Fehler: $e'
+            ..observation = 'Fehler: ${fe.message}\nHinweis: ${fe.hint}'
             ..isError = true;
           _set(wf, n.id, 'error');
+          appLog('Prozesse', '${wf.name} · ${n.title}: ${fe.message}', error: true);
           // nachfolgende Bausteine nicht mehr ausführen
           skipped.add(n.id);
         } finally {
@@ -352,22 +738,189 @@ class FlowService {
       }
     } finally {
       _running.remove(wf.id);
-      wf.lastStatus = failed ? 'Fehler' : 'Erfolgreich';
+      _cancel.remove(wf.id);
+      current.remove(wf.id);
+      startedAt.remove(wf.id);
+      wf.lastStatus = stopped ? 'Gestoppt' : (failed ? 'Fehler' : 'Erfolgreich');
       log
-        ..text = failed
-            ? 'Der Prozess „${wf.name}“ wurde mit Fehlern beendet. Details in den Schritten.'
-            : (last.trim().isEmpty ? 'Prozess „${wf.name}“ abgeschlossen.' : last.trim())
+        ..text = stopped
+            ? 'Der Prozess „${wf.name}“ wurde gestoppt.'
+            : failed
+                ? 'Der Prozess „${wf.name}“ wurde mit Fehlern beendet. Details in den Schritten.'
+                : (last.trim().isEmpty ? 'Prozess „${wf.name}“ abgeschlossen.' : last.trim())
         ..durationMs = sw.elapsedMilliseconds;
       conv.updated = DateTime.now();
       await app.storage.saveConversation(conv);
       await save();
       unawaited(app.logActivity(Activity(
           kind: 'flow',
-          title: 'Prozess „${wf.name}“ ${failed ? 'mit Fehlern beendet' : 'ausgeführt'}',
+          title: 'Prozess „${wf.name}“ ${stopped ? 'gestoppt' : (failed ? 'mit Fehlern beendet' : 'ausgeführt')}',
           detail: '${order.length} Bausteine · ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(1)} s',
           approval: 'Von dir angelegt',
           conversationId: conv.id)));
       app.refreshUi();
     }
+  }
+
+  /// Einen Baustein ausführen. null = Bedingung nicht erfüllt (Rest überspringen).
+  Future<String?> _exec(Workflow wf, FlowNode n, Map<String, String> vars, String prevText, String input, Conversation conv,
+      ChatEntry log, StepLog step) async {
+    switch (n.type) {
+      case FlowNodeType.trigger:
+        return input.isEmpty ? 'Gestartet ${vars['datum']} ${vars['uhrzeit']}' : input;
+      case FlowNodeType.agent:
+        var prompt = Workflow.fill(n.str('prompt'), vars);
+        if (!n.str('prompt').contains('{{') && prevText.trim().isNotEmpty) prompt = '$prompt\n\nErgebnis des vorigen Schritts:\n$prevText';
+        return app.automationAgent(prompt, allowInternet: wf.allowInternet, conv: conv, entry: log);
+      case FlowNodeType.tool:
+        final tool = [...app.tools, ...app.mcpTools].where((t) => t.name == n.str('tool')).firstOrNull;
+        if (tool == null) throw Exception('Werkzeug „${n.str('tool')}“ nicht gefunden');
+        if (tool.requiresNetwork && !wf.allowInternet) throw Exception('Internet nicht erlaubt (Werkzeug ${tool.title})');
+        final rawArgs = (n.config['args'] as Map?)?.cast<String, dynamic>() ?? {};
+        final args = {for (final e in rawArgs.entries) e.key: e.value is String ? Workflow.fill(e.value as String, vars) : e.value};
+        step.args = args;
+        var result = await tool
+            .run(args, ToolContext(requestNetwork: (_) async => wf.allowInternet, propose: (a) => log.actions.add(a)))
+            .timeout(const Duration(seconds: 90));
+        final cut = result.indexOf(moreCardsMarker);
+        if (cut >= 0) {
+          log.cards = [...log.cards, for (final c in parseResultCards(result)) c.toJson()].take(40).toList();
+          result = result.substring(0, cut);
+        }
+        return result;
+      case FlowNodeType.http:
+        if (!wf.allowInternet) throw Exception('Internet nicht erlaubt (Web-API)');
+        final connId = n.str('connection');
+        final conn = connId.isEmpty ? null : app.connections.byId(connId);
+        if (connId.isNotEmpty && conn == null) throw Exception('Zugang nicht gefunden – im Baustein neu wählen');
+        var uri = _resolveUrl(Workflow.fill(n.str('url'), vars), conn);
+        if (uri == null || uri.host.isEmpty) throw Exception('Ungültige Adresse „${n.str('url')}“');
+        final headers = <String, String>{};
+        final rawH = n.config['headers'];
+        if (rawH is Map) {
+          for (final e in rawH.entries) {
+            headers[e.key.toString()] = Workflow.fill(e.value.toString(), vars);
+          }
+        } else if (rawH is String) {
+          for (final line in rawH.split('\n')) {
+            final i = line.indexOf(':');
+            if (i > 0) headers[line.substring(0, i).trim()] = Workflow.fill(line.substring(i + 1).trim(), vars);
+          }
+        }
+        if (conn != null) {
+          final (h, q) = await app.connections.authFor(conn);
+          headers.addAll(h);
+          if (q.isNotEmpty) uri = uri.replace(queryParameters: {...uri.queryParameters, ...q});
+        }
+        final method = n.str('method', 'GET').toUpperCase();
+        final body = const {'GET', 'HEAD', 'DELETE'}.contains(method) ? null : Workflow.fill(n.str('body'), vars);
+        step.args = {'method': method, 'url': uri.replace(queryParameters: uri.queryParameters.isEmpty ? null : {for (final k in uri.queryParameters.keys) k: '…'}).toString()};
+        final r = await httpCall(method: method, url: uri, headers: headers, body: body);
+        final path = n.str('extract').trim();
+        if (path.isNotEmpty) {
+          try {
+            final v = jsonPath(jsonDecode(r.body), path);
+            if (v == null) throw Exception('„$path“ nicht in der Antwort gefunden');
+            return v is String ? v : const JsonEncoder.withIndent('  ').convert(v);
+          } on FormatException {
+            throw Exception('Antwort ist kein JSON – „Wert auslesen“ leeren');
+          }
+        }
+        return r.pretty.isEmpty ? 'HTTP ${r.status} (ohne Inhalt)' : r.pretty;
+      case FlowNodeType.mcp:
+        if (!wf.allowInternet) throw Exception('Internet nicht erlaubt (MCP-Server)');
+        final tool = app.mcpToolFor(n.str('server'), n.str('tool'));
+        if (tool == null) throw Exception('MCP-Tool „${n.str('tool')}“ nicht gefunden – Server verbinden und Tool wählen');
+        final rawArgs = (n.config['args'] as Map?)?.cast<String, dynamic>() ?? {};
+        final args = <String, dynamic>{
+          for (final e in rawArgs.entries)
+            if ('${e.value}'.trim().isNotEmpty) e.key: e.value is String ? Workflow.fill(e.value as String, vars) : e.value
+        };
+        step.args = args;
+        var result = await tool.run(args, ToolContext(requestNetwork: (_) async => true)).timeout(const Duration(seconds: 90));
+        final cut = result.indexOf(moreCardsMarker);
+        if (cut >= 0) result = result.substring(0, cut);
+        return result;
+      case FlowNodeType.condition:
+        final needle = Workflow.fill(n.str('contains'), vars).toLowerCase().trim();
+        final hit = needle.isNotEmpty && prevText.toLowerCase().contains(needle);
+        final pass = n.config['negate'] == true ? !hit : hit;
+        return pass ? prevText : null;
+      case FlowNodeType.notify:
+        final text = Workflow.fill(n.str('text', '{{vorher}}'), vars).replaceAll(RegExp(r'[*_#>`]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+        final title = Workflow.fill(n.str('title', wf.name), vars);
+        await BackgroundWork.notify(title.isEmpty ? wf.name : title, text.length > 240 ? '${text.substring(0, 240)}…' : text, conversationId: conv.id);
+        return prevText;
+      case FlowNodeType.save:
+        final content = prevText.trim();
+        if (n.str('mode', 'memory') == 'document') {
+          final doc = app.tools.where((t) => t.name == 'create_document').firstOrNull;
+          if (doc == null) throw Exception('Werkzeug „create_document“ nicht verfügbar');
+          final title = Workflow.fill(n.str('title', '${wf.name} ${vars['datum']}'), vars);
+          return doc.run({'title': title, 'content': content}, ToolContext(onArtifact: (a) {
+            conv.artifacts.add(a.toJson());
+            if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) log.files.add(a.content);
+          }));
+        }
+        final note = content.length > 600 ? '${content.substring(0, 600)}…' : content;
+        await app.memory.add('${n.str('title', wf.name)}: $note', category: 'sonstiges', confirmed: true);
+        return 'Im Gedächtnis gespeichert.';
+    }
+  }
+
+  // ------------------------------------------------------------ Reparieren
+
+  /// Fehler automatisch beheben, die keinen Agenten brauchen. true = erledigt.
+  Future<bool> quickFix(Workflow wf, String fix) async {
+    switch (fix) {
+      case 'internet':
+        wf.allowInternet = true;
+        await upsert(wf);
+        return true;
+      case 'autoconnect':
+        final n = wf.autoConnect();
+        await upsert(wf);
+        return n > 0;
+    }
+    return false;
+  }
+
+  /// Der Agent repariert die Einstellungen eines Bausteins anhand der Fehlermeldung.
+  /// Gibt eine kurze Beschreibung der Änderung zurück (oder wirft).
+  Future<String> agentFix(Workflow wf, FlowNode n, {String? error}) async {
+    final err = error ?? errors[wf.id]?[n.id]?.message ?? wf.problems(toolNames).where((p) => p.contains('„${n.title}“')).join(' ');
+    final tools = [...app.tools, ...app.mcpTools];
+    final toolInfo = n.type == FlowNodeType.tool
+        ? '\nVerfügbare Werkzeuge (Name: Parameter): ${tools.take(40).map((t) => '${t.name}: ${t.params.map((p) => p.name).join('/')}').join('; ')}'
+        : '';
+    final mcpInfo = n.type == FlowNodeType.mcp
+        ? '\nMCP-Server: ${app.mcpServers.map((s) => '${s.id} (${s.name}): ${s.tools.map((t) => t.name).take(20).join(', ')}').join('; ')}'
+        : '';
+    final prev = wf.prev(n.id).map((p) => outputs[wf.id]?[p.id]).whereType<String>().join('\n');
+    final text = await app.automationText(
+        'Ein Baustein eines Automatisierungs-Prozesses ist fehlgeschlagen. Repariere seine Einstellungen.\n'
+        'Prozess: ${wf.name}${wf.description.isEmpty ? '' : ' – ${wf.description}'}\n'
+        'Baustein-Typ: ${n.type.name} (${n.type.label}), Titel: ${n.title}\n'
+        'Einstellungen (JSON): ${jsonEncode(n.config)}\n'
+        'Fehler: $err$toolInfo$mcpInfo\n'
+        '${prev.isEmpty ? '' : 'Eingabe vom vorigen Baustein (Auszug): ${prev.length > 600 ? prev.substring(0, 600) : prev}\n'}'
+        'Antworte nur mit JSON: {"config": {…vollständige korrigierte Einstellungen…}, "change": "Was du geändert hast, ein Satz auf Deutsch"}',
+        grammar: Workflow.jsonGrammar,
+        maxTokens: 700);
+    final s = text.indexOf('{'), e = text.lastIndexOf('}');
+    if (s < 0 || e <= s) throw Exception('Der Agent hat keinen Vorschlag gemacht (Modell geladen?).');
+    final j = (jsonDecode(text.substring(s, e + 1)) as Map).cast<String, dynamic>();
+    final cfg = (j['config'] as Map?)?.cast<String, dynamic>();
+    if (cfg == null || cfg.isEmpty) throw Exception('Der Agent hat keine Einstellungen geliefert.');
+    // nur bekannte bzw. sinnvolle Felder übernehmen, Typ-spezifische Pflichtwerte bleiben erhalten
+    final before = jsonEncode(n.config);
+    n.config.addAll(cfg);
+    if (n.type == FlowNodeType.trigger) n.config['mode'] = cfg['mode'] ?? n.config['mode'];
+    if (jsonEncode(n.config) == before) throw Exception('Der Agent hat nichts geändert.');
+    errors[wf.id]?.remove(n.id);
+    await upsert(wf);
+    final change = (j['change'] ?? 'Einstellungen angepasst').toString();
+    appLog('Prozesse', '${wf.name} · ${n.title}: vom Agenten repariert – $change');
+    return change;
   }
 }

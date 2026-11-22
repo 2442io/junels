@@ -142,7 +142,8 @@ class _HomeShellState extends State<HomeShell> {
     if (a == 'conversation') {
       openConversation(context);
     } else if (a == 'watch' || a == 'flows' || a == 'tasks') {
-      final s = AppSection.values.firstWhere((x) => x.name == a);
+      // Watchlist gehört jetzt zu den Prozessen
+      final s = a == 'watch' ? AppSection.flows : AppSection.values.firstWhere((x) => x.name == a);
       final desktop = MediaQuery.sizeOf(context).width >= 1100 && !_focus;
       if (desktop) {
         _go(s);

@@ -139,9 +139,9 @@ class _SidebarState extends State<Sidebar> {
               const SectionLabel('Automatik'),
               item(AppSection.tasks,
                   count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
-              item(AppSection.flows, count: app.flows.flows.isEmpty ? null : '${app.flows.flows.length}'),
-              item(AppSection.watch,
-                  count: app.watchlist.unseen == 0 ? (app.watchlist.items.isEmpty ? null : '${app.watchlist.items.length}') : null,
+              // Watchlist ist Teil der Prozesse (Beobachten-Auslöser im Canvas)
+              item(AppSection.flows,
+                  count: app.watchlist.unseen > 0 || app.flows.flows.isEmpty ? null : '${app.flows.flows.length}',
                   dot: app.watchlist.unseen > 0),
               const SectionLabel('Arbeitsbereich'),
               item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
