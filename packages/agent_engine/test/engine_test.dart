@@ -1417,6 +1417,11 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
 
     // Designs & Vorlagen
     check(designForTopic('Präsentation für unsere Reise nach Japan').id == 'reise', 'Design passend zum Thema (Reise)');
+    check(designForTopic('Reise nach Venedig am Abend').id == 'reise-nacht' && designForTopic('Wanderreise in Peru').id == 'reise-landschaft' &&
+        designForTopic('Reise-Newsletter im Vintage-Look').id == 'reise-vintage', 'Reise-Varianten nach Stimmung');
+    final night = readZip(buildPptx(title: 'N', slides: splitSlides('# A\n- x\n# B\n- y\n# C\n- z').slides, design: designById('reise-nacht')));
+    check(utf8.decode(night['ppt/slides/slide2.xml']!).contains('14213D') && utf8.decode(night['ppt/slides/slide2.xml']!).contains('star5'),
+        'Nacht-Design: dunkler Hintergrund, Sterne');
     final req = 'Design passend zur Reise: https://media.slidesgo.com/storage/1/travel.jpg https://slidesgo.com/de/theme/surat-reisetour-newsletter#x';
     check(designReferencesIn(req).length == 2 && wantsDesign(req), 'Design-Vorlagen-Links erkannt');
     final travel = buildPptx(title: 'Reise', slides: splitSlides('# Anreise\n- a\n# Tag 1\n- b\n# Tag 2\n- c\n# Heimreise\n- d').slides,
@@ -1462,12 +1467,12 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
         return (sample, 'image/png');
       },
     );
-    check(fetched.contains('https://slidesgo.com/img/prev.png') && look.design.motif == DesignMotif.travel && look.design.source != null &&
+    check(fetched.contains('https://slidesgo.com/img/prev.png') && look.design.journey && look.design.source != null &&
         {look.design.primary, look.design.secondary}.any((c) => int.parse(c.substring(0, 2), radix: 16) > 0xB0) &&
         {look.design.primary, look.design.secondary}.any((c) => int.parse(c.substring(4, 6), radix: 16) > 0x70),
         'Design aus Beispielbildern: ${look.design.primary}/${look.design.secondary}');
     final denied = await resolveDesign(ctx: ToolContext(requestNetwork: (_) async => false)..userRequest = req, topic: 'Reise');
-    check(denied.design.id == 'reise' && denied.notes.any((n) => n.contains('Internet')), 'Ohne Freigabe: Themen-Design, kein Abruf');
+    check(denied.design.id.startsWith('reise') && denied.notes.any((n) => n.contains('Internet')), 'Ohne Freigabe: Themen-Design, kein Abruf');
     ChartSpec? spec;
     final r3 = await CreateChartTool(out, (s) async {
       spec = s;

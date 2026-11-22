@@ -8,7 +8,7 @@ import 'office_read.dart';
 import 'pdf_writer.dart' show DocTheme;
 
 /// Dekor-Motiv auf den Folien (eigene einfache Formen, keine fremden Grafiken).
-enum DesignMotif { none, travel, waves, dots, corners, lines }
+enum DesignMotif { none, travel, waves, dots, corners, lines, mountains, paper, night }
 
 class SlideDesign {
   const SlideDesign({
@@ -53,7 +53,13 @@ class SlideDesign {
   /// Woher das Design stammt (für die Rückmeldung an den Nutzer)
   final String? source;
 
-  String get lightColor => light ?? mix(primary, 'FFFFFF', 0.9);
+  String get lightColor => light ?? mix(primary, dark ? background : 'FFFFFF', 0.9);
+
+  /// Dunkler Folienhintergrund (helle Schrift)
+  bool get dark => luminance(background) < 0.3;
+
+  /// Grundfläche für Tabellenzeilen, Punkte usw.
+  String get surface => dark ? background : 'FFFFFF';
   String get accentColor => accent ?? secondary;
   String get heading => headFont ?? font;
 
@@ -264,6 +270,46 @@ const builtInDesigns = <SlideDesign>[
       motif: DesignMotif.travel,
       journey: true),
   SlideDesign(
+      id: 'reise-landschaft',
+      name: 'Reise · Landschaft',
+      primary: '2E6E5E',
+      secondary: 'F0A04B',
+      accent: '7FB7BE',
+      light: 'EAF3EE',
+      background: 'FBFAF5',
+      font: 'Trebuchet MS',
+      headFont: 'Georgia',
+      motif: DesignMotif.mountains,
+      journey: true),
+  SlideDesign(
+      id: 'reise-vintage',
+      name: 'Reise · Vintage',
+      primary: '8A5A3C',
+      secondary: 'D98E73',
+      accent: '7A9E9F',
+      light: 'F1E4D0',
+      background: 'F7EFE3',
+      text: '3B2F28',
+      muted: '8C7B6E',
+      font: 'Georgia',
+      headFont: 'Georgia',
+      motif: DesignMotif.paper,
+      journey: true),
+  SlideDesign(
+      id: 'reise-nacht',
+      name: 'Reise · Nacht',
+      primary: 'E8B04A',
+      secondary: 'E36F8A',
+      accent: '6FA8DC',
+      light: '1E2E52',
+      background: '14213D',
+      text: 'EEF1F7',
+      muted: 'A9B3C6',
+      font: 'Trebuchet MS',
+      headFont: 'Georgia',
+      motif: DesignMotif.night,
+      journey: true),
+  SlideDesign(
       id: 'natur', name: 'Natur', primary: '3D7A3A', secondary: 'C8A15A', light: 'EEF4E8', font: 'Calibri', headFont: 'Georgia', motif: DesignMotif.waves),
   SlideDesign(id: 'business', name: 'Business', primary: '1F3A60', secondary: '3E86C6', light: 'EDF2F8', font: 'Calibri', motif: DesignMotif.corners),
   SlideDesign(id: 'technik', name: 'Technik', primary: '3A3FD1', secondary: '18B6C4', light: 'EEF0FC', font: 'Segoe UI', motif: DesignMotif.dots),
@@ -296,6 +342,16 @@ SlideDesign designForTopic(String text) {
     if (hits > bestHits) {
       bestHits = hits;
       best = designById(e.key);
+    }
+  }
+  if (best.id == 'reise') {
+    // Reise-Varianten nach Stimmung
+    if (RegExp(r'nacht|abend|venedig|karneval|night|sterne|romanti|lichter', caseSensitive: false).hasMatch(text)) return designById('reise-nacht');
+    if (RegExp(r'vintage|retro|scrapbook|nostalg|tagebuch|newsletter|erinnerung|postkarte', caseSensitive: false).hasMatch(text)) {
+      return designById('reise-vintage');
+    }
+    if (RegExp(r'berg|alpen|anden|peru|wander|trekking|landschaft|nationalpark|safari|natur|see\b|fjord', caseSensitive: false).hasMatch(text)) {
+      return designById('reise-landschaft');
     }
   }
   return best;

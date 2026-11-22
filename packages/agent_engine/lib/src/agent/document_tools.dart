@@ -265,14 +265,14 @@ class CreatePresentationTool extends AgentTool {
       '![kurze Bildbeschreibung auf Englisch](auto) – es wird automatisch erzeugt (Bildmodell), oder ![](name.png) für ein vorhandenes Bild. '
       'Vorher mit generate_image erzeugte Bilder kommen automatisch auf Folien ohne Bild. '
       'Baue einen roten Faden: Einstieg → Etappen → Abschluss, Folientitel als Stationen. '
-      'design: passender Stil (reise, natur, business, technik, warm, elegant, bildung, gesundheit) oder auto. '
+      'design: passender Stil (reise, reise-landschaft, reise-vintage, reise-nacht, natur, business, technik, warm, elegant, bildung, gesundheit) oder auto. '
       'vorlage: Links oder Dateinamen von Beispielbildern oder PowerPoint/Word/Excel-Vorlagen des Nutzers – Farben, Schriften und Folienmaster werden übernommen.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Titel der Präsentation'),
         ToolParam('content', ParamType.string, 'Folien in Markdown'),
         ToolParam('design', ParamType.enumeration, 'Stil der Folien',
-            values: ['auto', 'reise', 'natur', 'business', 'technik', 'warm', 'elegant', 'bildung', 'gesundheit', 'standard']),
+            values: ['auto', 'reise', 'reise-landschaft', 'reise-vintage', 'reise-nacht', 'natur', 'business', 'technik', 'warm', 'elegant', 'bildung', 'gesundheit', 'standard']),
         ToolParam('vorlage', ParamType.string, 'Design-Vorlagen: Links/Dateinamen (optional)'),
       ];
 

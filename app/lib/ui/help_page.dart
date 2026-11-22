@@ -191,7 +191,7 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
     title: 'Designs & Vorlagen',
     summary: 'Präsentationen und Dokumente im passenden Look – oder nach deiner Vorlage.',
     keywords: 'design vorlage template powerpoint pptx word docx excel xlsx folien farben schrift reise roter faden customer journey slidesgo',
-    body: '''Der Agent wählt für Präsentationen automatisch einen Stil, der zum Thema passt (z. B. **Reise**, Natur, Business, Technik, Bildung, Gesundheit). Eine Reise-Präsentation bekommt etwa eine Flugroute auf der Titelfolie, eine **Reiseroute** als Übersicht und unten eine Fortschrittsleiste – so entsteht ein **roter Faden**.
+    body: '''Der Agent wählt für Präsentationen automatisch einen Stil, der zum Thema passt (z. B. **Reise** – auch als Landschaft, Vintage oder Nacht –, Natur, Business, Technik, Bildung, Gesundheit). Eine Reise-Präsentation bekommt etwa eine Flugroute auf der Titelfolie, eine **Reiseroute** als Übersicht und unten eine Fortschrittsleiste – so entsteht ein **roter Faden**.
 
 **Eigene Vorlagen nutzen**
 - **PowerPoint anhängen** (.pptx/.potx): Folienmaster, Hintergründe, Farben und Schriften werden übernommen.

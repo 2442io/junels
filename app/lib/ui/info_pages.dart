@@ -13,6 +13,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.1', [
+    'Drei neue Reise-Designs: Landschaft (Berge, Sonne), Vintage (Scrapbook mit Klebestreifen) und Nacht (Sterne, Mond, dunkle Folien) – der Agent wählt passend zur Stimmung',
+  ]),
   ('1.31.0', [
     'Designs & Vorlagen: Präsentationen im passenden Stil zum Thema (z. B. Reise mit Flugroute, Reiseroute und Fortschrittsleiste als roter Faden)',
     'Eigene PowerPoint-, Word- und Excel-Dateien sowie Beispielbilder und Vorlagen-Links werden als Design-Vorlage übernommen',

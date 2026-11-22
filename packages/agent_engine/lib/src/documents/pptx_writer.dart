@@ -58,9 +58,9 @@ String _gradRect(int id, int x, int y, int w, int h, String c1, String c2, {int 
 
 /// Vordefinierte Form (ellipse, wave, arc …) mit Füllung und/oder Linie.
 String _shape(int id, String prst, int x, int y, int w, int h,
-        {String? fill, String? line, int lineW = 12700, bool dashed = false, int alpha = 100000, String text = ''}) =>
+        {String? fill, String? line, int lineW = 12700, bool dashed = false, int alpha = 100000, String text = '', int rot = 0}) =>
     '<p:sp><p:nvSpPr><p:cNvPr id="$id" name="Dekor $id"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
-    '<p:spPr><a:xfrm><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></a:xfrm><a:prstGeom prst="$prst"><a:avLst/></a:prstGeom>'
+    '<p:spPr><a:xfrm${rot == 0 ? '' : ' rot="${rot * 60000}"'}><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></a:xfrm><a:prstGeom prst="$prst"><a:avLst/></a:prstGeom>'
     '${fill == null ? '<a:noFill/>' : '<a:solidFill><a:srgbClr val="$fill"><a:alpha val="$alpha"/></a:srgbClr></a:solidFill>'}'
     '${line == null ? '<a:ln><a:noFill/></a:ln>' : '<a:ln w="$lineW" cap="rnd"><a:solidFill><a:srgbClr val="$line"/></a:solidFill>${dashed ? '<a:prstDash val="dash"/>' : ''}</a:ln>'}'
     '</p:spPr><p:txBody><a:bodyPr lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>'
@@ -98,6 +98,44 @@ String _motif(SlideDesign d, int Function() nextId, {required bool title}) {
     case DesignMotif.corners:
       b.write(_shape(nextId(), 'rtTriangle', e(title ? 760 : 880), e(title ? 340 : 460), e(title ? 200 : 80), e(title ? 200 : 80),
           fill: title ? 'FFFFFF' : d.secondary, alpha: title ? 15000 : 35000));
+    case DesignMotif.mountains:
+      if (title) {
+        b.write(_shape(nextId(), 'ellipse', e(760), e(70), e(90), e(90), fill: d.secondary, alpha: 90000));
+        b.write(_shape(nextId(), 'triangle', e(420), e(300), e(360), e(240), fill: 'FFFFFF', alpha: 14000));
+        b.write(_shape(nextId(), 'triangle', e(640), e(250), e(420), e(290), fill: 'FFFFFF', alpha: 20000));
+        b.write(_shape(nextId(), 'triangle', e(560), e(360), e(240), e(180), fill: mix(d.primary, '000000', 0.25), alpha: 60000));
+        b.write(_shape(nextId(), 'wave', 0, e(480), _slideW, e(80), fill: 'FFFFFF', alpha: 16000));
+      } else {
+        b.write(_shape(nextId(), 'triangle', e(800), e(450), e(110), e(80), fill: d.primary, alpha: 14000));
+        b.write(_shape(nextId(), 'triangle', e(860), e(430), e(120), e(100), fill: d.secondary, alpha: 18000));
+        b.write(_shape(nextId(), 'ellipse', e(900), e(22), e(26), e(26), fill: d.secondary, alpha: 70000));
+      }
+    case DesignMotif.paper:
+      if (title) {
+        // Scrapbook: eingerahmte Karte mit Klebestreifen und Poststempel
+        b.write(_shape(nextId(), 'rect', e(560), e(90), e(320), e(300), fill: 'FFFFFF', alpha: 22000, rot: 4));
+        b.write(_shape(nextId(), 'rect', e(580), e(110), e(280), e(260), line: 'FFFFFF', lineW: 19050, dashed: true, rot: 4));
+        b.write(_shape(nextId(), 'rect', e(540), e(70), e(110), e(26), fill: d.accentColor, alpha: 70000, rot: -12));
+        b.write(_shape(nextId(), 'rect', e(800), e(370), e(110), e(26), fill: d.accentColor, alpha: 70000, rot: -12));
+        b.write(_shape(nextId(), 'ellipse', e(820), e(40), e(100), e(100), line: 'FFFFFF', lineW: 19050, dashed: true));
+      } else {
+        b.write(_shape(nextId(), 'rect', e(20), e(20), e(920), e(500), line: d.muted, lineW: 9525, dashed: true));
+        b.write(_shape(nextId(), 'rect', e(850), e(14), e(90), e(22), fill: d.accentColor, alpha: 55000, rot: 10));
+      }
+    case DesignMotif.night:
+      final pts = title
+          ? const [(620, 60, 6), (700, 140, 4), (780, 90, 8), (860, 200, 5), (900, 60, 4), (660, 240, 5), (540, 120, 3), (820, 300, 4)]
+          : const [(860, 30, 4), (900, 60, 6), (930, 24, 3)];
+      for (final (x, y, r) in pts) {
+        b.write(_shape(nextId(), 'star5', e(x), e(y), e(r * 2), e(r * 2), fill: x % 3 == 0 ? d.primary : 'FFFFFF', alpha: 85000));
+      }
+      if (title) {
+        b.write(_shape(nextId(), 'ellipse', e(740), e(150), e(110), e(110), fill: d.primary, alpha: 85000));
+        b.write(_shape(nextId(), 'ellipse', e(765), e(140), e(100), e(100), fill: mix(d.background, d.secondary, 0.2)));
+        b.write(_shape(nextId(), 'wave', 0, e(470), _slideW, e(90), fill: d.accentColor, alpha: 22000));
+      } else {
+        b.write(_shape(nextId(), 'wave', 0, e(492), _slideW, e(60), fill: d.accentColor, alpha: 16000));
+      }
     case DesignMotif.lines:
     case DesignMotif.none:
       break;
@@ -117,7 +155,7 @@ String _journey(SlideDesign d, int Function() nextId, int index, int total) {
     final cur = i == index;
     final r = cur ? 7.0 : 4.0;
     b.write(_shape(nextId(), 'ellipse', e(x - r), e(y - r), e(2 * r), e(2 * r),
-        fill: cur ? d.secondary : (i < index ? d.primary : 'FFFFFF'), line: cur ? null : d.primary, lineW: 9525));
+        fill: cur ? d.secondary : (i < index ? d.primary : d.surface), line: cur ? null : d.primary, lineW: 9525));
   }
   return b.toString();
 }
@@ -142,8 +180,8 @@ String _table(int id, int x, int y, int w, List<List<String>> rows, int size, Sl
   for (var r = 0; r < rows.length; r++) {
     b.write('<a:tr h="$rowH">');
     for (final cell in rows[r]) {
-      final fill = r == 0 ? d.primary : (r.isEven ? d.lightColor : 'FFFFFF');
-      final color = r == 0 ? 'FFFFFF' : d.text;
+      final fill = r == 0 ? d.primary : (r.isEven ? d.lightColor : d.surface);
+      final color = r == 0 ? (d.dark ? d.background : 'FFFFFF') : d.text;
       b.write('<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>${_runs(cell, size, color: color, bold: r == 0)}'
           '<a:endParaRPr lang="de-DE" sz="$size"/></a:p></a:txBody>'
           '<a:tcPr marL="91440" marR="91440" marT="45720" marB="45720"><a:solidFill><a:srgbClr val="$fill"/></a:solidFill></a:tcPr></a:tc>');
@@ -204,7 +242,9 @@ Uint8List buildPptx({
     int next() => id++;
     final onDark = !useTemplate;
     if (!useTemplate) {
-      sp.write(_gradRect(next(), 0, 0, _slideW, _slideH, d.primary, mix(d.primary, d.secondary, d.motif == DesignMotif.travel ? 0.45 : 0.25),
+      final c1 = d.dark ? d.background : d.primary;
+      sp.write(_gradRect(next(), 0, 0, _slideW, _slideH, c1,
+          d.dark ? mix(d.background, d.secondary, 0.3) : mix(d.primary, d.secondary, d.motif == DesignMotif.travel ? 0.45 : 0.25),
           angle: 30));
       sp.write(_motif(d, next, title: true));
     }
@@ -233,7 +273,7 @@ Uint8List buildPptx({
       sp.write(_motif(d, next, title: false));
     }
     sp.write(_textBox(next(), 'Titel', e(60), e(40), e(840), e(70),
-        '<a:p>${_runs(d.motif == DesignMotif.travel ? 'Die Reiseroute' : 'Ablauf', 3000, color: d.primary, bold: true, major: true)}</a:p>',
+        '<a:p>${_runs(d.journey ? 'Die Reiseroute' : 'Ablauf', 3000, color: d.primary, bold: true, major: true)}</a:p>',
         anchor: 'b'));
     final shown = stops.take(8).toList();
     final rows = shown.length > 4 ? 2 : 1;
@@ -248,7 +288,7 @@ Uint8List buildPptx({
       }
       sp.write(_shape(next(), 'ellipse', e(cx - 22), e(cy - 22), e(44), e(44),
           fill: i == 0 || i == shown.length - 1 ? d.secondary : d.primary,
-          text: _runs('${i + 1}', 1800, color: 'FFFFFF', bold: true)));
+          text: _runs('${i + 1}', 1800, color: d.dark ? d.background : 'FFFFFF', bold: true)));
       sp.write(_textBox(next(), 'Station', e(cx - cw / 2 + 6), e(cy + 30), e(cw - 12), e(70),
           '<a:p><a:pPr algn="ctr"/>${_runs(plainInline(shown[i]), shown.length > 5 ? 1300 : 1500, color: d.text)}</a:p>'));
     }
@@ -263,7 +303,7 @@ Uint8List buildPptx({
     int next() => id++;
     if (!useTemplate) {
       if (d.background != 'FFFFFF') sp.write(_rect(next(), 0, 0, _slideW, _slideH, d.background));
-      if (d.motif == DesignMotif.lines || d.motif == DesignMotif.none) {
+      if (d.motif == DesignMotif.lines || d.motif == DesignMotif.none || d.motif == DesignMotif.paper) {
         sp.write(_rect(next(), 0, 0, _slideW, 8 * _emu, d.primary));
       } else {
         sp.write(_rect(next(), 0, 0, 14 * _emu, _slideH, d.primary));
@@ -274,7 +314,7 @@ Uint8List buildPptx({
     if (s.title.isNotEmpty) {
       sp.write(_textBox(next(), 'Titel', 60 * _emu, top * _emu, (960 - 120) * _emu, 70 * _emu,
           '<a:p>${_runs(s.title, 3000, color: d.primary, bold: true, major: true)}</a:p>', anchor: 'b'));
-      if (d.motif == DesignMotif.travel && !useTemplate) {
+      if (d.journey && !useTemplate) {
         sp.write(_shape(next(), 'line', 60 * _emu, 114 * _emu, 120 * _emu, 0, line: d.secondary, lineW: 28575, dashed: true));
       }
       top = 125;
