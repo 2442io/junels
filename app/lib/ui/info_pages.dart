@@ -13,6 +13,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.38.0', [
+    'Geräte-Setups: Einstellungen als „Desktop“, „Handy“ … speichern und anwenden; nach einer Wiederherstellung bekommt jedes Gerät sein eigenes Setup zurück',
+    'Apps öffnen & steuern (z. B. Spotify): nur Apps aus deiner Freigabeliste – öffnen, Wiedergabe steuern, Suche öffnen. Nie tippen, kaufen, bestellen oder bezahlen; Bank/Shop-Apps nur öffnen; optional mit Rückfrage und nur, wenn du dabei bist',
+    'Konto & Datenschutz-Stufen 0–4: von „Nur dieses Gerät“ bis „Alles“ – immer Ende-zu-Ende verschlüsselt; Daten auf dem Server mit einem Tipp löschen',
+    'Anmeldung mit SSO (z. B. sso.2442.io) über den eigenen Sync-Server: nur dein Konto darf speichern, jede Person hat ihren eigenen Bereich',
+    'Abgleich jetzt auch für Geräte-Setups und eigene Designs',
+  ]),
   ('1.37.1', [
     'Korrektur: In 1.37.0 konnte die Stimme vor jedem Satz lange warten (wirkte stumm). Jetzt wird höchstens einmal am Anfang kurz gepuffert (max. 5 s) – und nur, wenn es hilft',
     'Stimme nutzt wieder weniger Prozessorkerne, damit sie und das Sprachmodell sich nicht gegenseitig bremsen',

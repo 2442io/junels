@@ -185,6 +185,13 @@ def patch_android():
             m = re.search(r'(<activity[^>]*android:name="\.MainActivity".*?</intent-filter>)', s, re.S)
             if m:
                 s = s[:m.end()] + share + s[m.end():]
+        if "<queries>" not in s:
+            # Apps finden und öffnen (Freigabeliste „Apps steuern“), Links in Apps öffnen
+            s = s.replace("<application", '<queries>\n'
+                          '        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>\n'
+                          '        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="https" /></intent>\n'
+                          '        <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="spotify" /></intent>\n'
+                          '    </queries>\n    <application', 1)
         if ".JunelsWidget" not in s:
             s = s.replace("</application>",
                           '    <receiver android:name=".JunelsWidget" android:exported="false" android:label="Frag Junels">\n'
@@ -426,6 +433,11 @@ def patch_macos():
         d["com.apple.security.personal-information.calendars"] = True
         d["com.apple.security.personal-information.addressbook"] = True
         d["com.apple.security.files.bookmarks.app-scope"] = True
+        # Apps steuern (nur Musik-Apps aus der Freigabeliste, z. B. Wiedergabe/Pause bei Spotify)
+        d["com.apple.security.automation.apple-events"] = True
+        d["com.apple.security.temporary-exception.apple-events"] = [
+            "com.spotify.client", "com.apple.Music", "com.apple.podcasts", "com.apple.TV",
+        ]
 
     def release(d):
         common(d)
@@ -437,6 +449,7 @@ def patch_macos():
         d["NSMicrophoneUsageDescription"] = "Für die Spracheingabe. Die Erkennung läuft lokal auf dem Mac."
         d["NSLocalNetworkUsageDescription"] = "Für den Abgleich von Chats und Gedächtnis mit deinem Handy im WLAN."
         d["NSCalendarsUsageDescription"] = "Damit der Agent dir sagen kann, welche Termine du hast."
+        d["NSAppleEventsUsageDescription"] = "Damit Junels freigegebene Apps wie Spotify steuern kann (Wiedergabe, Pause, nächster Titel) – nur Apps, die du erlaubt hast."
         d["NSCalendarsFullAccessUsageDescription"] = "Damit der Agent dir sagen kann, welche Termine du hast."
         d["NSContactsUsageDescription"] = "Damit der Agent Empfänger für E-Mails, WhatsApp und Anrufe findet."
         # Dateien aufs Dock-Symbol ziehen

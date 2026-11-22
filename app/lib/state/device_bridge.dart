@@ -31,6 +31,17 @@ class DeviceBridge implements DeviceActions {
   /// Netzwerkstatus des Systems hat sich geändert.
   void Function(bool online)? onNetwork;
 
+  /// Installierte Apps (Name, ID) – für die Freigabeliste.
+  Future<List<(String, String)>> listApps() async {
+    if (!supported) return const [];
+    final r = await _ch.invokeListMethod<Map>('listApps') ?? const [];
+    return [for (final m in r) ('${m['name']}', '${m['id']}')];
+  }
+
+  Future<void> launchApp(String id) => _ch.invokeMethod('launchApp', {'id': id});
+  Future<void> mediaKey(String id, String key) => _ch.invokeMethod('mediaKey', {'id': id, 'key': key});
+  Future<void> openInApp(String id, String url) => _ch.invokeMethod('openInApp', {'id': id, 'url': url});
+
   /// Ist das Gerät laut System online? null = unbekannt (z. B. iPad/Tests).
   Future<bool?> networkStatus() async {
     if (!supported) return null;

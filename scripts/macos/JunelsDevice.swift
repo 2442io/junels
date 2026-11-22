@@ -18,6 +18,62 @@ enum JunelsDevice {
       switch call.method {
       case "networkStatus":
         result(networkOnline)
+      // ---- Apps steuern (nur Apps aus der Freigabeliste; die Prüfung macht die App vorher)
+      case "listApps":
+        DispatchQueue.global(qos: .userInitiated).async {
+          var out: [[String: String]] = []
+          var seen = Set<String>()
+          for dir in ["/Applications", "/System/Applications", NSHomeDirectory() + "/Applications"] {
+            let items = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
+            for name in items where name.hasSuffix(".app") {
+              let url = URL(fileURLWithPath: dir).appendingPathComponent(name)
+              guard let id = Bundle(url: url)?.bundleIdentifier, !seen.contains(id), id != Bundle.main.bundleIdentifier else { continue }
+              seen.insert(id)
+              out.append(["name": String(name.dropLast(4)), "id": id])
+            }
+          }
+          out.sort { ($0["name"] ?? "").lowercased() < ($1["name"] ?? "").lowercased() }
+          DispatchQueue.main.async { result(out) }
+        }
+      case "launchApp":
+        guard let id = a["id"] as? String, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
+          result(FlutterError(code: "app", message: "App nicht installiert", details: nil)); return
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, err in
+          DispatchQueue.main.async {
+            if let err = err { result(FlutterError(code: "app", message: err.localizedDescription, details: nil)) } else { result(true) }
+          }
+        }
+      case "mediaKey":
+        // Musik-Apps per AppleScript (nur die im Entitlement erlaubten: Spotify, Musik, Podcasts, TV)
+        let id = a["id"] as? String ?? "com.spotify.client"
+        let verb: String
+        switch a["key"] as? String ?? "playpause" {
+        case "play": verb = "play"
+        case "pause": verb = "pause"
+        case "next": verb = "next track"
+        case "previous": verb = "previous track"
+        default: verb = "playpause"
+        }
+        let safeId = id.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }
+        DispatchQueue.global(qos: .userInitiated).async {
+          var err: NSDictionary?
+          NSAppleScript(source: "tell application id \"\(safeId)\" to \(verb)")?.executeAndReturnError(&err)
+          DispatchQueue.main.async {
+            if let err = err {
+              result(FlutterError(code: "app", message: (err[NSAppleScript.errorMessage] as? String) ?? "Steuern nicht erlaubt (Systemeinstellungen → Datenschutz → Automation)", details: nil))
+            } else { result(true) }
+          }
+        }
+      case "openInApp":
+        guard let s = a["url"] as? String, let u = URL(string: s) else { result(false); return }
+        if let id = a["id"] as? String, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+          NSWorkspace.shared.open([u], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, err in
+            DispatchQueue.main.async { result(err == nil) }
+          }
+        } else {
+          result(NSWorkspace.shared.open(u))
+        }
       // Tresor: Geheimnisse im macOS-Schlüsselbund (nicht in den App-Dateien)
       case "vaultSet":
         let key = a["key"] as? String ?? ""

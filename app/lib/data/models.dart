@@ -361,6 +361,8 @@ class AppSettings {
     this.systemVoice = '',
     this.slowVoice = '',
     Map<String, double>? voiceSpeed,
+    Map<String, Map<String, dynamic>>? setups,
+    List<Map<String, dynamic>>? allowedApps,
     this.sttLanguage = 'auto',
     this.autoSpeak = false,
     this.sendAfterVoice = true,
@@ -398,11 +400,13 @@ class AppSettings {
     this.systemCheckSeen = false,
     Map<String, String>? installed,
   })  : voiceSpeed = voiceSpeed ?? {},
+        setups = setups ?? {},
+        allowedApps = allowedApps ?? [],
         enabledTools = enabledTools ??
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
-              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'create_chart', 'generate_image', 'look_at_image',
+              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'control_app', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
@@ -431,6 +435,26 @@ class AppSettings {
   String slowVoice; // (veraltet) früher: Stimme zu langsam → Gerätestimme
   /// Gemessenes Tempo der lokalen Stimmen (Ordner → ms je Zeichen), fürs Puffern beim Vorlesen.
   final Map<String, double> voiceSpeed;
+
+  /// Freigegebene Apps zum Öffnen/Steuern (je Gerät, siehe app_control.dart).
+  final List<Map<String, dynamic>> allowedApps;
+
+  /// Geräte-Setups („Desktop“, „Handy“ …): gespeicherte gerätebezogene Einstellungen.
+  final Map<String, Map<String, dynamic>> setups;
+
+  /// Diese Schlüssel gehören zum Gerät (Modelle, Stimme, Werkzeuge, KI-Modus) – nicht zu dir als Person.
+  static const deviceKeys = [
+    'contextSize', 'contextAuto', 'lastModelId', 'autoLoadLastModel', 'enabledTools', 'darkMode', 'sttModelId',
+    'ttsVoiceId', 'systemVoice', 'sttLanguage', 'autoSpeak', 'sendAfterVoice', 'voiceManualEnd', 'voiceWakeWord',
+    'voiceBargeIn', 'routing', 'autoModel', 'hybridFirst', 'hybridTarget', 'voicePauseMs', 'voiceNearField',
+    'voiceSmartVad', 'activeProfileId', 'allowedApps',
+  ];
+
+  /// Momentaufnahme der gerätebezogenen Einstellungen.
+  Map<String, dynamic> deviceSnapshot() {
+    final j = toJson();
+    return {for (final k in deviceKeys) if (j.containsKey(k)) k: j[k]};
+  }
   String sttLanguage; // auto | de | en
   bool autoSpeak; // Antworten automatisch vorlesen
   bool sendAfterVoice; // nach Spracheingabe sofort senden
@@ -497,6 +521,8 @@ class AppSettings {
         'ttsVoiceId': ttsVoiceId,
         'systemVoice': systemVoice,
         if (voiceSpeed.isNotEmpty) 'voiceSpeed': voiceSpeed,
+        if (setups.isNotEmpty) 'setups': setups,
+        if (allowedApps.isNotEmpty) 'allowedApps': allowedApps,
         'sttLanguage': sttLanguage,
         'autoSpeak': autoSpeak,
         'sendAfterVoice': sendAfterVoice,
@@ -547,6 +573,10 @@ class AppSettings {
         sttModelId: j['sttModelId'] as String?,
         ttsVoiceId: j['ttsVoiceId'] as String?,
         systemVoice: j['systemVoice'] as String? ?? '',
+        allowedApps: [for (final a in (j['allowedApps'] as List? ?? const [])) (a as Map).cast<String, dynamic>()],
+        setups: {
+          for (final e in ((j['setups'] as Map?) ?? const {}).entries) '${e.key}': (e.value as Map).cast<String, dynamic>(),
+        },
         voiceSpeed: {for (final e in ((j['voiceSpeed'] as Map?) ?? const {}).entries) '${e.key}': (e.value as num).toDouble()},
         sttLanguage: j['sttLanguage'] as String? ?? 'auto',
         autoSpeak: j['autoSpeak'] as bool? ?? false,
@@ -586,7 +616,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 13;
+  static const toolsVersion = 14;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -606,6 +636,7 @@ class AppSettings {
     if (from < 11) enabledTools.add('edit_file');
     if (from < 12) enabledTools.add('find_loose_ends');
     if (from < 13) enabledTools.add('mail_inbox');
+    if (from < 14) enabledTools.add('control_app');
   }
 }
 

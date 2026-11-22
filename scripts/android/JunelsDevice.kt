@@ -118,6 +118,54 @@ object JunelsDevice {
         try {
             when (call.method) {
                 "networkStatus" -> result.success(isOnline(ctx))
+                // ---- Apps steuern (nur Apps aus der Freigabeliste; die Prüfung macht die App vorher)
+                "listApps" -> {
+                    val pm = ctx.packageManager
+                    val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    val apps = pm.queryIntentActivities(i, 0)
+                        .map { mapOf("name" to it.loadLabel(pm).toString(), "id" to it.activityInfo.packageName) }
+                        .distinctBy { it["id"] }
+                        .filter { it["id"] != ctx.packageName }
+                        .sortedBy { it["name"]?.lowercase() }
+                    result.success(apps)
+                }
+                "launchApp" -> {
+                    val pkg = call.argument<String>("id") ?: ""
+                    val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)
+                    if (launch == null) {
+                        result.error("app", "App nicht installiert", null)
+                    } else {
+                        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ctx.startActivity(launch)
+                        result.success(true)
+                    }
+                }
+                "mediaKey" -> {
+                    // an die gerade aktive Wiedergabe (z. B. Spotify) – ohne Berechtigung, ohne Bildschirmzugriff
+                    val code = when (call.argument<String>("key")) {
+                        "play" -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+                        "pause" -> android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+                        "next" -> android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+                        "previous" -> android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                        else -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    }
+                    val am = ctx.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+                    am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code))
+                    am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code))
+                    result.success(true)
+                }
+                "openInApp" -> {
+                    val url = call.argument<String>("url") ?: ""
+                    val pkg = call.argument<String>("id")
+                    val view = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (!pkg.isNullOrEmpty()) view.setPackage(pkg)
+                    try {
+                        ctx.startActivity(view)
+                        result.success(true)
+                    } catch (e: Throwable) {
+                        result.error("app", "Kann den Link in der App nicht öffnen", null)
+                    }
+                }
                 // Tresor: Geheimnisse (Passwörter, Tokens) mit einem Schlüssel aus dem Android-Keystore verschlüsselt
                 "vaultSet" -> {
                     Vault.put(ctx, call.argument<String>("key") ?: "", call.argument<String>("value"))

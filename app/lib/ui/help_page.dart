@@ -185,6 +185,47 @@ Unter **Metriken** siehst du, wie schnell das Modell arbeitet (Tokens pro Sekund
 Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein und aus, am Handy öffnet er sich von rechts.''',
   ),
   HelpArticle(
+    id: 'apps',
+    category: 'Chat',
+    icon: Icons.apps,
+    title: 'Apps öffnen & steuern',
+    summary: 'Spotify & Co. per Sprache oder Chat – nur freigegebene Apps, ohne Kaufen oder Bezahlen.',
+    keywords: 'app öffnen spotify musik abspielen pause weiter freigabe whitelist steuern',
+    body: '''Unter Einstellungen → Agent → *Apps steuern* gibst du Apps frei. Danach z. B.: „Spiel Musik auf Spotify“, „Pause“, „Nächster Titel“, „Such auf Spotify nach Jazz“.
+
+**Was Junels darf:** App öffnen, Wiedergabe steuern (Abspielen, Pause, Weiter, Zurück) und – wenn du es erlaubst – eine Suche in der App öffnen.
+
+**Was Junels nie macht:** in fremden Apps tippen oder Eingaben machen, kaufen, bestellen, abonnieren oder bezahlen. Suchen mit Kauf- oder Zahlungsbezug werden abgelehnt; Bank-, Bezahl- und Shopping-Apps lassen sich nur öffnen.
+
+Je App einstellbar: *Vor jeder Aktion fragen* und *Auch in Prozessen & geplanten Aufgaben* (sonst nur, wenn du selbst dabei bist). Am Mac fragt macOS beim ersten Steuern einmal nach (Automation).''',
+  ),
+  HelpArticle(
+    id: 'setups',
+    category: 'Einstellungen',
+    icon: Icons.devices_outlined,
+    title: 'Geräte-Setups',
+    summary: 'Einstellungen als „Desktop“ und „Handy“ speichern.',
+    keywords: 'setup gerät desktop handy profil einstellungen speichern anwenden',
+    body: '''Ein Setup merkt sich, was zum Gerät gehört: Sprachmodell, Modellwahl, Stimme, Spracherkennung, Werkzeuge, KI-Modus, freigegebene Apps und Gesprächs-Einstellungen. Unter Einstellungen → App → *Geräte-Setups* speicherst du es („Jetzt speichern“) und wendest es auf einem anderen Gerät an. Nach einer Wiederherstellung aus einer Sicherung bekommt jedes Gerät automatisch wieder sein eigenes Setup. Fehlt ein Modell oder eine Stimme auf dem Gerät, bleibt die bisherige Einstellung.''',
+  ),
+  HelpArticle(
+    id: 'privacy',
+    category: 'Einstellungen',
+    icon: Icons.shield_outlined,
+    title: 'Datenschutz-Stufen & SSO',
+    summary: 'Von „nur dieses Gerät“ bis „alles abgleichen“ – immer verschlüsselt.',
+    keywords: 'datenschutz stufe sso konto anmelden 2442 speichern server abgleich löschen',
+    body: '''Unter Einstellungen → *Konto, Daten & Abgleich* wählst du, wie viel gespeichert wird:
+
+0 · **Nur dieses Gerät** – nichts verlässt das Gerät.
+1 · **Konto ohne Daten** – mit SSO angemeldet, aber nichts gespeichert.
+2 · **Einstellungen** – Geräte-Setups, Prompt-Vorlagen, Profile, Designs, MCP-Server.
+3 · **+ Gedächtnis & Wissen**
+4 · **Alles** – zusätzlich alle Chats.
+
+Gespeichert wird auf **deinem eigenen Server** (junels-sync.php) – immer auf dem Gerät mit deinem Sync-Passwort verschlüsselt, Server und SSO sehen nichts davon. Mit **SSO** (z. B. sso.2442.io) darf nur dein Konto speichern, und jede Person hat einen eigenen Bereich: sso-client.php neben junels-sync.php legen, einmal junels-sync.php?login=1 im Browser öffnen und verbinden, dann in Junels „Mit SSO anmelden“. Senkst du die Stufe, kannst du die Daten auf dem Server mit einem Tipp löschen.''',
+  ),
+  HelpArticle(
     id: 'loose-ends',
     category: 'Chat',
     icon: Icons.pending_actions_outlined,

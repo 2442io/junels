@@ -18,6 +18,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../data/models.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
+import 'app_control.dart';
 import 'loose_ends.dart';
 import 'conversation_mode.dart';
 import 'browser_service.dart';
@@ -297,6 +298,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         EditFileTool(out),
         LooseEndsTool(this),
         MailInboxTool(imapAccount),
+        appControlTool,
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
@@ -322,6 +324,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       refreshFreeDisk();
       settings = await storage.loadSettings();
       voice.output.speedByDir.addAll(settings.voiceSpeed);
+      await _loadDeviceSetup();
       darkMode.value = settings.darkMode;
       settings.contextSize = device.clampContext(settings.contextSize, null);
       profiles = await storage.loadProfiles();
@@ -1318,6 +1321,111 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
 
+  // ---------------------------------------------------------------- Apps steuern
+
+  List<AllowedApp> get allowedApps => [for (final j in settings.allowedApps) AllowedApp.fromJson(j)];
+
+  Future<void> saveAllowedApps(List<AllowedApp> apps) async {
+    settings.allowedApps
+      ..clear()
+      ..addAll([for (final a in apps) a.toJson()]);
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  late final AppControlTool appControlTool = AppControlTool(
+    allowed: () => allowedApps,
+    launch: deviceBridge.launchApp,
+    mediaKey: deviceBridge.mediaKey,
+    openInApp: deviceBridge.openInApp,
+    unattended: () {
+      final c = conversations.where((c) => c.id == runningConvId).firstOrNull;
+      return c != null && isRoutineChat(c);
+    },
+    android: Platform.isAndroid,
+  );
+
+  // ---------------------------------------------------------------- Geräte-Setups
+
+  /// Name des Setups, das zu diesem Gerät gehört (liegt nur hier, nicht in Sicherung/Abgleich).
+  String deviceSetupName = Platform.isMacOS ? 'Desktop' : (Platform.isAndroid ? 'Handy' : 'Tablet');
+  File get _deviceSetupFile => File('${storage.root.path}/device_setup.txt');
+
+  Future<void> _loadDeviceSetup() async {
+    try {
+      if (await _deviceSetupFile.exists()) {
+        final n = (await _deviceSetupFile.readAsString()).trim();
+        if (n.isNotEmpty) deviceSetupName = n;
+      }
+      // Nach einer Wiederherstellung (Sicherung eines anderen Geräts): eigenes Setup wieder anwenden
+      final flag = File('${storage.root.path}/.apply_device_setup');
+      if (await flag.exists()) {
+        await flag.delete();
+        if (settings.setups.containsKey(deviceSetupName)) await applySetup(deviceSetupName);
+      }
+    } catch (_) {}
+  }
+
+  /// Gerätebezogene Einstellungen als Setup speichern (z. B. „Desktop“, „Handy“).
+  Future<void> saveSetup(String name, {bool asThisDevice = false}) async {
+    final n = name.trim();
+    if (n.isEmpty) return;
+    settings.setups[n] = {...settings.deviceSnapshot(), '_saved': DateTime.now().toIso8601String(), '_device': Platform.operatingSystem};
+    if (asThisDevice) {
+      deviceSetupName = n;
+      await _deviceSetupFile.writeAsString(n);
+    }
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  /// Setup anwenden. Modelle/Stimmen, die es hier nicht gibt, bleiben wie sie sind.
+  Future<List<String>> applySetup(String name) async {
+    final snap = settings.setups[name];
+    if (snap == null) return const [];
+    final skipped = <String>[];
+    final j = settings.toJson();
+    for (final e in snap.entries) {
+      if (e.key.startsWith('_')) continue;
+      if (e.key == 'lastModelId' && e.value != null && !models.any((m) => m.id == e.value)) {
+        skipped.add('Sprachmodell');
+        continue;
+      }
+      if ((e.key == 'ttsVoiceId' || e.key == 'sttModelId') && e.value != null && settings.installed[e.value] == null) {
+        skipped.add(e.key == 'ttsVoiceId' ? 'Stimme' : 'Spracherkennung');
+        continue;
+      }
+      j[e.key] = e.value;
+    }
+    final setups = settings.setups;
+    final next = AppSettings.fromJson(j);
+    next.setups
+      ..clear()
+      ..addAll(setups);
+    final oldModel = settings.lastModelId;
+    settings = next;
+    await storage.saveSettings(settings);
+    if (settings.lastModelId != oldModel && !running) {
+      final m = models.where((m) => m.id == settings.lastModelId).firstOrNull;
+      if (m != null) unawaited(loadModel(m));
+    }
+    appLog('Setup', '„$name“ angewendet${skipped.isEmpty ? '' : ' (nicht auf diesem Gerät: ${skipped.join(', ')})'}');
+    notifyListeners();
+    return skipped;
+  }
+
+  Future<void> deleteSetup(String name) async {
+    settings.setups.remove(name);
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> setDeviceSetup(String name) async {
+    deviceSetupName = name;
+    await _deviceSetupFile.writeAsString(name);
+    notifyListeners();
+  }
+
   // ---------------------------------------------------------------- Online/Offline
 
   /// Laut Betriebssystem mit dem Netz verbunden? (Junels prüft das ohne eigene Anfragen.)
@@ -1925,6 +2033,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
     'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
+    'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|spiel|abspielen|play|pause|nächste[rn]? (lied|titel|song)|weiter|lauter|musik|playlist|podcast|youtube'),
     'mail_inbox': RegExp(r'\bmails?\b|e-?mails?|posteingang|inbox|unbeantwortet|ungelesen|nachrichten von|hat .* geschrieben|liegengeblieben|unerledigt'),
     'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
     'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
@@ -2023,6 +2132,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final who = (a['name'] ?? '').isNotEmpty ? a['name']! : (a['to'] ?? '');
     String msg;
     try {
+      if (a['type'] == 'app') {
+        // nochmals prüfen (Freigabe kann sich geändert haben), dann ausführen
+        final (app, link) = appControlTool.check(a['app'] ?? '', a['action'] ?? 'oeffnen', a['url'] == null ? '' : '-');
+        msg = await appControlTool.execute(app, a['action'] ?? 'oeffnen', a['url'] ?? link);
+        a['status'] = 'sent';
+        unawaited(logActivity(Activity(kind: 'app', title: '${app.name}: ${a['body'] ?? ''}', detail: msg, approval: approval, conversationId: conv?.id)));
+        await storage.saveConversation(conv!);
+        notifyListeners();
+        return msg;
+      }
       if (a['type'] == 'email') {
         final acc = await smtpAccount();
         if (acc != null && (a['to'] ?? '').contains('@')) {

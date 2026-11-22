@@ -20,7 +20,10 @@ import 'sync_page.dart';
 import 'system_check.dart';
 import 'tasks_page.dart';
 import 'backup_page.dart';
+import 'apps_page.dart';
 import 'designs_page.dart';
+import 'setups_page.dart';
+import '../state/sync_service.dart' show PrivacyLevel;
 import 'theme.dart';
 import 'update_page.dart';
 
@@ -198,6 +201,14 @@ class SettingsBody extends StatelessWidget {
               onTap: () => openMcp(context),
             ),
             _NavTile(
+              icon: Icons.apps,
+              title: 'Apps steuern',
+              subtitle: AppScope.of(context).allowedApps.isEmpty
+                  ? 'Freigabeliste: welche Apps (z. B. Spotify) der Agent öffnen und steuern darf'
+                  : '${AppScope.of(context).allowedApps.map((a) => a.name).join(', ')} freigegeben',
+              onTap: () => openAppsPage(context),
+            ),
+            _NavTile(
               icon: Icons.palette_outlined,
               title: 'Eigene Designs',
               subtitle: DesignLibrary.user.isEmpty
@@ -219,10 +230,13 @@ class SettingsBody extends StatelessWidget {
             onTap: () => openDevicePage(context),
           ),
           _NavTile(
-            icon: Icons.sync,
-            title: 'Abgleich Mac ↔ Handy',
-            subtitle: !app.sync.configured
-                ? 'Über eigenen Server oder WLAN'
+            icon: Icons.shield_outlined,
+            title: 'Konto, Daten & Abgleich',
+            subtitle: app.sync.config.level >= 0
+                ? 'Datenschutz-Stufe ${app.sync.config.level}: ${PrivacyLevel.all[app.sync.config.level].title}'
+                    '${app.sync.ssoSignedIn ? ' · ${app.sync.config.ssoName.isNotEmpty ? app.sync.config.ssoName : app.sync.config.ssoEmail}' : ''}'
+                : !app.sync.configured
+                ? 'Datenschutz-Stufe wählen, SSO-Konto, Abgleich Mac ↔ Handy'
                 : app.sync.lastSync == null
                     ? 'Eingerichtet'
                     : 'Zuletzt ${TimeOfDay.fromDateTime(app.sync.lastSync!).format(context)}',
@@ -246,6 +260,12 @@ class SettingsBody extends StatelessWidget {
                   ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
                   : 'Installiert: $appVersion · Was ist neu?',
               onTap: () => openUpdates(context),
+            ),
+            _NavTile(
+              icon: Icons.devices_outlined,
+              title: 'Geräte-Setups',
+              subtitle: 'Einstellungen als „Desktop“, „Handy“ … speichern und anwenden',
+              onTap: () => openSetups(context),
             ),
             _NavTile(
               icon: Icons.archive_outlined,
@@ -561,6 +581,7 @@ class _ToolSection extends StatelessWidget {
     'edit_file': Icons.edit_document,
     'find_loose_ends': Icons.pending_actions_outlined,
     'mail_inbox': Icons.inbox_outlined,
+    'control_app': Icons.apps,
     'create_chart': Icons.bar_chart,
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,

@@ -1438,6 +1438,7 @@ class _ActionCardState extends State<ActionCard> {
     final scheme = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final mail = a['type'] == 'email';
+    final appAct = a['type'] == 'app';
     final who = (a['name'] ?? '').isNotEmpty ? a['name']! : ((a['to'] ?? '').isEmpty ? 'Empfänger fehlt' : a['to']!);
     final status = a['status'] ?? 'pending';
     final pending = status == 'pending';
@@ -1455,16 +1456,17 @@ class _ActionCardState extends State<ActionCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Icon(mail ? Icons.mail_outline : Icons.chat_outlined, size: 20, color: scheme.onSecondaryContainer),
+            Icon(appAct ? Icons.apps : (mail ? Icons.mail_outline : Icons.chat_outlined), size: 20, color: scheme.onSecondaryContainer),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('${mail ? 'E-Mail' : 'WhatsApp'} an $who', style: t.titleSmall, overflow: TextOverflow.ellipsis),
+              child: Text(appAct ? 'App: ${a['app'] ?? ''}' : '${mail ? 'E-Mail' : 'WhatsApp'} an $who',
+                  style: t.titleSmall, overflow: TextOverflow.ellipsis),
             ),
             if (!pending)
               Chip(
                 visualDensity: VisualDensity.compact,
                 label: Text(switch (status) {
-                  'sent' => 'Gesendet ✓',
+                  'sent' => appAct ? 'Ausgeführt ✓' : 'Gesendet ✓',
                   'opened' => mail ? 'In Mail-App geöffnet' : 'In WhatsApp geöffnet',
                   'discarded' => 'Verworfen',
                   _ => status,
@@ -1500,10 +1502,10 @@ class _ActionCardState extends State<ActionCard> {
                       },
                 icon: _busy
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(direct ? Icons.send : Icons.open_in_new, size: 18),
-                label: Text(direct ? 'Senden' : (mail ? 'In Mail-App öffnen' : 'In WhatsApp öffnen')),
+                    : Icon(appAct ? Icons.play_arrow : (direct ? Icons.send : Icons.open_in_new), size: 18),
+                label: Text(appAct ? 'Ausführen' : (direct ? 'Senden' : (mail ? 'In Mail-App öffnen' : 'In WhatsApp öffnen'))),
               ),
-              OutlinedButton(onPressed: _busy ? null : () => _edit(context, app, a), child: const Text('Bearbeiten')),
+              if (!appAct) OutlinedButton(onPressed: _busy ? null : () => _edit(context, app, a), child: const Text('Bearbeiten')),
               TextButton(
                 onPressed: _busy ? null : () => app.updateAction(widget.entry, widget.index, {'status': 'discarded'}),
                 child: const Text('Verwerfen'),

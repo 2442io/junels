@@ -18,7 +18,7 @@ class Backup {
 
   /// Nicht sichern: groß und neu ladbar bzw. geheim/gerätegebunden.
   static const _skipDirs = {'models', 'voice', 'vad', 'kvcache', 'cache', 'tmp', 'update', '.vorschau'};
-  static const _skipFiles = {'sync_key', 'update_token', 'sync_state.json'};
+  static const _skipFiles = {'sync_key', 'update_token', 'sync_state.json', 'device_setup.txt', 'sso_token'};
 
   static const _maxFile = 50 * 1024 * 1024;
   static const _maxFiles = 400 * 1024 * 1024;
@@ -116,6 +116,10 @@ class Backup {
       f.writeAsBytesSync(entry.value);
       n++;
     }
+    // Beim nächsten Start das Setup dieses Geräts wieder anwenden (Modelle, Stimme … passen sonst nicht)
+    try {
+      File('${root.path}/.apply_device_setup').writeAsStringSync('1');
+    } catch (_) {}
     return 'Wiederhergestellt: $n Dateien. Dein bisheriger Stand liegt als „${safety.uri.pathSegments.last}“ in den Ausgaben.';
   }
 }

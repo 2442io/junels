@@ -11,6 +11,8 @@ import 'package:flutter/foundation.dart';
 import '../data/models.dart';
 import 'app_controller.dart';
 import 'memory_store.dart';
+import 'native_files.dart';
+import 'vault.dart';
 import 'voice_service.dart' show appLog;
 
 /// Was abgeglichen wird.
@@ -20,15 +22,41 @@ enum SyncCategory {
   prompts('prompt', 'Meine Prompts'),
   profiles('profile', 'Profile'),
   mcp('mcp', 'MCP-Server'),
-  knowledge('kb', 'Wissensbasis');
+  knowledge('kb', 'Wissensbasis'),
+  setups('setup', 'Geräte-Setups'),
+  designs('design', 'Eigene Designs');
 
   const SyncCategory(this.prefix, this.label);
   final String prefix;
   final String label;
 }
 
+/// Datenschutz-Stufen: was das Konto speichern darf (immer Ende-zu-Ende verschlüsselt).
+class PrivacyLevel {
+  const PrivacyLevel(this.level, this.title, this.text, this.categories, this.icon);
+  final int level;
+  final String title;
+  final String text;
+  final Set<String> categories;
+  final String icon;
+
+  static const all = [
+    PrivacyLevel(0, 'Nur dieses Gerät', 'Nichts verlässt das Gerät. Kein Konto, kein Abgleich.', {}, '🔒'),
+    PrivacyLevel(1, 'Konto ohne Daten', 'Mit SSO angemeldet – nur deine Identität. Es werden keine Daten gespeichert.', {}, '🪪'),
+    PrivacyLevel(2, 'Einstellungen', 'Geräte-Setups, Prompt-Vorlagen, Agenten-Profile, Designs und MCP-Server. Keine Inhalte.',
+        {'setup', 'design', 'prompt', 'profile', 'mcp'}, '⚙️'),
+    PrivacyLevel(3, '+ Gedächtnis & Wissen', 'Zusätzlich, was sich der Agent über dich merkt, und deine Wissensbasis.',
+        {'setup', 'design', 'prompt', 'profile', 'mcp', 'mem', 'kb'}, '🧠'),
+    PrivacyLevel(4, 'Alles', 'Zusätzlich alle Chats – volle Übergabe zwischen deinen Geräten.',
+        {'setup', 'design', 'prompt', 'profile', 'mcp', 'mem', 'kb', 'chat'}, '☁️'),
+  ];
+}
+
 class SyncConfig {
   SyncConfig({
+    this.level = -1,
+    this.ssoName = '',
+    this.ssoEmail = '',
     this.serverUrl = '',
     this.auto = true,
     this.lanHost = false,
@@ -36,6 +64,10 @@ class SyncConfig {
     this.deviceName = '',
   }) : categories = categories ?? SyncCategory.values.map((c) => c.prefix).toSet();
 
+  /// Datenschutz-Stufe 0–4 (-1 = eigene Auswahl der Kategorien, wie bisher)
+  int level;
+  String ssoName;
+  String ssoEmail;
   String serverUrl;
   bool auto; // beim Start und alle 15 Minuten mit dem Server abgleichen
   bool lanHost; // dieses Gerät im WLAN bereitstellen
@@ -48,6 +80,9 @@ class SyncConfig {
         'lanHost': lanHost,
         'categories': categories.toList(),
         'deviceName': deviceName,
+        'level': level,
+        if (ssoName.isNotEmpty) 'ssoName': ssoName,
+        if (ssoEmail.isNotEmpty) 'ssoEmail': ssoEmail,
       };
   factory SyncConfig.fromJson(Map<String, dynamic> j) => SyncConfig(
         serverUrl: j['serverUrl'] as String? ?? '',
@@ -55,6 +90,9 @@ class SyncConfig {
         lanHost: j['lanHost'] as bool? ?? false,
         categories: (j['categories'] as List?)?.cast<String>().toSet(),
         deviceName: j['deviceName'] as String? ?? '',
+        level: (j['level'] as num?)?.toInt() ?? -1,
+        ssoName: j['ssoName'] as String? ?? '',
+        ssoEmail: j['ssoEmail'] as String? ?? '',
       );
 }
 
@@ -208,9 +246,118 @@ class SyncService implements SyncSource {
       lastError.value = 'Keine Server-Adresse eingetragen.';
       return;
     }
+    if (config.level == 0 || config.level == 1) return; // Stufe ohne Daten: nichts abgleichen
     final url = _serverUri();
-    await _run('Server', () => _engine!.syncWith('server:${url.host}${url.path}', (q) => syncHttpPost(url, q)),
+    final token = await Vault.read('sso:token');
+    await _run('Server', () => _engine!.syncWith('server:${url.host}${url.path}', (q) async {
+          try {
+            return await syncHttpPost(url, {...q, if (token != null && token.isNotEmpty) 'token': token});
+          } on SyncException catch (e) {
+            if ('$e'.contains('SSO')) {
+              await Vault.delete('sso:token');
+              config.ssoName = '';
+              await saveConfig();
+            }
+            rethrow;
+          }
+        }),
         quiet: quiet);
+  }
+
+  // ---------------------------------------------------------------- Konto (SSO) & Datenschutz-Stufe
+
+  bool get ssoSignedIn => config.ssoName.isNotEmpty || config.ssoEmail.isNotEmpty;
+
+  /// Unterstützt der Server SSO? (GET liefert {"sso": true})
+  Future<bool?> serverHasSso() async {
+    if (config.serverUrl.trim().isEmpty) return null;
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final r = await (await c.getUrl(_serverUri())).close().timeout(const Duration(seconds: 10));
+      final j = jsonDecode(await r.transform(utf8.decoder).join()) as Map;
+      return j['sso'] == true;
+    } catch (_) {
+      return null;
+    } finally {
+      c.close(force: true);
+    }
+  }
+
+  /// Anmelden: Browser öffnet den eigenen Server → SSO → zurück an 127.0.0.1 (nur dieses Gerät).
+  Future<void> ssoLogin() async {
+    if (config.serverUrl.trim().isEmpty) throw SyncException('Bitte zuerst die Server-Adresse eintragen.');
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final done = Completer<Map<String, String>>();
+    server.listen((req) async {
+      if (req.uri.path != '/sso') {
+        req.response.statusCode = 404;
+        await req.response.close();
+        return;
+      }
+      final q = req.uri.queryParameters;
+      req.response.headers.contentType = ContentType.html;
+      req.response.write('<!doctype html><meta charset="utf-8"><title>Junels</title>'
+          '<body style="font:17px system-ui;display:grid;place-items:center;min-height:90vh">'
+          '<div><h2>Angemeldet ✓</h2><p>Du kannst dieses Fenster schließen und zu Junels zurückkehren.</p></div>');
+      await req.response.close();
+      if (!done.isCompleted) done.complete(q);
+    });
+    try {
+      final url = _serverUri().replace(queryParameters: {'login': '1', 'port': '${server.port}'});
+      await NativeFiles.openUrl(url.toString());
+      status.value = 'Anmeldung im Browser …';
+      final q = await done.future.timeout(const Duration(minutes: 5),
+          onTimeout: () => throw SyncException('Anmeldung nicht abgeschlossen (Zeit abgelaufen).'));
+      final token = q['token'] ?? '';
+      if (token.length < 32) throw SyncException('Anmeldung fehlgeschlagen.');
+      await Vault.write('sso:token', token);
+      config
+        ..ssoName = q['name'] ?? ''
+        ..ssoEmail = q['email'] ?? '';
+      if (config.level < 1) config.level = 1;
+      await saveConfig();
+      status.value = 'Angemeldet als ${config.ssoName.isNotEmpty ? config.ssoName : config.ssoEmail}';
+      appLog('Sync', 'Mit SSO angemeldet');
+    } finally {
+      await server.close(force: true);
+    }
+  }
+
+  Future<void> ssoLogout() async {
+    final token = await Vault.read('sso:token');
+    if (token != null && config.serverUrl.isNotEmpty) {
+      try {
+        await syncHttpPost(_serverUri(), {'token': token, 'logout': true});
+      } catch (_) {}
+    }
+    await Vault.delete('sso:token');
+    config
+      ..ssoName = ''
+      ..ssoEmail = '';
+    if (config.level > 0) config.level = 0;
+    await saveConfig();
+  }
+
+  /// Datenschutz-Stufe setzen: bestimmt, welche Kategorien abgeglichen werden.
+  Future<void> setLevel(int level) async {
+    final l = PrivacyLevel.all[level.clamp(0, 4)];
+    config
+      ..level = l.level
+      ..categories = {...l.categories};
+    if (l.level == 0) await stopHost();
+    await saveConfig();
+  }
+
+  /// Alle Daten dieses Kontos auf dem Server löschen (z. B. nach dem Senken der Stufe).
+  Future<void> wipeServer() async {
+    final token = await Vault.read('sso:token');
+    await syncHttpPost(_serverUri(), {'wipe': true, if (token != null) 'token': token, if (_keys != null) 'account': _keys!.account});
+    try {
+      await File('${app.storage.root.path}/sync_state.json').delete();
+    } catch (_) {}
+    if (_keys != null) _setKeys(_keys!); // beim nächsten Abgleich alles Erlaubte neu hochladen
+    status.value = 'Daten auf dem Server gelöscht';
+    appLog('Sync', 'Serverdaten gelöscht');
   }
 
   /// Mit einem Gerät im WLAN abgleichen.
@@ -321,6 +468,17 @@ class SyncService implements SyncSource {
         });
       }
     }
+    if (_on(SyncCategory.setups)) {
+      for (final e in app.settings.setups.entries) {
+        out['setup:${e.key}'] = jsonEncode(e.value);
+      }
+    }
+    if (_on(SyncCategory.designs)) {
+      for (final d in DesignLibrary.user) {
+        // Vorlagen-Dateien (Folienmaster) bleiben auf dem Gerät; Farben & Schriften werden abgeglichen
+        out['design:${d.id}'] = jsonEncode(d.design.toJson());
+      }
+    }
     return out;
   }
 
@@ -408,6 +566,23 @@ class SyncService implements SyncSource {
           );
         }
         await app.knowledge.save();
+      case 'setup':
+        if (j == null) {
+          app.settings.setups.remove(id);
+        } else {
+          app.settings.setups[id] = j;
+        }
+        await app.storage.saveSettings(app.settings);
+      case 'design':
+        if (j == null) {
+          DesignLibrary.user.removeWhere((u) => u.id == id);
+          await app.saveDesigns();
+        } else {
+          final keep = DesignLibrary.byId(id)?.templatePath;
+          DesignLibrary.user.removeWhere((u) => u.id == id);
+          DesignLibrary.user.add(UserDesign(design: SlideDesign.fromJson(j), templatePath: keep));
+          await app.saveDesigns();
+        }
     }
   }
 }

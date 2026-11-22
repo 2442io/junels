@@ -74,7 +74,7 @@ class _SyncPageState extends State<SyncPage> {
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Abgleich zwischen Geräten')),
+      appBar: AppBar(title: const Text('Konto, Daten & Abgleich')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -108,6 +108,112 @@ class _SyncPageState extends State<SyncPage> {
               const SizedBox(height: 10),
             ]),
           ),
+
+          section('Datenschutz-Stufe', icon: Icons.shield_outlined, [
+            Text('Wie viel darf dein Konto speichern? Alles, was gespeichert wird, verschlüsselt Junels vorher auf dem Gerät '
+                '(Sync-Passwort) – Server und SSO sehen nur unlesbare Daten.', style: t.bodySmall),
+            const SizedBox(height: 8),
+            for (final l in PrivacyLevel.all)
+              RadioListTile<int>(
+                contentPadding: EdgeInsets.zero,
+                value: l.level,
+                groupValue: cfg.level < 0 ? null : cfg.level,
+                title: Text('${l.icon}  ${l.level}  ·  ${l.title}'),
+                subtitle: Text(l.text, style: t.bodySmall),
+                onChanged: (v) async {
+                  if (v == null) return;
+                  final lower = cfg.level > 1 && v < cfg.level;
+                  await sync.setLevel(v);
+                  if (lower && context.mounted && cfg.serverUrl.isNotEmpty) {
+                    final wipe = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Bereits gespeicherte Daten löschen?'),
+                        content: const Text('Auf dem Server liegen noch Daten der höheren Stufe (verschlüsselt). '
+                            'Sollen alle Daten dieses Kontos auf dem Server gelöscht werden? Was die neue Stufe erlaubt, '
+                            'wird beim nächsten Abgleich wieder hochgeladen. Deine Daten auf den Geräten bleiben erhalten.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Behalten')),
+                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Vom Server löschen')),
+                        ],
+                      ),
+                    );
+                    if (wipe == true) {
+                      try {
+                        await sync.wipeServer();
+                        _snack('Daten auf dem Server gelöscht.');
+                      } catch (e) {
+                        _snack('Löschen fehlgeschlagen: $e');
+                      }
+                    }
+                  }
+                  setState(() {});
+                },
+              ),
+            if (cfg.level < 0) Text('Derzeit: eigene Auswahl (unten unter „Was abgleichen“).', style: t.bodySmall),
+          ]),
+
+          if (cfg.level != 0)
+            section('Konto (SSO)', icon: Icons.badge_outlined, [
+              if (sync.ssoSignedIn) ...[
+                Row(children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: Text('Angemeldet als ${cfg.ssoName.isNotEmpty ? cfg.ssoName : cfg.ssoEmail}'
+                          '${cfg.ssoName.isNotEmpty && cfg.ssoEmail.isNotEmpty ? ' (${cfg.ssoEmail})' : ''}')),
+                  TextButton(
+                    onPressed: () async {
+                      await sync.ssoLogout();
+                      setState(() {});
+                    },
+                    child: const Text('Abmelden'),
+                  ),
+                ]),
+              ] else ...[
+                Text('Optional: Mit deinem SSO (z. B. sso.2442.io) anmelden – dann darf nur dein Konto auf deinem Server speichern, '
+                    'und jede Person bekommt ihren eigenen Bereich.', style: t.bodySmall),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  icon: const Icon(Icons.key_outlined),
+                  label: const Text('Mit SSO anmelden'),
+                  onPressed: cfg.serverUrl.trim().isEmpty
+                      ? null
+                      : () async {
+                          final has = await sync.serverHasSso();
+                          if (has == false) {
+                            _snack('Dein Server hat noch kein SSO: sso-client.php neben junels-sync.php legen (siehe unten).');
+                            return;
+                          }
+                          try {
+                            await sync.ssoLogin();
+                            if (mounted) setState(() {});
+                          } catch (e) {
+                            _snack('$e');
+                          }
+                        },
+                ),
+                if (cfg.serverUrl.trim().isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('Zuerst unten die Adresse deines Servers (junels-sync.php) eintragen.', style: t.bodySmall),
+                  ),
+                const SizedBox(height: 8),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('Server für SSO einrichten', style: t.bodyMedium),
+                  children: [
+                    Text(
+                      '1. junels-sync.php auf deinen Webspace laden (z. B. https://deine-domain/junels/).\n'
+                      '2. sso-client.php aus der SSO-Verwaltung (https://sso.2442.io/download/sso-client.php) daneben legen.\n'
+                      '3. junels-sync.php?login=1 im Browser öffnen, „Mit SSO verbinden“ klicken und im SSO bestätigen.\n'
+                      '4. Hier „Mit SSO anmelden“ tippen.',
+                      style: t.bodySmall,
+                    ),
+                  ],
+                ),
+              ],
+            ]),
 
           section('1. Sync-Passwort', icon: Icons.key, [
             if (sync.configured) ...[
