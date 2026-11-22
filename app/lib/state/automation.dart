@@ -117,7 +117,7 @@ class WatchlistService {
     const stop = {
       'der', 'die', 'das', 'und', 'oder', 'ein', 'eine', 'einen', 'zu', 'zum', 'zur', 'für', 'von', 'mit', 'mir', 'mich', 'ich',
       'neue', 'neuen', 'neuer', 'neues', 'alle', 'immer', 'wenn', 'sobald', 'bitte', 'melde', 'sag', 'informiere', 'über',
-      'auf', 'im', 'in', 'an', 'es', 'gibt', 'etwas', 'was', 'wie', 'zu', 'den', 'dem', 'des', 'bei', 'nach', 'aus', 'nur', 'keine', 'kein',
+      'auf', 'im', 'in', 'an', 'es', 'gibt', 'etwas', 'was', 'wie', 'den', 'dem', 'des', 'bei', 'nach', 'aus', 'nur', 'keine', 'kein',
     };
     final words = text
         .replaceAll(RegExp(r'[^\p{L}\p{N}\s.-]', unicode: true), ' ')

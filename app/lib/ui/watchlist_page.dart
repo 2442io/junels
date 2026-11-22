@@ -5,7 +5,6 @@
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/material.dart';
 
-import '../data/models.dart';
 import '../state/app_scope.dart';
 import 'flows_page.dart';
 import 'markdown_lite.dart';
