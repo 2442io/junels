@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.30.0', [
+    'Kommentar während der Arbeit: im selben Chat weiterschreiben, während der Agent arbeitet – er berücksichtigt den Kommentar sofort (eine entstehende Antwort wird damit neu begonnen); kommt er zu spät, wird er danach beantwortet',
+    'In den Denkschritten steht, ab wann dein Kommentar berücksichtigt wurde',
+  ]),
   ('1.29.0', [
     'Automatische Modellwahl: Alltagsfragen beantwortet das schnelle Modell (z. B. Qwen), Analysen, Code, Präsentationen und lange Texte das starke (z. B. Gemma); scheitert das schnelle, übernimmt das starke',
     'Speicherschonend: mit genug Arbeitsspeicher bleiben beide geladen, sonst wird das große Modell schon beim Tippen einer komplexen Anfrage geladen und nach einer Pause wieder freigegeben',

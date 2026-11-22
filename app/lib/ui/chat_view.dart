@@ -1031,9 +1031,11 @@ class _InputBarState extends State<_InputBar> {
 
   void _send() {
     final app = AppScope.read(context);
-    if (app.runningHere || app.status != EngineStatus.ready) return;
+    if (!app.canChat) return;
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
+    // Läuft gerade eine Antwort hier, geht der Text als Kommentar an den Agenten
+    if (app.runningHere && app.attachments.isNotEmpty) return;
     _ctrl.clear();
     app.send(text);
     widget.onSent();
@@ -1256,7 +1258,9 @@ class _InputBarState extends State<_InputBar> {
                       decoration: InputDecoration(
                         hintText: !ready
                             ? 'Zuerst ein Modell laden oder einen Anbieter einrichten'
-                            : (app.warming ? 'Modell wird vorbereitet … (du kannst schon schreiben)' : 'Frag Junels oder gib einen Auftrag …'),
+                            : app.runningHere
+                                ? 'Kommentar ergänzen – der Agent berücksichtigt ihn sofort …'
+                                : (app.warming ? 'Modell wird vorbereitet … (du kannst schon schreiben)' : 'Frag Junels oder gib einen Auftrag …'),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -1269,10 +1273,19 @@ class _InputBarState extends State<_InputBar> {
                       width: 40,
                       height: 40,
                       child: app.runningHere
-                          ? IconButton.filledTonal(
-                              tooltip: 'Stopp',
-                              icon: const Icon(Icons.stop_rounded, size: 20),
-                              onPressed: app.stop,
+                          ? ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _ctrl,
+                              builder: (context, v, _) => v.text.trim().isEmpty
+                                  ? IconButton.filledTonal(
+                                      tooltip: 'Stopp',
+                                      icon: const Icon(Icons.stop_rounded, size: 20),
+                                      onPressed: app.stop,
+                                    )
+                                  : IconButton.filled(
+                                      tooltip: 'Kommentar an den laufenden Auftrag',
+                                      icon: const Icon(Icons.add_comment_outlined, size: 19),
+                                      onPressed: _send,
+                                    ),
                             )
                           : ValueListenableBuilder<TextEditingValue>(
                               valueListenable: _ctrl,

@@ -201,6 +201,37 @@ Future<void> main() async {
     check(pickModelPair<int>([3, 9, 20], (x) => x, fits: (x) => x < 10)!.$2 == 9, 'nur Modelle, die passen');
   });
 
+  await group('Kommentar während der Arbeit', () async {
+    // Agenten-Modus: Kommentar während eines Werkzeugs → nächster Schritt sieht ihn
+    final slowTool = _SlowTool();
+    final b = ScriptedBackend([
+      '{"thought": "Ich suche.", "action": "slow", "args": {"q": "Hotels Wien"}}',
+      '{"thought": "fertig", "final_answer": "Hotels unter 150 €: A, B"}',
+    ]);
+    final runner = AgentRunner(engine: b, systemPrompt: 'Test', tools: [slowTool], maxSteps: 4);
+    final events = <AgentEvent>[];
+    final done = runner.run(history: const [], userInput: 'Suche Hotels in Wien', context: ToolContext()).forEach(events.add);
+    await slowTool.started.future;
+    check(runner.addNote('bitte nur unter 150 €'), 'Kommentar angenommen');
+    slowTool.release.complete();
+    await done;
+    check(events.whereType<NoteApplied>().single.text == 'bitte nur unter 150 €', 'Kommentar als Ereignis');
+    check(b.prompts.last.contains('Ergänzung des Nutzers') && b.prompts.last.contains('unter 150 €'), 'Modell bekommt den Kommentar');
+    check(!runner.addNote('zu spät') && runner.pendingNotes.isEmpty, 'nach dem Ende nicht mehr angenommen');
+
+    // Chat-Modus: Kommentar während der Ausgabe → Ausgabe wird abgebrochen und überarbeitet
+    final slow = _SlowBackend(['Erster Entwurf über Wien mit vielen Details …', 'Kurze Fassung über Wien.']);
+    final chat = AgentRunner(engine: slow, systemPrompt: 'Test', tools: const []);
+    final ev2 = <AgentEvent>[];
+    final d2 = chat.run(history: const [], userInput: 'Erzähl mir etwas über Wien', context: ToolContext()).forEach(ev2.add);
+    await slow.firstToken.future;
+    chat.addNote('bitte kürzer');
+    await d2;
+    check(slow.stops == 1 && slow.prompts.length == 2, 'laufende Ausgabe abgebrochen und neu begonnen');
+    check(slow.prompts.last.contains('bitte kürzer') && ev2.whereType<FinalAnswer>().single.text == 'Kurze Fassung über Wien.',
+        'Antwort berücksichtigt den Kommentar');
+  });
+
   await group('Agent: Tool-Ablauf (gescriptet)', () async {
     final backend = ScriptedBackend([
       '{"thought": "Ich rechne.", "action": "calculator", "args": {"expression": "17*23"}}',
@@ -1781,4 +1812,64 @@ class _FakeDevice implements DeviceActions {
   }
   @override
   Future<bool> confirm(String title, String detail) async => allow;
+}
+
+class _SlowTool extends AgentTool {
+  final started = Completer<void>();
+  final release = Completer<void>();
+  @override
+  String get name => 'slow';
+  @override
+  String get title => 'Langsam';
+  @override
+  String get description => 'wartet';
+  @override
+  List<ToolParam> get params => const [ToolParam('q', ParamType.string, 'Suche')];
+  @override
+  Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return 'Hotel A 120 €, Hotel B 140 €, Hotel C 210 €';
+  }
+}
+
+/// Gibt Tokens langsam aus und lässt sich per stop() abbrechen.
+class _SlowBackend implements AgentBackend {
+  _SlowBackend(this.outputs);
+  final List<String> outputs;
+  final prompts = <String>[];
+  final firstToken = Completer<void>();
+  var stops = 0;
+  var _stop = false;
+  var _i = 0;
+  @override
+  int get contextSize => 4096;
+  @override
+  Future<String> formatChat(List<ChatMessage> messages, {bool addAssistant = true}) async =>
+      messages.map((m) => '<${m.role}>${m.content}').join('\n');
+  @override
+  Future<int> countTokens(String text) async => text.length ~/ 4;
+  @override
+  Stream<GenerationEvent> generate(String prompt,
+      {String? grammar, SamplingParams sampling = const SamplingParams(), int maxTokens = 1024}) async* {
+    prompts.add(prompt);
+    _stop = false;
+    final out = outputs[_i++ % outputs.length];
+    for (final w in out.split(' ')) {
+      if (_stop) {
+        yield DoneEvent(FinishReason.stopped, GenerationStats.fromList([1, 1, 1, 1, 1, 4096, 0, 1]));
+        return;
+      }
+      yield TokenEvent('$w ');
+      if (!firstToken.isCompleted) firstToken.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    yield DoneEvent(FinishReason.done, GenerationStats.fromList([1, 1, 1, 1, 1, 4096, 0, 1]));
+  }
+
+  @override
+  void stop() {
+    stops++;
+    _stop = true;
+  }
 }

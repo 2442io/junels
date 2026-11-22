@@ -202,6 +202,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? runStarted;
   DateTime? loadStarted;
   AgentRunner? _runner;
+
+  /// Antwort, an der gerade gearbeitet wird, und Kommentare, die der Nutzer währenddessen schrieb.
+  ChatEntry? _runningAnswer;
+  final List<ChatEntry> _noteEntries = [];
   final Map<String, List<Attachment>> _attachments = {};
   GenerationStats? lastStats;
   double? lastTokensPerSecond;
@@ -3138,6 +3142,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     if (running) {
+      // Im selben Chat: als Kommentar an den laufenden Auftrag geben – der Agent berücksichtigt ihn sofort
+      final r = _runner, ans = _runningAnswer, here = current;
+      if (!voice && onAnswer == null && r != null && ans != null && here != null && runningConvId == here.id &&
+          withDocs == null && attachments.isEmpty && r.addNote(input.trim())) {
+        final note = ChatEntry(role: 'user', text: input.trim());
+        final i = here.entries.indexOf(ans);
+        here.entries.insert(i < 0 ? here.entries.length : i, note);
+        _noteEntries.add(note);
+        appLog('Agent', 'Kommentar während der Arbeit: ${input.trim()}');
+        notifyListeners();
+        return;
+      }
       // Läuft schon eine Antwort (in einem anderen Chat): Nachricht vormerken
       if (voice || onAnswer != null) {
         onAnswer?.call('', true);
@@ -3203,6 +3219,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         files: [for (final d in docs) if (d.path != null && isImageFile(d.name)) d.path!]);
     final answer = ChatEntry(role: 'assistant', via: via);
     conv.entries..add(user)..add(answer);
+    _runningAnswer = answer;
+    _noteEntries.clear();
     if (conv.title == 'Neuer Chat') {
       final t = input.trim().replaceAll('\n', ' ');
       conv.title = t.length > 40 ? '${t.substring(0, 40)}…' : t;
@@ -3339,6 +3357,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await for (final ev in runner.run(history: history, userInput: turnInput, context: ctx2)) {
         switch (ev) {
+          case NoteApplied(:final text):
+            answer.steps.add(StepLog(step: answer.steps.length + 1)
+              ..thought = 'Dein Kommentar wird berücksichtigt: „$text“'
+              ..observation = 'Kommentar übernommen');
+            statusMessage = null;
           case StepStarted(step: final n):
             if (runner.agentMode) answer.steps.add(StepLog(step: n));
           case StepStreaming(thought: final liveThought, answer: final liveAnswer):
@@ -3459,6 +3482,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       runningConvId = null;
       runStarted = null;
       unawaited(BackgroundWork.end('agent'));
+      // Kommentare, die zu spät kamen (Antwort war schon fertig): als eigene Nachricht beantworten
+      final late = runner.pendingNotes;
+      for (final text in late) {
+        final e = _noteEntries.where((x) => x.text == text).firstOrNull;
+        if (e != null) _queue.add((conv: conv, text: text, docs: const <Attachment>[], placeholder: e));
+      }
+      _noteEntries.clear();
+      _runningAnswer = null;
       _runner = null;
       try {
         await WakelockPlus.disable();

@@ -95,7 +95,7 @@ Bestimmt, wie viel Text das Modell auf einmal sieht. „Auto“ wählt den grö�
     title: 'Chatten',
     summary: 'Fragen stellen, bearbeiten, wiederholen und mehrere Chats parallel nutzen.',
     shot: 'chat',
-    keywords: 'nachricht senden stopp bearbeiten wiederholen kopieren denkschritte dauer suche chats',
+    keywords: 'nachricht senden stopp bearbeiten wiederholen kopieren denkschritte dauer suche chats kommentar ergänzen nachschieben',
     body: '''Schreib deine Frage ins Feld unten und tippe auf den Pfeil. Während der Agent arbeitet, wird der Pfeil zum **Stopp**-Knopf.
 
 **Unter deiner Nachricht**
@@ -104,6 +104,8 @@ Bestimmt, wie viel Text das Modell auf einmal sieht. „Auto“ wählt den grö�
 - Kopieren
 
 **Denkschritte** – benutzt der Agent Werkzeuge, siehst du über der Antwort eine eingeklappte Liste der Schritte. Ein Tipp klappt sie auf.
+
+**Kommentar während der Arbeit** – während der Agent noch arbeitet, kannst du im selben Chat weiterschreiben („bitte nur unter 150 €“, „kürzer“, „auf Englisch“). Der Pfeil wird dann zum Kommentar-Knopf: Der Agent übernimmt den Kommentar sofort in den laufenden Auftrag – eine Antwort, die gerade entsteht, wird mit dem Kommentar neu begonnen. Ist die Antwort schon fertig, wird der Kommentar danach normal beantwortet. Mit leerem Feld bleibt der Knopf der **Stopp**-Knopf.
 
 **Mehrere Chats** – während eine Antwort entsteht, kannst du andere Chats öffnen. Nachrichten dort warten und werden danach beantwortet. Bist du nicht dabei, bekommst du eine Push-Nachricht, sobald der Agent fertig ist.
 

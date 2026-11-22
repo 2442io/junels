@@ -58,6 +58,13 @@ class FinalAnswer extends AgentEvent {
   final bool truncated;
 }
 
+/// Ein Kommentar des Nutzers, der während der Arbeit kam, wird ab jetzt berücksichtigt.
+class NoteApplied extends AgentEvent {
+  NoteApplied(this.step, this.text);
+  final int step;
+  final String text;
+}
+
 class AgentFinished extends AgentEvent {
   AgentFinished(this.reason, {this.message});
   final AgentStopReason reason;
@@ -106,6 +113,40 @@ class AgentRunner {
     engine.stop();
   }
 
+  // ---- Kommentare während der Arbeit
+  final List<String> _notes = [];
+  bool _finished = false;
+  bool _generating = false;
+  bool _noteInterrupt = false;
+
+  /// Noch nicht berücksichtigte Kommentare (nach dem Lauf: als neue Nachricht schicken).
+  List<String> get pendingNotes => List.unmodifiable(_notes);
+
+  /// Kommentar des Nutzers während der Arbeit. Läuft gerade eine Ausgabe, wird sie
+  /// abgebrochen und mit dem Kommentar neu begonnen. false = Lauf schon beendet.
+  bool addNote(String text) {
+    if (_finished || _stopped || text.trim().isEmpty) return false;
+    _notes.add(text.trim());
+    if (_generating) {
+      _noteInterrupt = true;
+      engine.stop();
+    }
+    return true;
+  }
+
+  /// Wartende Kommentare als Nachrichten für das Modell (und als Ereignis für die Oberfläche).
+  List<ChatMessage> _takeNotes(int step, void Function(AgentEvent) emit) {
+    if (_notes.isEmpty) return const [];
+    final out = <ChatMessage>[];
+    for (final n in _notes) {
+      emit(NoteApplied(step, n));
+      out.add(ChatMessage('user',
+          'Ergänzung des Nutzers, während du gearbeitet hast: „$n“\nBerücksichtige das ab jetzt bei deiner Arbeit und in der Antwort.'));
+    }
+    _notes.clear();
+    return out;
+  }
+
   bool get agentMode => tools.isNotEmpty;
 
   /// Tools dieses Laufs (bei knappem Context ggf. weniger als [tools]).
@@ -130,8 +171,8 @@ class AgentRunner {
     var list = List<AgentTool>.of(tools);
     while (list.length > 1) {
       _active = list;
-      final n = await engine.countTokens(await engine.formatChat(
-          [ChatMessage('system', buildSystemPrompt(ctx)), ChatMessage('user', input)]));
+      final n = await engine.countTokens(
+          await engine.formatChat([ChatMessage('system', buildSystemPrompt(ctx)), ChatMessage('user', input)]));
       if (n <= budget * 0.6) return;
       // am wenigsten passendes Tool (bei Gleichstand das hinterste) entfernen
       var drop = list.length - 1;
@@ -164,12 +205,14 @@ class AgentRunner {
       b.writeln('\nRegeln:');
       b.writeln('- Nutze ein Tool nur, wenn es nötig ist. Einfache Fragen direkt mit final_answer beantworten.');
       b.writeln('- Nach jedem Tool-Aufruf erhältst du eine Beobachtung. Erfinde keine Ergebnisse.');
-      b.writeln('- Schlägt ein Tool fehl, nenne dem Nutzer den konkreten Grund (z. B. „Amazon blockiert automatische Abrufe“) '
+      b.writeln(
+          '- Schlägt ein Tool fehl, nenne dem Nutzer den konkreten Grund (z. B. „Amazon blockiert automatische Abrufe“) '
           'und probiere einen anderen Weg. Behaupte nie pauschal, du hättest keinen Zugriff.');
       b.writeln('- Rechne nie im Kopf, wenn calculator verfügbar ist.');
       b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt.');
       if (activeTools.any((t) => t.name == 'web_fetch' || t.name == 'web_search')) {
-        b.writeln('- Du KANNST das Internet nutzen: web_fetch liest eine Webseite (z. B. eine vom Nutzer genannte URL), '
+        b.writeln(
+            '- Du KANNST das Internet nutzen: web_fetch liest eine Webseite (z. B. eine vom Nutzer genannte URL), '
             'web_search sucht im Web. Behaupte nie, du hättest keinen Internetzugriff.');
       }
       if (activeTools.any((t) => t.name.startsWith('create_'))) {
@@ -209,6 +252,8 @@ class AgentRunner {
       } catch (e) {
         controller.add(AgentFinished(AgentStopReason.error, message: e.toString()));
       } finally {
+        _finished = true;
+        _generating = false;
         await controller.close();
       }
     }();
@@ -217,34 +262,49 @@ class AgentRunner {
 
   // ---------------------------------------------------------------- Chat-Modus
 
-  Future<void> _runChat(List<ChatMessage> history, String input, ToolContext ctx,
-      void Function(AgentEvent) emit) async {
+  Future<void> _runChat(
+      List<ChatMessage> history, String input, ToolContext ctx, void Function(AgentEvent) emit) async {
     emit(StepStarted(1));
     final messages = [ChatMessage('system', buildSystemPrompt(ctx))];
-    final prompt = await _fitPrompt(
-      system: messages.first.content,
-      history: history,
-      input: input,
-      scratch: const [],
-      reserve: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()),
-    );
-    final raw = StringBuffer();
+    final extra = <ChatMessage>[];
+    var raw = StringBuffer();
     GenerationStats? stats;
     FinishReason reason = FinishReason.done;
     String? error;
-    await for (final ev in engine.generate(skipThinking(prompt),
-        grammar: blockCjk ? AgentGrammar.plainTextNoCjk() : null,
-        sampling: chatSampling,
-        maxTokens: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()))) {
-      switch (ev) {
-        case TokenEvent(:final text):
-          raw.write(text);
-          emit(StepStreaming(1, answer: cleanModelText(raw.toString(), streaming: true), raw: raw.toString()));
-        case DoneEvent():
-          stats = ev.stats;
-          reason = ev.reason;
-          error = ev.error;
+    for (var round = 0; round < 4; round++) {
+      extra.addAll(_takeNotes(1, emit));
+      final prompt = await _fitPrompt(
+        system: messages.first.content,
+        history: history,
+        input: input,
+        scratch: extra,
+        reserve: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()),
+      );
+      raw = StringBuffer();
+      _generating = true;
+      await for (final ev in engine.generate(skipThinking(prompt),
+          grammar: blockCjk ? AgentGrammar.plainTextNoCjk() : null,
+          sampling: chatSampling,
+          maxTokens: math.min(maxTokensPerStep * 2, (engine.contextSize * 0.4).round()))) {
+        switch (ev) {
+          case TokenEvent(:final text):
+            raw.write(text);
+            emit(StepStreaming(1, answer: cleanModelText(raw.toString(), streaming: true), raw: raw.toString()));
+          case DoneEvent():
+            stats = ev.stats;
+            reason = ev.reason;
+            error = ev.error;
+        }
       }
+      _generating = false;
+      // Kommentar kam während der Ausgabe: bisherigen Entwurf behalten und mit Kommentar überarbeiten
+      if ((_noteInterrupt || _notes.isNotEmpty) && !_stopped && reason != FinishReason.error) {
+        _noteInterrupt = false;
+        final draft = cleanModelText(raw.toString()).trim();
+        if (draft.isNotEmpty) extra.add(ChatMessage('assistant', draft));
+        continue;
+      }
+      break;
     }
     if (stats != null) emit(MetricsUpdate(stats));
     if (reason == FinishReason.error) {
@@ -258,8 +318,8 @@ class AgentRunner {
 
   // -------------------------------------------------------------- Agenten-Modus
 
-  Future<void> _runAgent(List<ChatMessage> history, String input, ToolContext ctx,
-      void Function(AgentEvent) emit) async {
+  Future<void> _runAgent(
+      List<ChatMessage> history, String input, ToolContext ctx, void Function(AgentEvent) emit) async {
     await _selectTools(input, ctx);
     final system = buildSystemPrompt(ctx);
     final scratch = <ChatMessage>[];
@@ -286,6 +346,7 @@ class AgentRunner {
       answerNext = false;
       emit(StepStarted(step));
 
+      scratch.addAll(_takeNotes(step, emit));
       final prompt = await _fitPrompt(
         system: system,
         history: history,
@@ -294,6 +355,7 @@ class AgentRunner {
         reserve: _reserve,
       );
       hint = null;
+      _generating = true;
 
       final raw = StringBuffer();
       GenerationStats? stats;
@@ -315,8 +377,16 @@ class AgentRunner {
             error = ev.error;
         }
       }
+      _generating = false;
       if (stats != null) emit(MetricsUpdate(stats));
       final text = raw.toString();
+
+      // Kommentar kam mitten in der Ausgabe: diesen Schritt mit Kommentar wiederholen (zählt nicht als Schritt)
+      if (_noteInterrupt && !_stopped) {
+        _noteInterrupt = false;
+        step--;
+        continue;
+      }
 
       if (reason == FinishReason.stopped || _stopped) {
         final partial = extractPartialJsonString(text, 'final_answer');
@@ -352,6 +422,11 @@ class AgentRunner {
       }
 
       final thought = (obj['thought'] ?? '').toString();
+      if (obj.containsKey('final_answer') && _notes.isNotEmpty && step <= maxSteps) {
+        // Kommentar kam genau jetzt: Entwurf behalten und überarbeiten lassen
+        scratch.add(ChatMessage('assistant', text));
+        continue;
+      }
       if (obj.containsKey('final_answer')) {
         emit(FinalAnswer(obj['final_answer'].toString(), thought: thought));
         emit(AgentFinished(step > maxSteps ? AgentStopReason.stepLimit : AgentStopReason.answered));
@@ -403,9 +478,12 @@ class AgentRunner {
       }
       lastCall = callKey;
       sw.stop();
-      seenCalls.putIfAbsent(callKey, () => observation.length > 300 ? '${observation.substring(0, 300)} …' : observation);
+      seenCalls.putIfAbsent(
+          callKey, () => observation.length > 300 ? '${observation.substring(0, 300)} …' : observation);
       // Zweimal erfolglos (Fehler oder „ohne Ergebnis“) → nicht weiter probieren, antworten
-      if (isError || RegExp(r'ohne Ergebnis|keine Treffer|nichts gefunden', caseSensitive: false).hasMatch(observation.length > 200 ? observation.substring(0, 200) : observation)) {
+      if (isError ||
+          RegExp(r'ohne Ergebnis|keine Treffer|nichts gefunden', caseSensitive: false)
+              .hasMatch(observation.length > 200 ? observation.substring(0, 200) : observation)) {
         final n = (failures[toolName] ?? 0) + 1;
         failures[toolName] = n;
         if (n >= 2) answerNext = true;
@@ -449,8 +527,7 @@ class AgentRunner {
         ChatMessage('system', system),
         ...hist,
         ChatMessage('user', inputText),
-        if (summarized)
-          const ChatMessage('user', '[Frühere Schritte wurden aus Platzgründen gekürzt.]'),
+        if (summarized) const ChatMessage('user', '[Frühere Schritte wurden aus Platzgründen gekürzt.]'),
         ...work,
       ];
       final prompt = await engine.formatChat(msgs);
@@ -477,8 +554,7 @@ class AgentRunner {
         inputText = cut(inputText);
         continue;
       }
-      throw EngineException(
-          'Die Anfrage ist zu lang für das Context-Fenster ($n Tokens, Budget $budget). '
+      throw EngineException('Die Anfrage ist zu lang für das Context-Fenster ($n Tokens, Budget $budget). '
           'Bitte kürzen oder einen größeren Context wählen.');
     }
   }
