@@ -449,6 +449,21 @@ Der Agent kann – jeweils mit Rückfrage – **Termine** abfragen und eintragen
 
   // ------------------------------------------------------------ App & Sicherheit
   HelpArticle(
+    id: 'ai-label',
+    category: 'App & Sicherheit',
+    icon: Icons.auto_awesome_outlined,
+    title: 'KI-Kennzeichnung',
+    summary: 'Woran du erkennst, was die KI erzeugt hat – nach den EU-Vorgaben.',
+    keywords: 'ki kennzeichnung ai generated eu ai act symbol hinweis fehler bild wasserzeichen transparenz',
+    body: '''Junels kennzeichnet KI-Inhalte nach dem **EU AI Act** (Art. 50) mit den offiziellen EU-Symbolen:
+
+- **Bilder**, die der Agent erzeugt, tragen unten rechts das Symbol **„AI GENERATED“** – fest im Bild, damit es auch beim Teilen oder Herunterladen sichtbar bleibt. Zusätzlich steht die Kennzeichnung maschinenlesbar in der Bilddatei.
+- **Antworten** im Chat und im Gesprächsmodus haben unten das Symbol **„AI“** mit dem Hinweis „Mit KI erzeugt · KI kann Fehler machen“.
+- **Dokumente und Präsentationen** (PDF, PowerPoint) haben auf jeder Seite bzw. Folie eine Fußzeile mit demselben Hinweis.
+
+Bitte prüfe wichtige Angaben – Zahlen, Termine, Namen, rechtliche oder medizinische Aussagen – bevor du sie weitergibst.''',
+  ),
+  HelpArticle(
     id: 'privacy',
     category: 'App & Sicherheit',
     icon: Icons.verified_user_outlined,

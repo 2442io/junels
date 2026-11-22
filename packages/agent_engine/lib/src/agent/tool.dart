@@ -82,6 +82,12 @@ class ToolContext {
   /// der Nutzer gibt mit einem Tipp frei. null = keine Karten möglich (dann direkt öffnen).
   final void Function(Map<String, String> action)? propose;
 
+  /// Ursprüngliche Bitte des Nutzers (setzt der Agent; z. B. „… mit Bildern“).
+  String userRequest = '';
+
+  /// In diesem Auftrag bereits erzeugte Bilder (Pfade) – Dokumente/Folien binden sie ein.
+  final List<String> generatedImages = [];
+
   /// Ein Werkzeug setzt das, wenn sein Ergebnis für die Antwort reicht:
   /// Der Agent antwortet dann sofort, ohne weitere Werkzeuge (spart Zeit).
   bool answerNow = false;

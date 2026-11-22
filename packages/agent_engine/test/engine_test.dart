@@ -791,9 +791,50 @@ Future<void> main() async {
       'content': '# Landschaft\n- Lavendel\n- Bild-Idee: lavender fields at sunset\n\n# Essen\n- Ratatouille\n![market with vegetables](auto)',
     }, ToolContext(onArtifact: arts.add));
     check(prompts.length == 2 && prompts.first.startsWith('lavender fields'), 'zwei Bilder erzeugt ($prompts)');
-    check(r.contains('2 erzeugten Bildern') && arts.where((a) => a.kind == 'image').length == 2 && arts.any((a) => a.kind == 'pptx'), 'Bilder in Präsentation ($r)');
+    check(r.contains('2 Bildern') && arts.where((a) => a.kind == 'image').length == 2 && arts.any((a) => a.kind == 'pptx'), 'Bilder in Präsentation ($r)');
     final none = await autoImages(OutputSpace(dir), '![x](auto)', ToolContext());
     check(none.$2 == 0, 'ohne Bildmodell nichts erzeugen');
+  });
+
+  await group('KI-Kennzeichnung und Bilder in Folien', () async {
+    // EU-Symbol wird ins Bild gestempelt (unten rechts dunkel, oben links unverändert)
+    const w = 512, h = 512;
+    final rgba = Uint8List(w * h * 4)..fillRange(0, w * h * 4, 255);
+    stampAiLabel(rgba, w, h);
+    int lum(int x, int y) => rgba[(y * w + x) * 4];
+    var dark = 0;
+    for (var y = h - 60; y < h; y++) {
+      for (var x = w - 160; x < w; x++) {
+        if (lum(x, y) < 60) dark++;
+      }
+    }
+    check(dark > 1500 && lum(10, 10) == 255, 'EU-Symbol „AI GENERATED“ im Bild ($dark dunkle Pixel)');
+    final png = encodePngRgba(w, h, rgba, text: aiImageMetadata(prompt: 'lavender fields'));
+    check(latin1.decode(png, allowInvalid: true).contains('AI-Generated') && latin1.decode(png, allowInvalid: true).contains('EU AI Act'),
+        'Maschinenlesbare Kennzeichnung (PNG tEXt)');
+
+    // Vorher erzeugte Bilder landen auf Folien ohne Bild
+    final md = placeImages('# Einleitung\n- a\n- b\n# Markt\n![x](da.png)\n# Ausblick\n- c\n# Fragen\n- ?',
+        files: ['/x/bild1.png', '/x/bild2.png'], auto: false, maxAuto: 3);
+    check(md.contains('# Einleitung\n- a\n- b\n\n![Einleitung](bild1.png)') && md.contains('![Ausblick](bild2.png)'), 'Bilder auf Folien verteilt');
+    check(!md.split('# Fragen')[1].contains('!['), 'Fragen-Folie bleibt ohne Bild');
+    final auto = placeImages('# A\n- x\n# B\n- y', files: const [], auto: true, maxAuto: 1);
+    check(auto.contains('![A](auto)') && !auto.contains('![B]'), 'gewünschte Bilder: auto, höchstens maxAuto');
+    check(wantsImages('Erstelle eine PowerPoint mit Bildern über Wien') && !wantsImages('Erstelle eine Präsentation über Wien'), 'Wunsch nach Bildern erkannt');
+
+    // Ende zu Ende: generate_image, dann create_presentation ohne Bildverweis
+    final dir = Directory.systemTemp.createTempSync('ae_ki');
+    final one = encodePngRgba(4, 4, Uint8List(64)..fillRange(0, 64, 200));
+    var n = 0;
+    final gen = (String p, String f, String neg) async => (File('${dir.path}/KI-Bild ${n++}.png')..writeAsBytesSync(one)).path;
+    final out = OutputSpace(dir, imageGenerator: () => gen);
+    final ctx = ToolContext()..userRequest = 'Mach eine PowerPoint über Wien mit Bildern';
+    await GenerateImageTool(gen).run({'prompt': 'vienna skyline'}, ctx);
+    final r = await CreatePresentationTool(out).run({'title': 'Wien', 'content': '# Stadt\n- Stephansdom\n# Kultur\n- Oper'}, ctx);
+    final pptx = File('${dir.path}/Wien.pptx').readAsBytesSync();
+    final s = latin1.decode(pptx, allowInvalid: true);
+    check(r.contains('2 Bildern') && s.contains('ppt/media/'), 'Bilder stecken in der PowerPoint ($r)');
+    check(n == 2, 'zweite Folie bekommt ein neu erzeugtes Bild');
   });
 
   await group('Websuche: vereinfachte Anfrage und Rückfall', () async {

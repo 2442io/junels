@@ -662,6 +662,8 @@ class _AssistantMessage extends StatelessWidget {
                 ],
               ),
             ),
+          if (!live && (entry.text.isNotEmpty || entry.files.isNotEmpty) && entry.error == null)
+            AiNotice(images: entry.files.any(isImageFile)),
         ],
       ),
     );

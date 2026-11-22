@@ -197,6 +197,7 @@ class AgentRunner {
     required ToolContext context,
   }) {
     _stopped = false;
+    if (context.userRequest.isEmpty) context.userRequest = userInput;
     final controller = StreamController<AgentEvent>();
     () async {
       try {

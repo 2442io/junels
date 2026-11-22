@@ -1,6 +1,6 @@
 name: offline_agent
 description: Native Offline Agent App – lokale KI-Agenten ohne Cloud und ohne App Store.
-version: 1.27.0+39
+version: 1.28.0+40
 publish_to: none
 
 environment:
@@ -36,6 +36,7 @@ flutter:
   assets:
     - assets/vad/silero_vad.onnx
     - assets/help/
+    - assets/ai_label/
   fonts:
     - family: Inter
       fonts:

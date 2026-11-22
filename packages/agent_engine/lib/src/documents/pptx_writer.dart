@@ -5,7 +5,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'md_blocks.dart';
-import 'pdf_writer.dart' show ImageResolver, textWidth;
+import 'pdf_writer.dart' show ImageResolver, aiDisclaimer, textWidth;
 import 'raster.dart';
 import 'zip_writer.dart';
 
@@ -128,6 +128,8 @@ Uint8List buildPptx({
       sp.write(_textBox(4, 'Untertitel', x, 330 * _emu, _slideW - 2 * x, 120 * _emu,
           '<a:p>${_runs(subtitle, 2000, color: 'D9F2EE')}</a:p>'));
     }
+    sp.write(_textBox(5, 'KI-Hinweis', x, 505 * _emu, _slideW - 2 * x, 20 * _emu,
+        '<a:p>${_runs(aiDisclaimer, 900, color: 'D9F2EE')}</a:p>'));
     all.add((xml: sp.toString(), rels: []));
   }
 
@@ -228,6 +230,8 @@ Uint8List buildPptx({
     }
     sp.write(_textBox(id++, 'Foliennummer', (960 - 100) * _emu, 510 * _emu, 60 * _emu, 20 * _emu,
         '<a:p><a:pPr algn="r"/>${_runs('${si + 2}', 1000, color: '6B757F')}</a:p>'));
+    sp.write(_textBox(id++, 'KI-Hinweis', 60 * _emu, 512 * _emu, 600 * _emu, 18 * _emu,
+        '<a:p>${_runs(aiDisclaimer, 800, color: '8A939C')}</a:p>'));
     all.add((xml: sp.toString(), rels: rels));
   }
 

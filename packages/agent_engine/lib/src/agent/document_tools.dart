@@ -104,14 +104,80 @@ Future<(String, int)> autoImages(OutputSpace out, String md, ToolContext ctx) as
       final path = cache[prompt] ??= await gen('$prompt, high quality photo, detailed', 'landscape', '');
       made++;
       final f = File(path);
+      if (!ctx.generatedImages.contains(f.path)) ctx.generatedImages.add(f.path);
       _artifact(ctx, f, 'image');
-      buf.write('![${alt.isEmpty ? '' : alt}](${f.uri.pathSegments.last})');
+      buf.write('![${alt.isEmpty ? '' : alt}](${_ref(f.path)})');
     } catch (_) {
       // Bild ging nicht – Dokument trotzdem erstellen
     }
   }
   buf.write(text.substring(last));
   return (buf.toString(), made);
+}
+
+/// Dateiname für Markdown-Verweise (Leerzeichen kodiert, resolveImage dekodiert).
+String _ref(String path) => path.split('/').last.replaceAll(' ', '%20');
+
+final _wantsImagesRe = RegExp(r'(bild|bilder|bildern|foto|fotos|illustration|illustrationen|grafik|grafiken|image|images|picture|pictures|photo|photos)\b',
+    caseSensitive: false);
+
+/// Hat der Nutzer Bilder verlangt („… mit Bildern“)?
+bool wantsImages(String request) => _wantsImagesRe.hasMatch(request);
+
+/// Bilder in Folien bzw. Abschnitte einsetzen, die noch keines haben:
+/// zuerst bereits erzeugte Bilder dieses Auftrags, dann (falls gewünscht) neue „auto“-Bilder.
+/// [slides]: Folien beginnen mit „# “ (Präsentation), sonst Abschnitte mit „#“/„##“.
+String placeImages(String md, {required List<String> files, required bool auto, required int maxAuto, bool slides = true}) {
+  final unused = [
+    for (final f in files)
+      if (!md.contains(f.split('/').last) && !md.contains(_ref(f))) f
+  ];
+  if (unused.isEmpty && !auto) return md;
+  final lines = md.split('\n');
+  final heading = slides ? RegExp(r'^#\s+(.+)$') : RegExp(r'^#{1,2}\s+(.+)$');
+  // Abschnitte bestimmen: [start, end)
+  final starts = <int>[for (var i = 0; i < lines.length; i++) if (heading.hasMatch(lines[i])) i];
+  if (starts.isEmpty) {
+    // ohne Überschriften: alle unbenutzten Bilder ans Ende
+    return [md, for (final f in unused) '\n![](${_ref(f)})'].join('\n');
+  }
+  final inserts = <int, String>{};
+  var autoLeft = maxAuto;
+  var fi = 0;
+  for (var k = 0; k < starts.length; k++) {
+    final a = starts[k], b = k + 1 < starts.length ? starts[k + 1] : lines.length;
+    final body = lines.sublist(a + 1, b).join('\n');
+    if (body.contains('![')) continue;
+    // Abschluss-/Fragenfolien ohne Bild lassen
+    final title = heading.firstMatch(lines[a])!.group(1)!.replaceAll(RegExp(r'[*_`]'), '').trim();
+    if (RegExp(r'^(fragen|danke|vielen dank|quellen|kontakt|fazit|zusammenfassung|agenda|inhalt)', caseSensitive: false).hasMatch(title)) {
+      continue;
+    }
+    if (fi < unused.length) {
+      inserts[a] = '![$title](${_ref(unused[fi++])})';
+    } else if (auto && autoLeft > 0) {
+      inserts[a] = '![$title](auto)';
+      autoLeft--;
+    }
+    if (fi >= unused.length && (!auto || autoLeft == 0)) break;
+  }
+  final out = <String>[];
+  for (var i = 0; i < lines.length; i++) {
+    out.add(lines[i]);
+    final ins = inserts[i];
+    if (ins != null) {
+      // nach den Stichpunkten der Folie einfügen (vor der nächsten Überschrift)
+      var j = i + 1;
+      while (j < lines.length && !heading.hasMatch(lines[j])) {
+        out.add(lines[j]);
+        j++;
+      }
+      out.add('');
+      out.add(ins);
+      i = j - 1;
+    }
+  }
+  return out.join('\n');
 }
 
 void _artifact(ToolContext ctx, File f, String kind) =>
@@ -149,7 +215,10 @@ class CreateDocumentTool extends AgentTool {
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final title = (args['title'] ?? '').toString().trim();
     if ((args['content'] ?? '').toString().trim().isEmpty) throw ToolException('content ist leer');
-    final (content, _) = await autoImages(out, (args['content'] ?? '').toString(), ctx);
+    final want = wantsImages(ctx.userRequest);
+    final raw = placeImages((args['content'] ?? '').toString(),
+        files: ctx.generatedImages, auto: want && out.imageGenerator?.call() != null, maxAuto: out.maxAutoImages, slides: false);
+    final (content, _) = await autoImages(out, raw, ctx);
     final bytes = buildPdfDocument(title: title.isEmpty ? 'Dokument' : title, markdown: content, resolveImage: out.resolveImage);
     final f = out.fileFor(title.isEmpty ? 'Dokument' : title, 'pdf');
     await f.writeAsBytes(bytes);
@@ -176,7 +245,8 @@ class CreatePresentationTool extends AgentTool {
   String get description =>
       'Erstellt eine Präsentation (PowerPoint .pptx und PDF). content in Markdown: jede "# Überschrift" '
       'beginnt eine Folie, darunter 3–6 kurze Stichpunkte mit "- ", optional eine Tabelle. Bild auf einer Folie: '
-      '![kurze Bildbeschreibung auf Englisch](auto) – es wird automatisch erzeugt (Bildmodell), oder ![](name.png) für ein vorhandenes Bild.';
+      '![kurze Bildbeschreibung auf Englisch](auto) – es wird automatisch erzeugt (Bildmodell), oder ![](name.png) für ein vorhandenes Bild. '
+      'Vorher mit generate_image erzeugte Bilder kommen automatisch auf Folien ohne Bild.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Titel der Präsentation'),
@@ -186,7 +256,11 @@ class CreatePresentationTool extends AgentTool {
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final title = (args['title'] ?? '').toString().trim().isEmpty ? 'Präsentation' : args['title'].toString().trim();
-    final (content, made) = await autoImages(out, (args['content'] ?? '').toString(), ctx);
+    final want = wantsImages(ctx.userRequest);
+    final canGen = out.imageGenerator?.call() != null;
+    final raw = placeImages((args['content'] ?? '').toString(),
+        files: ctx.generatedImages, auto: want && canGen, maxAuto: out.maxAutoImages, slides: true);
+    final (content, made) = await autoImages(out, raw, ctx);
     final split = splitSlides(content);
     if (split.slides.isEmpty) throw ToolException('Keine Folien gefunden: jede Folie mit "# Titel" beginnen.');
     final pptx = buildPptx(title: title, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage);
@@ -197,8 +271,11 @@ class CreatePresentationTool extends AgentTool {
     await f2.writeAsBytes(pdf);
     _artifact(ctx, f1, 'pptx');
     _artifact(ctx, f2, 'pdf');
-    return 'Präsentation mit ${split.slides.length + 1} Folien${made > 0 ? ' und $made erzeugten Bildern' : ''} erstellt: ${f1.uri.pathSegments.last} '
-        '(PowerPoint) und ${f2.uri.pathSegments.last} (PDF).${_imagesHint(out, content)}';
+    final pictures = RegExp(r'!\[[^\]]*\]\(([^)]+)\)').allMatches(content).where((m) => out.resolveImage(m.group(1)!) != null).length;
+    return 'Präsentation mit ${split.slides.length + 1} Folien${pictures > 0 ? ' und $pictures Bildern' : ''} erstellt: ${f1.uri.pathSegments.last} '
+        '(PowerPoint) und ${f2.uri.pathSegments.last} (PDF).${made > 0 ? ' $made Bilder wurden dafür neu erzeugt (mit KI-Kennzeichnung).' : ''}'
+        '${want && pictures == 0 && !canGen ? ' Hinweis für den Nutzer: Für Bilder fehlt das Bildmodell (Systemcheck → Bilder erzeugen, SD-Turbo).' : ''}'
+        '${_imagesHint(out, content)}';
   }
 }
 
@@ -301,6 +378,7 @@ class GenerateImageTool extends AgentTool {
     if (prompt.isEmpty) throw ToolException('prompt ist leer');
     final path = await generate(prompt, (args['format'] ?? 'square').toString(), (args['avoid'] ?? '').toString());
     final f = File(path);
+    ctx.generatedImages.add(f.path);
     _artifact(ctx, f, 'image');
     final name = f.uri.pathSegments.last;
     return 'Bild gespeichert als "$name" (der Nutzer sieht es im Chat). In Dokumenten/Folien einbinden mit ![]($name).';

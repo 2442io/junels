@@ -610,3 +610,52 @@ class PageHeader extends StatelessWidget {
     );
   }
 }
+
+/// KI-Hinweis unter erzeugten Inhalten – mit dem offiziellen EU-Symbol „AI“
+/// (https://digital-strategy.ec.europa.eu/de/policies/eu-icons-labelling-ai-generated-content).
+class AiNotice extends StatelessWidget {
+  const AiNotice({super.key, this.images = false, this.compact = false});
+
+  /// Enthält die Antwort erzeugte Bilder?
+  final bool images;
+  final bool compact;
+
+  static const text = 'Mit KI erzeugt · KI kann Fehler machen – Wichtiges bitte prüfen.';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final label = images ? 'Mit KI erzeugt, auch die Bilder · KI kann Fehler machen – Wichtiges bitte prüfen.' : text;
+    return Semantics(
+      label: 'Hinweis: Dieser Inhalt wurde mit KI erzeugt. KI kann Fehler machen.',
+      excludeSemantics: true,
+      child: Padding(
+        padding: EdgeInsets.only(top: compact ? 2 : 6),
+        child: Row(mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max, children: [
+          Image.asset(dark ? 'assets/ai_label/ai_white.png' : 'assets/ai_label/ai_black.png',
+              height: 15, filterQuality: FilterQuality.medium, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: c.faint, fontFamily: Ui.font, height: 1.3)),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// EU-Symbol „AI GENERATED“ als Plakette (z. B. über KI-Bildern in der Vorschau).
+class AiGeneratedBadge extends StatelessWidget {
+  const AiGeneratedBadge({super.key, this.height = 18});
+  final double height;
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: 'KI-generiertes Bild',
+        child: Image.asset('assets/ai_label/ai_generated_black.png',
+            height: height, filterQuality: FilterQuality.medium, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+      );
+}

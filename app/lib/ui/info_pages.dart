@@ -10,6 +10,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.28.0', [
+    'KI-Kennzeichnung nach EU-Vorgaben: erzeugte Bilder tragen das offizielle Symbol „AI GENERATED“ fest im Bild (bleibt beim Teilen erhalten) und eine maschinenlesbare Kennzeichnung in der Datei',
+    'Unter jeder Antwort – auch im Gesprächsmodus – das EU-Symbol „AI“ mit dem Hinweis „Mit KI erzeugt · KI kann Fehler machen“',
+    'PDFs und PowerPoints haben auf jeder Seite bzw. Folie eine Fußzeile mit dem KI-Hinweis',
+    'Präsentationen: erzeugte Bilder landen jetzt wirklich in der PowerPoint (Dateinamen mit Leerzeichen gingen verloren); vorher erzeugte Bilder kommen automatisch auf Folien ohne Bild, und „… mit Bildern“ erzeugt passende Bilder',
+    'Hilfe: neuer Artikel „KI-Kennzeichnung“',
+  ]),
   ('1.27.0', [
     'Präsentationen und Dokumente bekommen ihre Bilder automatisch, sobald das Bildmodell geladen ist (Handy bis 3, Mac bis 6 Bilder) – auch aus „Bild-Idee: …“-Zeilen',
     'Bilder erzeugen bricht nicht mehr nach 20 Sekunden ab: Werkzeuge haben eigene Zeitgrenzen (Bild 8 min, Präsentation mit Bildern 15 min)',

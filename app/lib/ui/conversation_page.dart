@@ -4,6 +4,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'theme.dart';
+
 import '../state/app_controller.dart' show NetworkChoice;
 import '../state/app_scope.dart';
 import '../state/conversation_mode.dart';
@@ -194,11 +196,14 @@ class _ConversationPageState extends State<ConversationPage> {
                         padding: const EdgeInsets.symmetric(horizontal: 28),
                         child: ValueListenableBuilder<String>(
                           valueListenable: conv.agentText,
-                          builder: (context, a, _) => Text(
-                            a,
-                            textAlign: TextAlign.center,
-                            style: t.bodyLarge,
-                          ),
+                          builder: (context, a, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+                            Text(
+                              a,
+                              textAlign: TextAlign.center,
+                              style: t.bodyLarge,
+                            ),
+                            if (a.trim().isNotEmpty) const Center(child: AiNotice(compact: true)),
+                          ]),
                         ),
                       ),
                     ),

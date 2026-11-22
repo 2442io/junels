@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'theme.dart';
+
 import '../state/app_controller.dart' show isImageFile;
 import '../state/native_files.dart';
 
@@ -67,12 +69,29 @@ class FileGallery extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (images.isNotEmpty)
-          Wrap(spacing: 8, runSpacing: 8, children: [for (final p in images) ImagePreview(p, size: 220)]),
+          Wrap(spacing: 8, runSpacing: 8, children: [for (final p in images) _aiAware(p)]),
         if (images.isNotEmpty && others.isNotEmpty) const SizedBox(height: 8),
         for (final p in others) FileCard(p),
       ]),
     );
   }
+}
+
+/// KI-Bilder: Screenreader-Hinweis; ältere Bilder ohne eingestempeltes Symbol bekommen es als Plakette.
+Widget _aiAware(String p) {
+  final name = p.split(Platform.pathSeparator).last;
+  final stamped = name.startsWith('KI-Bild');
+  final legacy = !stamped && name.startsWith('Bild ');
+  final preview = ImagePreview(p, size: 220);
+  if (!stamped && !legacy) return preview;
+  return Semantics(
+    label: 'KI-generiertes Bild',
+    image: true,
+    child: Stack(children: [
+      preview,
+      if (legacy) const Positioned(right: 8, bottom: 8, child: AiGeneratedBadge(height: 16)),
+    ]),
+  );
 }
 
 class FileCard extends StatelessWidget {

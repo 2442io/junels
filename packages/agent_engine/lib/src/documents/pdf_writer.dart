@@ -69,6 +69,9 @@ String _pdfString(String s) {
 
 String _n(double v) => v.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
 
+/// Fußzeile in allen erzeugten Dokumenten und Folien.
+const aiDisclaimer = 'Mit KI erzeugt (Junels) – KI kann Fehler machen, Inhalte bitte prüfen.';
+
 /// Niedrige Ebene: Objekte, Seiten, Bilder, Schriften.
 class _PdfCore {
   final _objects = <Uint8List?>[]; // Index = Objektnummer - 1
@@ -391,6 +394,8 @@ Uint8List buildPdfDocument({
     final t = plainInline(title);
     final short = t.length > 70 ? '${t.substring(0, 67)}…' : t;
     buf.write(_drawLine([_Word(short, _Font.regular)], ml, 34, 8, theme.muted));
+    // KI-Hinweis (Transparenz nach AI Act)
+    buf.write(_drawLine([_Word(aiDisclaimer, _Font.regular)], ml, 22, 7, theme.muted));
     core.page(buf.toString(), pw, ph, im);
   }
   return core.build(plainInline(title));
@@ -545,6 +550,7 @@ Uint8List buildSlidesPdf({
     }
     final label = '$n';
     c.write(_drawLine([_Word(label, _Font.regular)], pw - 40 - _width(label, _Font.regular, 10), 18, 10, theme.muted));
+    c.write(_drawLine([_Word(aiDisclaimer, _Font.regular)], 40, 18, 8, theme.muted));
     core.page(c.toString(), pw, ph, imgs);
   }
   return core.build(plainInline(title));

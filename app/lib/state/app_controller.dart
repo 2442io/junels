@@ -1542,9 +1542,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         rgba[i * 4 + 2] = img.rgb[i * 3 + 2];
         rgba[i * 4 + 3] = 255;
       }
+      // EU-Kennzeichnung: Symbol „AI GENERATED“ im Bild + maschinenlesbare Metadaten
+      stampAiLabel(rgba, img.width, img.height);
       final words = prompt.replaceAll(RegExp(r'[^\w\s-]'), ' ').trim().split(RegExp(r'\s+')).take(5).join(' ');
-      final f = OutputSpace(outputsDir).fileFor('Bild $words', 'png');
-      await f.writeAsBytes(encodePngRgba(img.width, img.height, rgba));
+      final f = OutputSpace(outputsDir).fileFor('KI-Bild $words', 'png');
+      await f.writeAsBytes(encodePngRgba(img.width, img.height, rgba, text: aiImageMetadata(prompt: prompt)));
       return f.path;
     } on ImageGenException catch (e) {
       throw ToolException(e.message);

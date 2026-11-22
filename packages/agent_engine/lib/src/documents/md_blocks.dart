@@ -53,7 +53,8 @@ class MdRun {
   final bool italic;
 }
 
-final _image = RegExp(r'^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$');
+// Pfade dürfen Leerzeichen enthalten (erzeugte Bilder heißen z. B. „KI-Bild lavender fields.png“)
+final _image = RegExp(r'^!\[([^\]]*)\]\(<?([^)<>]+?)>?(?:\s+"[^"]*")?\)\s*$');
 final _heading = RegExp(r'^(#{1,6})\s+(.*?)\s*#*\s*$');
 final _bullet = RegExp(r'^(\s*)[-*+•]\s+(.*)$');
 final _ordered = RegExp(r'^(\s*)(\d+)[.)]\s+(.*)$');

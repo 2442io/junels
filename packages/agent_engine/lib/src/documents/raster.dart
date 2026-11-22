@@ -206,7 +206,8 @@ int _paeth(int a, int b, int c) {
 }
 
 /// Schreibt RGBA-Pixel als PNG.
-Uint8List encodePngRgba(int w, int h, Uint8List rgba) {
+/// [text]: Metadaten als tEXt-Blöcke (z. B. maschinenlesbare KI-Kennzeichnung).
+Uint8List encodePngRgba(int w, int h, Uint8List rgba, {Map<String, String> text = const {}}) {
   final raw = BytesBuilder(copy: false);
   for (var y = 0; y < h; y++) {
     raw.addByte(0);
@@ -222,6 +223,11 @@ Uint8List encodePngRgba(int w, int h, Uint8List rgba) {
   }
 
   chunk('IHDR', [..._u32(w), ..._u32(h), 8, 6, 0, 0, 0]);
+  for (final e in text.entries) {
+    // tEXt ist Latin-1: Umlaute ersetzen, alles andere weglassen
+    final v = e.value.replaceAll('ä', 'ae').replaceAll('ö', 'oe').replaceAll('ü', 'ue').replaceAll('ß', 'ss').replaceAll('Ä', 'Ae').replaceAll('Ö', 'Oe').replaceAll('Ü', 'Ue');
+    chunk('tEXt', [...e.key.codeUnits.where((c) => c < 128), 0, ...v.codeUnits.where((c) => c < 256)]);
+  }
   chunk('IDAT', ZLibEncoder(level: 6).convert(raw.takeBytes()));
   chunk('IEND', const []);
   return out.takeBytes();
