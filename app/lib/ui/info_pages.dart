@@ -13,6 +13,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.4', [
+    'Ein neuer Chat steht sofort in der Chat-Liste – auch bevor du etwas abschickst (höchstens ein leerer Entwurf)',
+  ]),
   ('1.31.3', [
     'Beobachtungen: Das Thema bleibt oben stehen, der Verlauf läuft wie im Chat – neuester Beitrag unten im Blick, ältere nach oben scrollen',
   ]),

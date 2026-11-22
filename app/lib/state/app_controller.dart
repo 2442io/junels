@@ -334,6 +334,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       // Nach längerer Pause mit neuem Chat starten, sonst im letzten weiterarbeiten
       final last = conversations.isNotEmpty ? conversations.first : null;
       current = last != null && DateTime.now().difference(last.updated) < idleNewChat ? last : null;
+      if (current == null) newConversation(); // neuer Chat steht gleich in der Liste
       _pollMemory();
       _memTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollMemory());
       initialized = true;
@@ -1255,8 +1256,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   // ------------------------------------------------------------------ Chats
 
   void newConversation() {
-    // Auch während eine Antwort läuft: die läuft im eigenen Chat weiter
-    current = null;
+    // Auch während eine Antwort läuft: die läuft im eigenen Chat weiter.
+    // Der neue Chat steht sofort in der Liste; höchstens ein leerer Entwurf.
+    final draft = conversations.where((c) => c.entries.isEmpty && !isRoutineChat(c)).firstOrNull;
+    final pending = current == null ? _attachments.remove('') : null;
+    if (draft != null) {
+      conversations
+        ..remove(draft)
+        ..insert(0, draft);
+      draft.updated = DateTime.now();
+      current = draft;
+    } else {
+      final c = Conversation(id: newId());
+      conversations.insert(0, c);
+      current = c;
+    }
+    if (pending != null) _attachments[current!.id] = pending;
     notifyListeners();
   }
 
