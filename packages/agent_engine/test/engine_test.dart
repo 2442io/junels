@@ -305,6 +305,72 @@ Future<void> main() async {
     check(slidesFromPlan('## Einleitung\n- a\n## Schluss\n- b').content.startsWith('# Einleitung'), 'Plan mit Markdown-Überschriften');
   });
 
+  await group('Beobachtung: Schwellenwerte, Duplikate, Wochenrückblick', () async {
+    final a = parseAlertRequest('Melde dich, wenn die Nvidia-Aktie unter 120 fällt')!;
+    check(a.op == 'below' && a.value == 120 && a.subject == 'Nvidia', 'Schwellenwert aus Satz: ${a.op} ${a.value} „${a.subject}“');
+    final b = parseAlertRequest('Bitcoin über 100.000 Dollar')!;
+    check(b.op == 'above' && b.value == 100000 && b.subject == 'Bitcoin', 'Tausenderpunkt und „über“');
+    check(parseNumber('1.234,56') == 1234.56 && parseNumber('1,234.56') == 1234.56 && parseNumber('118,4') == 118.4 && parseNumber('120') == 120,
+        'Zahlen deutsch/englisch');
+    check(formatNumber(118.4) == '118,40' && formatNumber(100000) == '100.000' && formatNumber(120) == '120', 'Zahlen lesbar');
+    // Kurs-Abfrage gescriptet
+    var price = 125.0;
+    final calls = <String>[];
+    final checker = WatchChecker(fetcher: (u) async {
+      calls.add(u.path);
+      if (u.path.contains('/search')) return jsonEncode({'quotes': [{'symbol': 'NVDA', 'quoteType': 'EQUITY'}]});
+      return jsonEncode({'chart': {'result': [{'meta': {'regularMarketPrice': price, 'currency': 'USD'}}]}});
+    });
+    final w = WatchItem(id: 'n', kind: WatchKind.topic, title: 'Nvidia', target: 'Nvidia Aktie', alertOp: 'below', alertValue: 120);
+    var r = await checker.check(w);
+    check(r.event == null && w.symbol == 'NVDA' && w.lastValue == 125, 'über der Schwelle: keine Meldung, Kürzel ermittelt');
+    price = 118.4;
+    r = await checker.check(w);
+    check(r.event?.kind == 'alert' && r.event!.title.contains('unter 120') && r.event!.detail.contains('118,40 USD'), 'Schwelle unterschritten → Meldung');
+    r = await checker.check(w);
+    check(r.event == null, 'bleibt darunter: keine Wiederholung');
+    price = 121;
+    await checker.check(w);
+    price = 119;
+    r = await checker.check(w);
+    check(r.event != null, 'erneut unterschritten → wieder Meldung');
+    check(WatchItem.fromJson(jsonDecode(jsonEncode(w.toJson())) as Map<String, dynamic>).alertLabel == 'unter 120', 'Schwelle gespeichert');
+    // Zahl auf einer Seite
+    check(WatchChecker.numberOnPage('Produkt X\nPreis: € 1.299,00 inkl. MwSt', 'Preis') == 1299.0, 'Zahl neben Beschriftung');
+    // Duplikate
+    final merged = mergeDuplicates([
+      {'title': 'Anleger setzen NVIDIA am Freitagabend unter Druck - finanzen.ch', 'link': 'https://a/1'},
+      {'title': 'NVIDIA: Anleger setzen Aktie am Freitagabend unter Druck - finanzen.net', 'link': 'https://b/2'},
+      {'title': 'George Soros verkauft Nvidia-Aktien - Handelsblatt', 'link': 'https://c/3'},
+    ]);
+    check(merged.length == 2 && merged.first['sources'] == 'finanzen.ch, finanzen.net', 'gleiche Meldung aus 2 Quellen zusammengefasst');
+    var feed = '';
+    final tc = WatchChecker(fetcher: (u) async {
+      if (u.host == 'news.google.com') return feed;
+      throw Exception('keine Websuche');
+    });
+    String rss(List<(String, String)> items) =>
+        '<rss><channel>${items.map((i) => '<item><title>${i.$1}</title><link>${i.$2}</link></item>').join()}</channel></rss>';
+    final topic = WatchItem(id: 't', kind: WatchKind.topic, title: 'nvidia', target: 'nvidia', recentOnly: true);
+    feed = rss([('Alt - x.de', 'https://x/0')]);
+    await tc.check(topic);
+    feed = rss([('Alt - x.de', 'https://x/0'), ('Anleger setzen NVIDIA unter Druck - finanzen.ch', 'https://a/1'), ('NVIDIA: Anleger setzen Aktie unter Druck - finanzen.net', 'https://b/2')]);
+    final e1 = (await tc.check(topic)).event;
+    check(e1 != null && e1.links.length == 1 && e1.detail.contains('auch: finanzen.ch, finanzen.net'), 'Neue Treffer zusammengefasst');
+    feed = rss([('Anleger setzen NVIDIA unter Druck - boerse.de', 'https://c/9')]);
+    check((await tc.check(topic)).event == null, 'dieselbe Meldung später von anderer Quelle: nicht nochmal');
+    // Wochenrückblick
+    final d = WatchItem(id: 'd', kind: WatchKind.topic, title: 'x', target: 'x', digest: 'weeklyOnly');
+    final sun = DateTime(2026, 11, 22, 19);
+    check(!d.digestDue(sun.subtract(const Duration(days: 7))) && d.digestDue(sun) && !d.digestDue(sun.subtract(const Duration(days: 1))),
+        'Rückblick sonntags, frühestens nach 6 Tagen');
+    feed = rss([('Erste Meldung - a.de', 'https://q/1')]);
+    await tc.check(d);
+    feed = rss([('Erste Meldung - a.de', 'https://q/1'), ('Ganz andere Nachricht heute - b.de', 'https://q/2')]);
+    final quiet = (await tc.check(d)).event;
+    check(quiet?.kind == 'quiet' && quiet!.seen, 'Nur Rückblick: Einzeltreffer still gesammelt');
+  });
+
   await group('Anbieter: 2442 API', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     Map<String, dynamic>? got;

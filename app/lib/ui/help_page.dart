@@ -311,7 +311,7 @@ Auswahl und Optionen unter Einstellungen → Sprache.''',
     summary: 'Webseiten oder Themen beobachten und bei Änderungen benachrichtigt werden.',
     shot: 'watch',
     open: 'watch',
-    keywords: 'watchlist beobachten überwachen webseite thema änderung preis neu benachrichtigung',
+    keywords: 'watchlist beobachten überwachen webseite thema änderung preis neu benachrichtigung schwellenwert kurs aktie unter über wochenrückblick duplikate gelesen ungelesen',
     body: '''Die Watchlist prüft regelmäßig Webseiten oder Themen und meldet sich, wenn sich etwas ändert. Sie ist Teil der **Prozesse**: Jede Beobachtung ist ein Prozess mit dem Auslöser „Beobachten“, an den du im Canvas weitere Schritte hängen kannst.
 
 - **Webseite** – z. B. eine Produktseite, ein Blog oder eine Stellenausschreibung. Junels vergleicht den Inhalt mit dem letzten Stand.
@@ -321,6 +321,10 @@ Auswahl und Optionen unter Einstellungen → Sprache.''',
 - **Intervall** – von jeder Minute bis wöchentlich. Minütlich prüft Junels, solange die App läuft; im Hintergrund lässt Android oft nur alle paar Minuten zu.
 - **Jetzt testen** zeigt vor dem Speichern, was Junels findet.
 - Optional fasst der Agent die Änderung zusammen und schickt eine Push-Nachricht.
+- **Schwellenwert** – „Melden: wenn ein Wert unter/über … liegt“. Bei Themen holt Junels den Börsenkurs (Aktie, ETF, Index, Krypto, Währung), bei Webseiten die Zahl neben einer Beschriftung (z. B. „Preis“). Gemeldet wird nur beim Über- bzw. Unterschreiten, erst wieder nach einer Rückkehr über die Schwelle. Schnell geht's auch per Prompt: „Melde dich, wenn die Nvidia-Aktie unter 120 fällt“.
+- **Wochenrückblick** – sonntags ein Absatz mit den wichtigsten Entwicklungen; wahlweise zusätzlich zu oder statt der Einzelmeldungen.
+- **Doppelte Meldungen** – dieselbe Nachricht aus mehreren Quellen erscheint nur einmal („auch: finanzen.net, …“); schon Gemeldetes kommt nicht nochmal.
+- **Gelesen/Neu** – im Verlauf zeigt „Neu“ nur, was seit deinem letzten Besuch dazukam. Über ⋮ markierst du einzelne Meldungen als ungelesen.
 
 Neue Treffer sind in der Seitenleiste mit einem Punkt markiert. Beim Anlegen erlaubst du den Internetzugriff für genau diesen Eintrag.''',
   ),

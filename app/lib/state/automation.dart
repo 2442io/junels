@@ -138,12 +138,62 @@ class WatchlistService {
     return best;
   }
 
-  /// Prüft alle fälligen Einträge.
+  /// Prüft alle fälligen Einträge (und erstellt fällige Wochenrückblicke).
   Future<void> checkDue() async {
     final now = DateTime.now();
     for (final i in List.of(items)) {
       if (i.due(now)) await check(i);
+      if (i.enabled && i.digestDue(now)) await weeklyDigest(i, now: now);
     }
+  }
+
+  /// Wochenrückblick: ein Absatz statt vieler Einzeltreffer.
+  Future<WatchEvent?> weeklyDigest(WatchItem item, {DateTime? now}) async {
+    final t = now ?? DateTime.now();
+    final evs = item.digestEvents();
+    item.lastDigest = t;
+    if (evs.isEmpty) {
+      await save();
+      return null;
+    }
+    final links = mergeDuplicates([for (final e in evs) ...e.links]);
+    final list = links.take(25).map((l) => '- ${l['title']}${l['sources'] != null ? ' (auch: ${l['sources']})' : ''}').join('\n');
+    var text = await app.automationText(
+        'Wochenrückblick zur Beobachtung „${item.title}“. Neue Meldungen dieser Woche:\n$list\n\n'
+        'Schreibe EINEN Absatz (4–6 Sätze) auf Deutsch: Was waren die wichtigsten Entwicklungen, was hängt zusammen, '
+        'was ist bemerkenswert? Keine Aufzählung, keine Einleitung.',
+        maxTokens: 400);
+    text = text.trim();
+    if (text.isEmpty) text = links.take(8).map((l) => '• ${l['title']}').join('\n');
+    final ev = WatchEvent(
+      time: t,
+      kind: 'digest',
+      title: 'Wochenrückblick „${item.title}“ (${links.length} Meldung${links.length == 1 ? '' : 'en'})',
+      detail: text,
+      links: links.take(12).toList(),
+    );
+    item.events.insert(0, ev);
+    for (final e in evs) {
+      e.seen = true; // im Rückblick enthalten
+    }
+    await save();
+    app.refreshUi();
+    if (item.notify) {
+      unawaited(BackgroundWork.notify(ev.title, text.length > 220 ? '${text.substring(0, 220)}…' : text, conversationId: 'watch:${item.id}')
+          .catchError((_) {}));
+    }
+    final input = '${ev.title}\n\n$text\n\n${ev.links.map((l) => '- ${l['title']}: ${l['link']}').join('\n')}';
+    for (final wf in app.flows.flows) {
+      if (wf.enabled && item.flowId == wf.id) unawaited(app.flows.run(wf, input: input));
+    }
+    return ev;
+  }
+
+  /// Einzelnen Eintrag als gelesen/ungelesen markieren.
+  Future<void> setSeen(WatchItem item, WatchEvent e, bool seen) async {
+    e.seen = seen;
+    await save();
+    app.refreshUi();
   }
 
   /// Beschreibungs-Modus: Der Agent prüft, welche neuen Treffer wirklich passen.
@@ -187,9 +237,14 @@ class WatchlistService {
           ev.detail = ev.links.take(5).map((f) => '• ${f['title']}').join('\n');
         }
       }
+      if (ev != null && ev.kind == 'quiet') {
+        // nur für den Wochenrückblick gesammelt – keine Meldung
+        appLog('Watchlist', '${item.title}: ${ev.title} (für den Rückblick gesammelt)');
+        ev = null;
+      }
       if (ev != null) {
         appLog('Watchlist', '${item.title}: ${ev.title}');
-        if (item.summarize) {
+        if (item.summarize && ev.kind != 'alert') {
           final sum = await app.automationText(
               'Die beobachtete ${item.kind == WatchKind.page ? 'Webseite' : 'Suche zum Thema'} „${item.title}“ hat Neues:\n\n'
               '${ev.detail}\n\n${ev.links.take(8).map((l) => '- ${l['title']}').join('\n')}\n\n'
@@ -242,7 +297,24 @@ class WatchlistService {
     final prompt = t.config['promptMode'] == true && kind == WatchKind.topic;
     final recent = t.config['recentOnly'] == true;
     final item = existing ?? WatchItem(id: 'wf-${wf.id}', kind: kind, title: wf.name, target: target, notify: false, summarize: false, flowId: wf.id);
-    final changed = existing == null || item.target != target || item.kind != kind || item.promptMode != prompt;
+    final alertOp = t.str('alertOp');
+    final alertValue = (t.config['alertValue'] as num?)?.toDouble();
+    final changed = existing == null ||
+        item.target != target ||
+        item.kind != kind ||
+        item.promptMode != prompt ||
+        item.alertOp != alertOp ||
+        item.alertValue != alertValue;
+    if (item.alertOp != alertOp || item.alertValue != alertValue || item.target != target) {
+      item
+        ..alertArmed = true
+        ..symbol = t.str('symbol');
+    }
+    item
+      ..alertOp = alertValue == null ? '' : alertOp
+      ..alertValue = alertValue
+      ..valueLabel = t.str('valueLabel')
+      ..digest = t.str('digest');
     item
       ..kind = kind
       ..title = wf.name
@@ -378,6 +450,22 @@ class FlowService {
 
   /// Prozess aus einer Beschreibung erzeugen (Modell, sonst einfache Vorlage).
   Future<Workflow> generate(String description) async {
+    // „Melde dich, wenn die Nvidia-Aktie unter 120 fällt“ → Beobachtung mit Schwellenwert
+    final alert = parseAlertRequest(description);
+    if (alert != null && alert.subject.isNotEmpty && RegExp(r'melde|sag|benachrichtig|informier|bescheid|push|wenn|sobald', caseSensitive: false).hasMatch(description)) {
+      final url = RegExp(r'https?://\S+').firstMatch(description)?.group(0);
+      final wf = watchFlow(
+        name: '${alert.subject} ${alert.op == 'below' ? 'unter' : 'über'} ${formatNumber(alert.value)}',
+        kind: url != null ? WatchKind.page : WatchKind.topic,
+        target: url ?? alert.subject,
+        interval: 15,
+        summarize: false,
+        alertOp: alert.op,
+        alertValue: alert.value,
+      )..description = description;
+      appLog('Prozesse', 'Schwellenwert erkannt: ${wf.name}');
+      return wf;
+    }
     final id = newId();
     final tools = [for (final t in app.activeTools) (t.name, t.title)];
     final text = await app.automationText(Workflow.generationPrompt(description, tools), grammar: Workflow.jsonGrammar, maxTokens: 1400);
@@ -399,6 +487,10 @@ class FlowService {
     String query = '',
     bool summarize = true,
     bool notify = true,
+    String alertOp = '',
+    double? alertValue,
+    String valueLabel = '',
+    String digest = '',
   }) {
     final wf = Workflow(id: newId(), name: name, description: 'Beobachtet ${kind == WatchKind.page ? 'die Seite' : 'das Thema'} „$target“.');
     wf.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Beobachten', config: {
@@ -410,6 +502,10 @@ class FlowService {
       if (promptMode) 'promptMode': true,
       if (recentOnly) 'recentOnly': true,
       if (query.isNotEmpty) 'watchQuery': query,
+      if (alertOp.isNotEmpty && alertValue != null) 'alertOp': alertOp,
+      if (alertOp.isNotEmpty && alertValue != null) 'alertValue': alertValue,
+      if (valueLabel.isNotEmpty) 'valueLabel': valueLabel,
+      if (digest.isNotEmpty) 'digest': digest,
     }));
     var last = 'n1';
     if (summarize) {

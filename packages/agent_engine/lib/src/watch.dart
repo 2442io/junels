@@ -12,8 +12,12 @@ enum WatchKind { page, topic }
 
 /// Ein gefundener neuer Stand.
 class WatchEvent {
-  WatchEvent({required this.time, required this.title, this.detail = '', List<Map<String, String>>? links, this.seen = false})
+  WatchEvent(
+      {required this.time, required this.title, this.detail = '', List<Map<String, String>>? links, this.seen = false, this.kind = ''})
       : links = links ?? [];
+
+  /// '' = neue Treffer/Änderung, 'alert' = Schwellenwert, 'digest' = Wochenrückblick, 'quiet' = nur gesammelt.
+  final String kind;
   final DateTime time;
   final String title;
   String detail;
@@ -26,6 +30,7 @@ class WatchEvent {
         if (detail.isNotEmpty) 'detail': detail,
         if (links.isNotEmpty) 'links': links,
         if (seen) 'seen': true,
+        if (kind.isNotEmpty) 'kind': kind,
       };
 
   factory WatchEvent.fromJson(Map<String, dynamic> j) => WatchEvent(
@@ -34,6 +39,7 @@ class WatchEvent {
         detail: j['detail'] as String? ?? '',
         links: [for (final l in (j['links'] as List? ?? const [])) (l as Map).cast<String, String>()],
         seen: j['seen'] as bool? ?? false,
+        kind: j['kind'] as String? ?? '',
       );
 }
 
@@ -57,6 +63,14 @@ class WatchItem {
     this.query = '',
     this.recentOnly = false,
     this.flowId,
+    this.alertOp = '',
+    this.alertValue,
+    this.valueLabel = '',
+    this.symbol = '',
+    this.lastValue,
+    this.alertArmed = true,
+    this.digest = '',
+    this.lastDigest,
   })  : seenLinks = seenLinks ?? [],
         events = events ?? [];
 
@@ -85,6 +99,47 @@ class WatchItem {
 
   /// Gehört zu einem Prozess (Auslöser „Beobachten“ im Canvas).
   String? flowId;
+
+  /// Schwellenwert: 'below' | 'above' ('' = bei jedem neuen Treffer melden).
+  String alertOp;
+  double? alertValue;
+
+  /// Seite: Beschriftung, neben der die Zahl steht (z. B. „Preis“); leer = erste Zahl.
+  String valueLabel;
+
+  /// Thema: Börsenkürzel (wird beim ersten Abruf ermittelt, z. B. NVDA).
+  String symbol;
+  double? lastValue;
+  String currency = '';
+
+  /// Nach einer Meldung erst wieder melden, wenn der Wert zurück über/unter die Schwelle ging.
+  bool alertArmed;
+
+  /// '' = Einzelmeldungen, 'weekly' = zusätzlich Wochenrückblick, 'weeklyOnly' = nur Wochenrückblick.
+  String digest;
+  DateTime? lastDigest;
+
+  bool get hasAlert => alertOp.isNotEmpty && alertValue != null;
+  bool get digestOnly => digest == 'weeklyOnly';
+
+  /// Kurzbeschreibung des Schwellenwerts („unter 120“).
+  String get alertLabel => !hasAlert ? '' : '${alertOp == 'below' ? 'unter' : 'über'} ${formatNumber(alertValue!)}';
+
+  /// Wochenrückblick fällig? Sonntags ab 18 Uhr, höchstens einmal in 6 Tagen.
+  bool digestDue(DateTime now) {
+    if (digest.isEmpty) return false;
+    if (lastDigest == null) {
+      lastDigest = now; // ab jetzt sammeln
+      return false;
+    }
+    return now.weekday == DateTime.sunday && now.hour >= 18 && now.difference(lastDigest!).inHours >= 6 * 24;
+  }
+
+  /// Meldungen seit dem letzten Rückblick (ohne Rückblicke).
+  List<WatchEvent> digestEvents() => [
+        for (final e in events)
+          if (e.kind != 'digest' && (lastDigest == null || e.time.isAfter(lastDigest!))) e
+      ];
 
   /// Letzter Textstand der Seite (für den Vergleich, gekürzt).
   String snapshot;
@@ -147,6 +202,13 @@ class WatchItem {
         if (seenLinks.isNotEmpty) 'seen': seenLinks.length > 400 ? seenLinks.sublist(seenLinks.length - 400) : seenLinks,
         'events': [for (final e in events.take(40)) e.toJson()],
         if (lastError != null) 'error': lastError,
+        if (hasAlert) 'alert': {'op': alertOp, 'value': alertValue, 'armed': alertArmed},
+        if (valueLabel.isNotEmpty) 'valueLabel': valueLabel,
+        if (symbol.isNotEmpty) 'symbol': symbol,
+        if (lastValue != null) 'lastValue': lastValue,
+        if (currency.isNotEmpty) 'currency': currency,
+        if (digest.isNotEmpty) 'digest': digest,
+        if (lastDigest != null) 'lastDigest': lastDigest!.toIso8601String(),
       };
 
   factory WatchItem.fromJson(Map<String, dynamic> j) => WatchItem(
@@ -168,7 +230,114 @@ class WatchItem {
         seenLinks: (j['seen'] as List? ?? const []).cast<String>(),
         events: [for (final e in (j['events'] as List? ?? const [])) WatchEvent.fromJson((e as Map).cast())],
         lastError: j['error'] as String?,
-      );
+        alertOp: ((j['alert'] as Map?)?['op'] as String?) ?? '',
+        alertValue: ((j['alert'] as Map?)?['value'] as num?)?.toDouble(),
+        alertArmed: ((j['alert'] as Map?)?['armed'] as bool?) ?? true,
+        valueLabel: j['valueLabel'] as String? ?? '',
+        symbol: j['symbol'] as String? ?? '',
+        lastValue: (j['lastValue'] as num?)?.toDouble(),
+        digest: j['digest'] as String? ?? '',
+        lastDigest: DateTime.tryParse(j['lastDigest'] as String? ?? ''),
+      )..currency = j['currency'] as String? ?? '';
+}
+
+/// Zahl lesbar (deutsch): 1234.5 → „1.234,50“.
+String formatNumber(double v) {
+  final neg = v < 0;
+  final a = v.abs();
+  final dec = a >= 1000 || a == a.roundToDouble() ? 0 : (a >= 1 ? 2 : 4);
+  final parts = a.toStringAsFixed(dec).split('.');
+  final int0 = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '.');
+  return '${neg ? '−' : ''}$int0${parts.length > 1 ? ',${parts[1]}' : ''}';
+}
+
+/// Zahl aus Text („1.234,56“, „1,234.56“, „118.4“, „120“).
+double? parseNumber(String s) {
+  var t = s.trim().replaceAll(RegExp(r'[\s\u00a0\u202f]'), '');
+  t = t.replaceAll(RegExp(r'[^\d.,\-−]'), '').replaceAll('−', '-');
+  if (t.isEmpty) return null;
+  final lastDot = t.lastIndexOf('.'), lastComma = t.lastIndexOf(',');
+  if (lastDot >= 0 && lastComma >= 0) {
+    // beides: das hintere ist das Dezimalzeichen
+    t = lastComma > lastDot ? t.replaceAll('.', '').replaceAll(',', '.') : t.replaceAll(',', '');
+  } else if (lastComma >= 0) {
+    // nur Komma: 3 Ziffern danach und mehrfach → Tausender, sonst Dezimal
+    final after = t.length - lastComma - 1;
+    t = (after == 3 && ','.allMatches(t).length > 1) ? t.replaceAll(',', '') : t.replaceAll(',', '.');
+  } else if (lastDot >= 0 && ('.'.allMatches(t).length > 1 || (t.length - lastDot - 1 == 3 && !RegExp(r'^-?0\.').hasMatch(t)))) {
+    t = t.replaceAll('.', ''); // „100.000“ = hunderttausend
+  }
+  return double.tryParse(t);
+}
+
+/// „Melde dich, wenn die Nvidia-Aktie unter 120 fällt“ → (below, 120, „Nvidia“).
+({String op, double value, String subject})? parseAlertRequest(String text) {
+  final m = RegExp(
+          r'(unter|unterhalb|kleiner als|weniger als|below|under|<|über|oberhalb|größer als|mehr als|above|over|>)\s*(?:den wert |die marke |von )?([\d][\d.,]*)',
+          caseSensitive: false)
+      .firstMatch(text);
+  if (m == null) return null;
+  final v = parseNumber(m.group(2)!);
+  if (v == null) return null;
+  final w = m.group(1)!.toLowerCase();
+  final op = RegExp(r'unter|kleiner|weniger|below|under|<').hasMatch(w) ? 'below' : 'above';
+  final subject = alertSubject(text.replaceRange(m.start, m.end, ' '));
+  return (op: op, value: v, subject: subject);
+}
+
+/// Worum geht es? („die Nvidia-Aktie fällt“ → „Nvidia“)
+String alertSubject(String text) {
+  return text
+      .replaceAll(RegExp(r'\b(melde|meld|sag|informiere|benachrichtige|gib|bescheid|dich|mich|mir|bitte|wenn|sobald|falls|der|die|das|den|dem|des|'
+              r'fällt|sinkt|steigt|liegt|geht|ist|kurs|wert|preis|aktie|aktienkurs|notiert|euro|eur|dollar|usd|punkte|zu|von|auf)\b',
+              caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'-?aktie\b|-?kurs\b', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'[^\p{L}\p{N}\s.-]', unicode: true), ' ')
+      .replaceAll(RegExp(r'(^|\s)[-.]+|[-.]+(?=\s|$)'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+/// Titel vergleichbar machen (ohne Quelle „ – finanzen.ch“, Satzzeichen, Füllwörter).
+Set<String> titleWords(String title) {
+  var t = title.toLowerCase().replaceFirst(RegExp(r'\s[-–—|]\s[^-–—|]{2,40}$'), '');
+  return {
+    for (final w in t.split(RegExp(r'[^\p{L}\p{N}]+', unicode: true)))
+      if (w.length > 2 && !const {'der', 'die', 'das', 'und', 'mit', 'für', 'von', 'the', 'and', 'auf', 'ist', 'nach', 'bei', 'aus', 'den', 'dem', 'news'}.contains(w)) w
+  };
+}
+
+/// Gleiche Meldung? (Jaccard-Ähnlichkeit der Titelwörter)
+bool sameStory(String a, String b) {
+  final x = titleWords(a), y = titleWords(b);
+  if (x.isEmpty || y.isEmpty) return false;
+  final inter = x.intersection(y).length;
+  return inter / (x.length + y.length - inter) >= 0.5 || (inter >= 4 && inter / math.min(x.length, y.length) >= 0.75);
+}
+
+/// Quelle aus dem Titel („… - finanzen.ch“) oder der Adresse.
+String sourceOf(Map<String, String> hit) {
+  final m = RegExp(r'\s[-–—|]\s([^-–—|]{2,40})$').firstMatch(hit['title'] ?? '');
+  if (m != null) return m.group(1)!.trim();
+  return Uri.tryParse(hit['link'] ?? '')?.host.replaceFirst('www.', '') ?? '';
+}
+
+/// Gleiche Meldungen aus mehreren Quellen zusammenfassen: erster Treffer bleibt,
+/// die übrigen Quellen stehen in 'sources'.
+List<Map<String, String>> mergeDuplicates(List<Map<String, String>> hits) {
+  final out = <Map<String, String>>[];
+  for (final h in hits) {
+    final same = out.where((o) => sameStory(o['title'] ?? '', h['title'] ?? '')).firstOrNull;
+    if (same == null) {
+      out.add(Map.of(h));
+    } else {
+      final src = sourceOf(h);
+      final have = (same['sources'] ?? sourceOf(same)).split(', ').where((x) => x.isNotEmpty).toList();
+      if (src.isNotEmpty && !have.contains(src)) have.add(src);
+      same['sources'] = have.join(', ');
+    }
+  }
+  return out;
 }
 
 /// Suchanfrage wie bei Google: "genaue Phrase", -ausschließen, site:domain.at, OR.
@@ -263,7 +432,7 @@ class WatchChecker {
   Future<WatchCheck> check(WatchItem item, {DateTime? now}) async {
     final t = now ?? DateTime.now();
     try {
-      final r = item.kind == WatchKind.page ? await _page(item, t) : await _topic(item, t);
+      final r = item.hasAlert ? await _alert(item, t) : (item.kind == WatchKind.page ? await _page(item, t) : await _topic(item, t));
       item
         ..lastCheck = t
         ..lastError = null;
@@ -322,7 +491,14 @@ class WatchChecker {
     final title = newLinks.isNotEmpty
         ? '${newLinks.length} neue${newLinks.length == 1 ? 'r Eintrag' : ' Einträge'} auf ${item.title}'
         : 'Änderung auf ${item.title}';
-    return WatchCheck(event: WatchEvent(time: now, title: title, detail: detail, links: newLinks.take(12).toList()));
+    return WatchCheck(
+        event: WatchEvent(
+            time: now,
+            title: title,
+            detail: detail,
+            links: newLinks.take(12).toList(),
+            kind: item.digestOnly ? 'quiet' : '',
+            seen: item.digestOnly));
   }
 
   /// Treffer zu einer Suchanfrage (Nachrichten-Feed + Websuche), gefiltert nach Ausschlüssen/site:.
@@ -419,14 +595,118 @@ class WatchChecker {
       item.fingerprint = 'topic';
       return WatchCheck(first: true);
     }
-    if (fresh.isEmpty) return WatchCheck();
+    // Dieselbe Meldung aus mehreren Quellen nur einmal; schon gemeldete (letzte 3 Tage) nicht nochmal
+    final recent = [
+      for (final e in item.events)
+        if (now.difference(e.time).inDays < 3)
+          for (final l in e.links) l['title'] ?? ''
+    ];
+    final merged = [
+      for (final f in mergeDuplicates(fresh))
+        if (!recent.any((r) => sameStory(r, f['title'] ?? ''))) f
+    ];
+    if (merged.isEmpty) return WatchCheck();
+    String line(Map<String, String> f) => '• ${f['title']}${f['sources'] != null ? ' _(auch: ${f['sources']})_' : ''}';
     return WatchCheck(
         event: WatchEvent(
       time: now,
-      title: '${fresh.length} neue${fresh.length == 1 ? 'r Treffer' : ' Treffer'} zu „${item.title}“',
-      detail: fresh.take(5).map((f) => '• ${f['title']}').join('\n'),
-      links: fresh.take(12).toList(),
+      title: '${merged.length} neue${merged.length == 1 ? 'r Treffer' : ' Treffer'} zu „${item.title}“',
+      detail: merged.take(5).map(line).join('\n'),
+      links: merged.take(12).toList(),
+      kind: item.digestOnly ? 'quiet' : '',
+      seen: item.digestOnly,
     ));
+  }
+
+  /// Schwellenwert: Wert ermitteln, nur beim Über-/Unterschreiten melden.
+  Future<WatchCheck> _alert(WatchItem item, DateTime now) async {
+    final v = await currentValue(item);
+    final limit = item.alertValue!;
+    final hit = item.alertOp == 'below' ? v < limit : v > limit;
+    item.lastValue = v;
+    item.fingerprint ??= 'alert';
+    if (!hit) {
+      // 0,5 % Abstand, damit ein Pendeln um die Schwelle nicht ständig meldet
+      final back = item.alertOp == 'below' ? v >= limit * 1.005 : v <= limit * 0.995;
+      if (back) item.alertArmed = true;
+      return WatchCheck();
+    }
+    if (!item.alertArmed) return WatchCheck();
+    item.alertArmed = false;
+    final unit = item.currency.isEmpty ? '' : ' ${item.currency}';
+    final what = item.symbol.isNotEmpty ? '${item.title} (${item.symbol})' : item.title;
+    return WatchCheck(
+        event: WatchEvent(
+      time: now,
+      kind: 'alert',
+      title: '$what ${item.alertOp == 'below' ? 'unter' : 'über'} ${formatNumber(limit)}$unit',
+      detail: 'Aktueller Wert: **${formatNumber(v)}$unit** (Schwelle: ${item.alertLabel}$unit). '
+          'Junels meldet sich erst wieder, wenn der Wert die Schwelle erneut ${item.alertOp == 'below' ? 'unterschreitet' : 'überschreitet'}.',
+      links: [
+        if (item.kind == WatchKind.page) {'title': item.title, 'link': item.target}
+        else if (item.symbol.isNotEmpty) {'title': '${item.symbol} – Kursverlauf', 'link': 'https://finance.yahoo.com/quote/${Uri.encodeComponent(item.symbol)}'},
+      ],
+    ));
+  }
+
+  /// Aktueller Wert: Börsenkurs (Thema) bzw. Zahl auf der Seite.
+  Future<double> currentValue(WatchItem item) async {
+    if (item.kind == WatchKind.page) {
+      var url = item.target.trim();
+      if (!url.startsWith('http')) url = 'https://$url';
+      final html = await fetcher(Uri.parse(url));
+      final blocked = detectBlockPage(html);
+      if (blocked != null) throw Exception(blocked);
+      final v = numberOnPage(htmlToText(html), item.valueLabel);
+      if (v == null) throw Exception(item.valueLabel.isEmpty ? 'Keine Zahl auf der Seite gefunden' : 'Keine Zahl bei „${item.valueLabel}“ gefunden');
+      return v;
+    }
+    if (item.symbol.isEmpty) {
+      final sym = await lookupSymbol(item.searchQuery);
+      if (sym == null) throw Exception('Kein Börsenkürzel zu „${item.searchQuery}“ gefunden – im Eintrag ein Kürzel wie NVDA angeben');
+      item.symbol = sym;
+    }
+    final (v, cur) = await quote(item.symbol);
+    item.currency = cur;
+    return v;
+  }
+
+  /// Zahl neben einer Beschriftung (oder die erste größere Zahl).
+  static double? numberOnPage(String text, String label) {
+    final num = RegExp(r'[-−]?\d{1,3}(?:[.,\s\u00a0]\d{3})*(?:[.,]\d+)?|[-−]?\d+(?:[.,]\d+)?');
+    if (label.trim().isNotEmpty) {
+      final i = text.toLowerCase().indexOf(label.toLowerCase().trim());
+      if (i < 0) return null;
+      final m = num.firstMatch(text.substring(i + label.trim().length, math.min(text.length, i + label.trim().length + 120)));
+      return m == null ? null : parseNumber(m.group(0)!);
+    }
+    for (final m in num.allMatches(text)) {
+      final v = parseNumber(m.group(0)!);
+      if (v != null && m.group(0)!.length >= 2) return v;
+    }
+    return null;
+  }
+
+  /// Börsenkürzel suchen (Aktie, ETF, Index, Krypto, Währung).
+  Future<String?> lookupSymbol(String q) async {
+    final t = alertSubject(q).trim();
+    if (RegExp(r'^[A-Z0-9^.=-]{1,12}$').hasMatch(t)) return t;
+    final uri = Uri.https('query1.finance.yahoo.com', '/v1/finance/search', {'q': t.isEmpty ? q : t, 'quotesCount': '5', 'newsCount': '0'});
+    final j = jsonDecode(await fetcher(uri)) as Map;
+    final quotes = (j['quotes'] as List? ?? const []).cast<Map>();
+    final best = quotes.where((x) => const {'EQUITY', 'ETF', 'INDEX', 'CRYPTOCURRENCY', 'CURRENCY', 'MUTUALFUND', 'FUTURE'}.contains(x['quoteType'])).firstOrNull ??
+        quotes.firstOrNull;
+    return best?['symbol'] as String?;
+  }
+
+  /// Letzter Kurs und Währung.
+  Future<(double, String)> quote(String symbol) async {
+    final uri = Uri.https('query1.finance.yahoo.com', '/v8/finance/chart/$symbol', {'range': '1d', 'interval': '1d'});
+    final j = jsonDecode(await fetcher(uri)) as Map;
+    final meta = (((j['chart'] as Map?)?['result'] as List?)?.firstOrNull as Map?)?['meta'] as Map?;
+    final v = (meta?['regularMarketPrice'] as num?)?.toDouble();
+    if (v == null) throw Exception('Kein Kurs für $symbol');
+    return (v, (meta?['currency'] as String?) ?? '');
   }
 
   static String _cap(String s) => s.length > 40000 ? s.substring(0, 40000) : s;

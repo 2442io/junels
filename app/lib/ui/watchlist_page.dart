@@ -35,7 +35,15 @@ class WatchDraft {
     this.name = '',
     this.summarize = true,
     this.notify = true,
+    this.alertOp = '',
+    this.alertValue,
+    this.valueLabel = '',
+    this.digest = '',
   });
+  String alertOp;
+  double? alertValue;
+  String valueLabel;
+  String digest;
   WatchKind kind;
   String target;
   bool promptMode;
@@ -67,6 +75,10 @@ class WatchDraft {
     promptMode: kind == WatchKind.topic && promptMode,
     query: query,
     recentOnly: recentOnly,
+    alertOp: alertValue == null ? '' : alertOp,
+    alertValue: alertValue,
+    valueLabel: valueLabel,
+    digest: digest,
   );
 
   factory WatchDraft.fromNode(FlowNode n) => WatchDraft(
@@ -76,6 +88,10 @@ class WatchDraft {
     recentOnly: n.config['recentOnly'] == true,
     interval: (n.config['interval'] as num?)?.toInt() ?? 60,
     query: n.str('watchQuery'),
+    alertOp: n.str('alertOp'),
+    alertValue: (n.config['alertValue'] as num?)?.toDouble(),
+    valueLabel: n.str('valueLabel'),
+    digest: n.str('digest'),
   );
 
   void applyTo(FlowNode n) {
@@ -87,7 +103,11 @@ class WatchDraft {
       ..['interval'] = interval
       ..['promptMode'] = kind == WatchKind.topic && promptMode
       ..['recentOnly'] = recentOnly
-      ..['watchQuery'] = query.trim();
+      ..['watchQuery'] = query.trim()
+      ..['alertOp'] = alertValue == null ? '' : alertOp
+      ..['alertValue'] = alertValue
+      ..['valueLabel'] = valueLabel.trim()
+      ..['digest'] = digest;
   }
 
   factory WatchDraft.fromItem(WatchItem i) => WatchDraft(
@@ -100,6 +120,10 @@ class WatchDraft {
     name: i.title,
     summarize: i.summarize,
     notify: i.notify,
+    alertOp: i.alertOp,
+    alertValue: i.alertValue,
+    valueLabel: i.valueLabel,
+    digest: i.digest,
   );
 }
 
@@ -115,6 +139,8 @@ class WatchFields extends StatefulWidget {
 class _WatchFieldsState extends State<WatchFields> {
   late final _target = TextEditingController(text: widget.draft.target);
   late final _query = TextEditingController(text: widget.draft.query);
+  late final _alertValue = TextEditingController(text: widget.draft.alertValue == null ? '' : formatNumber(widget.draft.alertValue!));
+  late final _valueLabel = TextEditingController(text: widget.draft.valueLabel);
   WatchPreview? _preview;
   bool _testing = false;
   bool _deriving = false;
@@ -125,6 +151,8 @@ class _WatchFieldsState extends State<WatchFields> {
   void dispose() {
     _target.dispose();
     _query.dispose();
+    _alertValue.dispose();
+    _valueLabel.dispose();
     super.dispose();
   }
 
@@ -300,6 +328,86 @@ class _WatchFieldsState extends State<WatchFields> {
             },
           ),
         const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: d.alertOp.isEmpty ? '' : d.alertOp,
+          decoration: const InputDecoration(labelText: 'Melden'),
+          items: const [
+            DropdownMenuItem(value: '', child: Text('bei jedem neuen Treffer / jeder Änderung')),
+            DropdownMenuItem(value: 'below', child: Text('wenn ein Wert unter eine Schwelle fällt')),
+            DropdownMenuItem(value: 'above', child: Text('wenn ein Wert über eine Schwelle steigt')),
+          ],
+          onChanged: (v) {
+            d.alertOp = v ?? '';
+            if (d.alertOp.isNotEmpty && d.alertValue == null) {
+              final a = parseAlertRequest(d.target);
+              if (a != null) {
+                d.alertValue = a.value;
+                _alertValue.text = formatNumber(a.value);
+              }
+            }
+            _changed();
+          },
+        ),
+        if (d.alertOp.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 140,
+                child: TextField(
+                  controller: _alertValue,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: d.alertOp == 'below' ? 'unter' : 'über', hintText: '120'),
+                  onChanged: (v) {
+                    d.alertValue = parseNumber(v);
+                    _changed();
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: topic
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Junels holt den aktuellen Kurs (Aktie, ETF, Index, Krypto, Währung) zum Thema – z. B. „Nvidia“ oder ein Kürzel wie NVDA.',
+                          style: t.bodySmall,
+                        ),
+                      )
+                    : TextField(
+                        controller: _valueLabel,
+                        decoration: const InputDecoration(
+                          labelText: 'Zahl neben (optional)',
+                          hintText: 'z. B. Preis',
+                          helperText: 'Leer = erste Zahl auf der Seite',
+                        ),
+                        onChanged: (v) {
+                          d.valueLabel = v;
+                          _changed();
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ],
+        if (d.alertOp.isEmpty) ...[
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: d.digest,
+            decoration: const InputDecoration(labelText: 'Zusammenfassung'),
+            items: const [
+              DropdownMenuItem(value: '', child: Text('Einzelmeldungen')),
+              DropdownMenuItem(value: 'weekly', child: Text('Einzelmeldungen + Wochenrückblick')),
+              DropdownMenuItem(value: 'weeklyOnly', child: Text('Nur Wochenrückblick (sonntags)')),
+            ],
+            onChanged: (v) {
+              d.digest = v ?? '';
+              _changed();
+            },
+          ),
+        ],
+        const SizedBox(height: 8),
         DropdownButtonFormField<int>(
           initialValue: WatchItem.intervalOptions.any((o) => o.$1 == d.interval) ? d.interval : 60,
           decoration: const InputDecoration(labelText: 'Prüfen'),
@@ -429,8 +537,12 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, bool op
       promptMode: draft.kind == WatchKind.topic && draft.promptMode,
       recentOnly: draft.recentOnly,
       query: draft.query.trim(),
-      summarize: draft.summarize,
+      summarize: draft.summarize && draft.alertOp.isEmpty,
       notify: draft.notify,
+      alertOp: draft.alertValue == null ? '' : draft.alertOp,
+      alertValue: draft.alertValue,
+      valueLabel: draft.valueLabel.trim(),
+      digest: draft.alertOp.isEmpty ? draft.digest : '',
     );
     await app.flows.upsert(wf);
     if (openCanvas) nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
@@ -447,7 +559,17 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, bool op
     ..recentOnly = draft.recentOnly
     ..intervalMinutes = draft.interval
     ..summarize = draft.summarize
-    ..notify = draft.notify;
+    ..notify = draft.notify
+    ..valueLabel = draft.valueLabel.trim()
+    ..digest = draft.alertOp.isEmpty ? draft.digest : '';
+  if (existing.alertOp != draft.alertOp || existing.alertValue != draft.alertValue) {
+    existing
+      ..alertOp = draft.alertValue == null ? '' : draft.alertOp
+      ..alertValue = draft.alertValue
+      ..alertArmed = true
+      ..symbol = '';
+  }
+  if (changedTarget) existing.symbol = '';
   if (changedTarget) {
     existing
       ..fingerprint = null
@@ -666,15 +788,27 @@ class _WatchDetail extends StatefulWidget {
 }
 
 class _WatchDetailState extends State<_WatchDetail> {
+  /// Beim Öffnen ungelesene Meldungen – bleiben als „Neu“ markiert, auch wenn sie jetzt als gelesen gelten.
+  final _fresh = <WatchEvent>{};
+  bool _onlyNew = false;
+  bool _showQuiet = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.read(context);
       final item = app.watchlist.items.where((x) => x.id == widget.id).firstOrNull;
-      if (item != null) app.watchlist.markSeen(item);
+      if (item == null) return;
+      setState(() {
+        _fresh.addAll(item.events.where((e) => !e.seen));
+        _onlyNew = _fresh.isNotEmpty && _fresh.length < item.events.length && item.events.length > 5;
+      });
+      app.watchlist.markSeen(item);
     });
   }
+
+  bool _isNew(WatchEvent e) => _fresh.contains(e) || !e.seen;
 
   @override
   Widget build(BuildContext context) {
@@ -751,8 +885,18 @@ class _WatchDetailState extends State<_WatchDetail> {
                           StatusChip(item.intervalLabel, color: c.muted, soft: c.raised, dense: true),
                           if (item.recentOnly) StatusChip('nur Aktuelles', color: c.muted, soft: c.raised, dense: true),
                           if (flow != null) StatusChip('Prozess „${flow.name}“', color: c.mint, soft: c.mintSoft, dense: true),
+                          if (item.hasAlert) StatusChip('Melden ${item.alertLabel}', color: c.amber, soft: c.amberSoft, dense: true),
+                          if (item.digest == 'weekly') StatusChip('+ Wochenrückblick', color: c.muted, soft: c.raised, dense: true),
+                          if (item.digestOnly) StatusChip('nur Wochenrückblick', color: c.muted, soft: c.raised, dense: true),
                         ],
                       ),
+                      if (item.hasAlert && item.lastValue != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          '${item.symbol.isNotEmpty ? '${item.symbol}: ' : 'Aktuell: '}${formatNumber(item.lastValue!)}${item.currency.isEmpty ? '' : ' ${item.currency}'}',
+                          style: t.titleMedium?.copyWith(fontFamily: Ui.mono),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       SelectableText(
                         item.target,
@@ -772,61 +916,138 @@ class _WatchDetailState extends State<_WatchDetail> {
                   ),
                 ),
               ),
-              const SectionLabel('Verlauf', padding: EdgeInsets.fromLTRB(20, 16, 20, 8)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Row(
+                  children: [
+                    const Expanded(child: SectionLabel('Verlauf', padding: EdgeInsets.fromLTRB(4, 0, 4, 0))),
+                    ChoiceChip(label: const Text('Alle'), selected: !_onlyNew, onSelected: (_) => setState(() => _onlyNew = false)),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: Text('Neu${_fresh.isEmpty ? '' : ' (${_fresh.length})'}'),
+                      selected: _onlyNew,
+                      onSelected: (_) => setState(() => _onlyNew = true),
+                    ),
+                    if (item.events.any((e) => e.kind == 'quiet'))
+                      IconButton(
+                        tooltip: _showQuiet ? 'Gesammelte Einzeltreffer ausblenden' : 'Gesammelte Einzeltreffer zeigen',
+                        icon: Icon(_showQuiet ? Icons.unfold_less : Icons.unfold_more, size: 20),
+                        onPressed: () => setState(() => _showQuiet = !_showQuiet),
+                      ),
+                  ],
+                ),
+              ),
               Expanded(
-                child: item.events.isEmpty
-                    ? ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                        children: [
-                          Panel(
-                            child: EmptyHint(
-                              icon: Icons.hourglass_empty,
-                              title: 'Noch keine Änderungen',
-                              text: item.lastCheck == null
-                                  ? 'Die erste Prüfung merkt sich den Ausgangsstand.'
-                                  : 'Seit dem Ausgangsstand hat sich nichts geändert.',
-                            ),
-                          ),
-                        ],
-                      )
-                    // wie im Chat: neuester Beitrag unten im Blick, ältere nach oben scrollen
-                    : ListView.builder(
-                        reverse: true,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: item.events.length,
-                        itemBuilder: (context, i) {
-                          final e = item.events[i];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Panel(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Row(
+                child: Builder(
+                  builder: (context) {
+                    final shown = [
+                      for (final e in item.events)
+                        if ((!_onlyNew || _isNew(e)) && (_showQuiet || e.kind != 'quiet' || !item.digestOnly)) e,
+                    ];
+                    return shown.isEmpty && item.events.isNotEmpty
+                        ? ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            children: [
+                              Panel(
+                                child: EmptyHint(
+                                  icon: Icons.done_all,
+                                  title: 'Nichts Neues',
+                                  text: 'Seit deinem letzten Besuch gibt es keine neuen Meldungen.',
+                                ),
+                              ),
+                            ],
+                          )
+                        : item.events.isEmpty
+                        ? ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            children: [
+                              Panel(
+                                child: EmptyHint(
+                                  icon: Icons.hourglass_empty,
+                                  title: 'Noch keine Änderungen',
+                                  text: item.lastCheck == null
+                                      ? 'Die erste Prüfung merkt sich den Ausgangsstand.'
+                                      : 'Seit dem Ausgangsstand hat sich nichts geändert.',
+                                ),
+                              ),
+                            ],
+                          )
+                        // wie im Chat: neuester Beitrag unten im Blick, ältere nach oben scrollen
+                        : ListView.builder(
+                            reverse: true,
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: shown.length,
+                            itemBuilder: (context, i) {
+                              final e = shown[i];
+                              final isNew = _isNew(e);
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Panel(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
                                     children: [
-                                      Expanded(child: Text(e.title, style: t.titleSmall)),
-                                      MonoText('${e.time.day}.${e.time.month}. ${_two(e.time.hour)}:${_two(e.time.minute)}', size: 11),
+                                      Row(
+                                        children: [
+                                          if (e.kind == 'alert')
+                                            Padding(
+                                              padding: const EdgeInsets.only(right: 6),
+                                              child: Icon(Icons.notifications_active_outlined, size: 18, color: c.amber),
+                                            )
+                                          else if (e.kind == 'digest')
+                                            Padding(
+                                              padding: const EdgeInsets.only(right: 6),
+                                              child: Icon(Icons.event_note_outlined, size: 18, color: c.violet),
+                                            ),
+                                          Expanded(child: Text(e.title, style: t.titleSmall)),
+                                          if (isNew)
+                                            Padding(
+                                              padding: const EdgeInsets.only(right: 6),
+                                              child: StatusChip('Neu', color: c.mint, soft: c.mintSoft, dense: true),
+                                            ),
+                                          MonoText('${e.time.day}.${e.time.month}. ${_two(e.time.hour)}:${_two(e.time.minute)}', size: 11),
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Mehr',
+                                            icon: Icon(Icons.more_vert, size: 18, color: c.muted),
+                                            padding: EdgeInsets.zero,
+                                            onSelected: (v) {
+                                              setState(() {
+                                                if (v == 'unread') {
+                                                  _fresh.add(e);
+                                                } else {
+                                                  _fresh.remove(e);
+                                                }
+                                              });
+                                              app.watchlist.setSeen(item, e, v != 'unread');
+                                            },
+                                            itemBuilder: (_) => [
+                                              isNew
+                                                  ? const PopupMenuItem(value: 'read', child: Text('Als gelesen markieren'))
+                                                  : const PopupMenuItem(value: 'unread', child: Text('Als ungelesen markieren')),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      if (e.detail.isNotEmpty) ...[const SizedBox(height: 8), MarkdownLite(e.detail)],
+                                      if (e.links.isNotEmpty) ...[
+                                        const SizedBox(height: 10),
+                                        for (final l in e.links.take(12))
+                                          ListTile(
+                                            dense: true,
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                                            leading: Icon(Icons.north_east, size: 16, color: c.mint),
+                                            title: Text(l['title'] ?? l['link'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+                                            subtitle: MonoText(Uri.tryParse(l['link'] ?? '')?.host ?? '', size: 10.5),
+                                            onTap: l['link'] == null ? null : () => openExternalLink(context, l['link']!),
+                                          ),
+                                      ],
                                     ],
                                   ),
-                                  if (e.detail.isNotEmpty) ...[const SizedBox(height: 8), MarkdownLite(e.detail)],
-                                  if (e.links.isNotEmpty) ...[
-                                    const SizedBox(height: 10),
-                                    for (final l in e.links.take(12))
-                                      ListTile(
-                                        dense: true,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                                        leading: Icon(Icons.north_east, size: 16, color: c.mint),
-                                        title: Text(l['title'] ?? l['link'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
-                                        subtitle: MonoText(Uri.tryParse(l['link'] ?? '')?.host ?? '', size: 10.5),
-                                        onTap: l['link'] == null ? null : () => openExternalLink(context, l['link']!),
-                                      ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                                ),
+                              );
+                            },
                           );
-                        },
-                      ),
+                  },
+                ),
               ),
             ],
           ),

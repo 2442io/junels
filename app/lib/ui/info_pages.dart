@@ -13,6 +13,12 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.32.0', [
+    'Beobachtungen mit Schwellenwert: „Melde dich, wenn die Nvidia-Aktie unter 120 fällt“ – Börsenkurs oder Zahl auf einer Webseite, Meldung nur beim Über-/Unterschreiten',
+    'Wochenrückblick je Thema: sonntags ein Absatz statt vieler Einzeltreffer (zusätzlich oder statt Einzelmeldungen)',
+    'Doppelte Meldungen werden zusammengefasst – dieselbe Nachricht aus mehreren Quellen nur einmal',
+    'Verlauf: „Neu“-Filter, Neu-Markierung und einzelne Meldungen als ungelesen markieren',
+  ]),
   ('1.31.6', [
     'Neuer KI-Anbieter „2442 API“ (api.2442.io): mit API-Schlüssel, optionalen Favoriten (z. B. groq,gemini) und Hinweis, wenn ein Favorit keine Credits mehr hat',
   ]),
