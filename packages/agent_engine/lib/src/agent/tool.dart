@@ -124,6 +124,9 @@ abstract class AgentTool {
 
   List<ToolParam> get params;
 
+  /// Eigene Zeitgrenze (z. B. Bilder erzeugen dauert Minuten); null = Standard des Agenten.
+  Duration? get timeout => null;
+
   /// true = braucht Internet (fragt vorher den Nutzer)
   bool get requiresNetwork => false;
 
