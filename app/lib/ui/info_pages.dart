@@ -13,6 +13,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.5', [
+    'Mac: Nach dem Update startet Junels wieder zuverlässig – die alte Version beendet sich jetzt sofort, statt beim Aufräumen der KI-Engine hängen zu bleiben',
+  ]),
   ('1.31.4', [
     'Ein neuer Chat steht sofort in der Chat-Liste – auch bevor du etwas abschickst (höchstens ein leerer Entwurf)',
   ]),

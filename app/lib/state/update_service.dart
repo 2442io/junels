@@ -166,6 +166,11 @@ class UpdateService {
         if (quitAfterOpen) {
           appLog('Update', 'Beende für die Installation');
           await Future<void>.delayed(const Duration(milliseconds: 1500));
+          // Nicht exit(0): Das ruft die C++-Aufräumphase von llama.cpp/Metal auf, die dabei
+          // abstürzen oder hängen kann – der hängende alte Prozess verhindert dann den Start
+          // der neuen Version („kann nicht geöffnet werden“). Alles ist gespeichert → sofort beenden.
+          Process.killPid(pid, ProcessSignal.sigkill);
+          await Future<void>.delayed(const Duration(seconds: 2));
           exit(0);
         }
       }
