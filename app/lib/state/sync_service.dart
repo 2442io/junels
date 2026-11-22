@@ -202,13 +202,28 @@ class SyncService implements SyncSource {
     _timer = Timer.periodic(const Duration(minutes: 15), (_) => syncServer(quiet: true));
   }
 
+  /// Alter Einzeldatei-Server (…/junels-sync.php) oder Agent-API hinter der Weiche (Klar-URLs).
+  bool get _legacyServer {
+    final u = config.serverUrl.trim();
+    return u.endsWith('.php') || u.endsWith('/junels/') || u.contains('junels-sync');
+  }
+
   Uri _serverUri() {
     var u = config.serverUrl.trim();
     if (!u.startsWith('http')) u = 'https://$u';
-    if (!u.endsWith('.php') && !u.endsWith('/')) u = '$u/';
-    if (u.endsWith('/')) u = '${u}junels-sync.php';
+    if (_legacyServer) {
+      if (!u.endsWith('.php') && !u.endsWith('/')) u = '$u/';
+      if (u.endsWith('/')) u = '${u}junels-sync.php';
+      return Uri.parse(u);
+    }
+    while (u.endsWith('/')) {
+      u = u.substring(0, u.length - 1);
+    }
     return Uri.parse(u);
   }
+
+  /// Klar-URL der Agent-API: https://…/sync, /login/<port>, /whoami …
+  Uri _api(String path) => Uri.parse('${_serverUri()}/$path');
 
   Future<void> _run(String label, Future<SyncResult> Function() job, {bool quiet = false}) async {
     final eng = _engine;
@@ -247,9 +262,10 @@ class SyncService implements SyncSource {
       return;
     }
     if (config.level == 0 || config.level == 1) return; // Stufe ohne Daten: nichts abgleichen
-    final url = _serverUri();
+    final base = _serverUri();
+    final url = _legacyServer ? base : _api('sync');
     final token = await Vault.read('sso:token');
-    await _run('Server', () => _engine!.syncWith('server:${url.host}${url.path}', (q) async {
+    await _run('Server', () => _engine!.syncWith('server:${base.host}${base.path}', (q) async {
           try {
             return await syncHttpPost(url, {...q, if (token != null && token.isNotEmpty) 'token': token});
           } on SyncException catch (e) {
@@ -273,7 +289,8 @@ class SyncService implements SyncSource {
     if (config.serverUrl.trim().isEmpty) return null;
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final r = await (await c.getUrl(_serverUri())).close().timeout(const Duration(seconds: 10));
+      if (_legacyServer) return false; // SSO nur mit der Agent-API hinter der Weiche
+      final r = await (await c.getUrl(Uri.parse('${_serverUri()}/'))).close().timeout(const Duration(seconds: 10));
       final j = jsonDecode(await r.transform(utf8.decoder).join()) as Map;
       return j['sso'] == true;
     } catch (_) {
@@ -289,12 +306,14 @@ class SyncService implements SyncSource {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final done = Completer<Map<String, String>>();
     server.listen((req) async {
-      if (req.uri.path != '/sso') {
+      // Rücksprung als Klar-URL: http://127.0.0.1:<port>/sso/<token>
+      final m = RegExp(r'^/sso/([0-9a-f]{32,128})$').firstMatch(req.uri.path);
+      if (m == null) {
         req.response.statusCode = 404;
         await req.response.close();
         return;
       }
-      final q = req.uri.queryParameters;
+      final q = {'token': m.group(1)!};
       req.response.headers.contentType = ContentType.html;
       req.response.write('<!doctype html><meta charset="utf-8"><title>Junels</title>'
           '<body style="font:17px system-ui;display:grid;place-items:center;min-height:90vh">'
@@ -303,17 +322,18 @@ class SyncService implements SyncSource {
       if (!done.isCompleted) done.complete(q);
     });
     try {
-      final url = _serverUri().replace(queryParameters: {'login': '1', 'port': '${server.port}'});
-      await NativeFiles.openUrl(url.toString());
+      if (_legacyServer) throw SyncException('SSO gibt es nur mit der Agent-API (Weiche). Trage deren Adresse ein, z. B. https://agent.2442.io');
+      await NativeFiles.openUrl(_api('login/${server.port}').toString());
       status.value = 'Anmeldung im Browser …';
       final q = await done.future.timeout(const Duration(minutes: 5),
           onTimeout: () => throw SyncException('Anmeldung nicht abgeschlossen (Zeit abgelaufen).'));
       final token = q['token'] ?? '';
       if (token.length < 32) throw SyncException('Anmeldung fehlgeschlagen.');
       await Vault.write('sso:token', token);
+      final who = await syncHttpPost(_api('whoami'), {'token': token});
       config
-        ..ssoName = q['name'] ?? ''
-        ..ssoEmail = q['email'] ?? '';
+        ..ssoName = '${who['name'] ?? ''}'
+        ..ssoEmail = '${who['email'] ?? ''}';
       if (config.level < 1) config.level = 1;
       await saveConfig();
       status.value = 'Angemeldet als ${config.ssoName.isNotEmpty ? config.ssoName : config.ssoEmail}';
@@ -327,7 +347,7 @@ class SyncService implements SyncSource {
     final token = await Vault.read('sso:token');
     if (token != null && config.serverUrl.isNotEmpty) {
       try {
-        await syncHttpPost(_serverUri(), {'token': token, 'logout': true});
+        if (!_legacyServer) await syncHttpPost(_api('logout'), {'token': token});
       } catch (_) {}
     }
     await Vault.delete('sso:token');
@@ -351,7 +371,8 @@ class SyncService implements SyncSource {
   /// Alle Daten dieses Kontos auf dem Server löschen (z. B. nach dem Senken der Stufe).
   Future<void> wipeServer() async {
     final token = await Vault.read('sso:token');
-    await syncHttpPost(_serverUri(), {'wipe': true, if (token != null) 'token': token, if (_keys != null) 'account': _keys!.account});
+    if (_legacyServer) throw SyncException('Löschen auf dem Server gibt es nur mit der Agent-API (Weiche).');
+    await syncHttpPost(_api('wipe'), {if (token != null) 'token': token});
     try {
       await File('${app.storage.root.path}/sync_state.json').delete();
     } catch (_) {}

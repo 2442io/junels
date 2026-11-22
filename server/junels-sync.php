@@ -12,70 +12,11 @@
  *  - Standardmäßig wird der Server an das erste Konto gebunden, das sich meldet
  *    (Datei junels-data/allowed.txt). Andere Konten werden abgewiesen.
  *  - Der Datenordner junels-data/ wird per .htaccess gesperrt.
- *
- * Optional – Anmeldung mit SSO (z. B. sso.2442.io):
- *  1. sso-client.php aus der SSO-Verwaltung herunterladen und NEBEN diese Datei legen.
- *  2. Diese Datei einmal im Browser mit ?login=1 öffnen, „Mit SSO verbinden“ klicken und im SSO bestätigen.
- *  3. In Junels unter „Konto & Daten“ → „Mit SSO anmelden“.
- *  Dann gilt: nur angemeldete Personen dürfen abgleichen, jede Person hat ihren eigenen Speicher.
- *  Die Daten bleiben trotzdem auf dem Gerät verschlüsselt – auch das SSO und dieser Server sehen sie nicht.
  */
 declare(strict_types=1);
 
 const MAX_BODY = 64 * 1024 * 1024;   // größte Anfrage (Bytes)
 const LOCK_TO_FIRST_ACCOUNT = true; // nur das erste Konto zulassen
-
-$SSO = is_file(__DIR__ . '/sso-client.php');   // SSO-Modus, sobald sso-client.php daneben liegt
-$baseDir = __DIR__ . '/junels-data';
-
-function dataDir(string $dir): void {
-    if (!is_dir($dir) && !@mkdir($dir, 0700, true)) fail(500, 'Datenordner kann nicht angelegt werden (Schreibrechte?)');
-    if (!file_exists("$dir/.htaccess")) {
-        file_put_contents("$dir/.htaccess", "Require all denied\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n");
-    }
-    if (!file_exists("$dir/index.html")) file_put_contents("$dir/index.html", '');
-}
-
-/** App-Anmeldungen: Hash des Tokens → Person (sub, Name, E-Mail). */
-function tokens(string $base, ?callable $change = null): array {
-    $fh = fopen("$base/tokens.json", 'c+');
-    if ($fh === false) fail(500, 'tokens.json nicht schreibbar');
-    flock($fh, LOCK_EX);
-    $all = json_decode(stream_get_contents($fh) ?: '', true) ?: [];
-    if ($change) {
-        $all = $change($all);
-        ftruncate($fh, 0);
-        rewind($fh);
-        fwrite($fh, json_encode($all));
-        fflush($fh);
-    }
-    flock($fh, LOCK_UN);
-    fclose($fh);
-    return $all;
-}
-
-// ---- SSO-Anmeldung für die App: Browser → SSO → zurück zu Junels (127.0.0.1:PORT)
-if ($SSO && isset($_GET['login'])) {
-    require __DIR__ . '/sso-client.php';
-    $user = Sso::guard();   // leitet zum SSO um und kommt hierher zurück
-    $port = (int)($_GET['port'] ?? 0);
-    header('Cache-Control: no-store');
-    if ($port < 1024 || $port > 65535) {
-        header('Content-Type: text/html; charset=utf-8');
-        echo '<!doctype html><meta charset="utf-8"><title>Junels</title><p style="font:16px system-ui;margin:40px">'
-            . 'SSO ist verbunden. Melde dich jetzt in Junels unter „Konto &amp; Daten“ → „Mit SSO anmelden“ an.</p>';
-        exit;
-    }
-    dataDir($baseDir);
-    $token = bin2hex(random_bytes(32));
-    $entry = ['sub' => (string)$user['sub'], 'name' => (string)($user['name'] ?? ''), 'email' => (string)($user['email'] ?? ''), 't' => time()];
-    tokens($baseDir, function (array $all) use ($token, $entry) {
-        $all[hash('sha256', $token)] = $entry;
-        return $all;
-    });
-    header('Location: http://127.0.0.1:' . $port . '/sso?' . http_build_query(['token' => $token, 'name' => $entry['name'], 'email' => $entry['email']]), true, 302);
-    exit;
-}
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -89,7 +30,7 @@ function fail(int $code, string $msg): void {
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($method === 'GET') {
-    echo json_encode(['ok' => true, 'app' => 'junels-sync', 'v' => 2, 'sso' => $SSO,
+    echo json_encode(['ok' => true, 'app' => 'junels-sync', 'v' => 1,
         'storage' => extension_loaded('pdo_sqlite') ? 'sqlite' : 'json']);
     exit;
 }
@@ -100,40 +41,17 @@ if ($raw === false || strlen($raw) > MAX_BODY) fail(413, 'Anfrage zu groß');
 $req = json_decode($raw, true);
 if (!is_array($req)) fail(400, 'kein gültiges JSON');
 
-dataDir($baseDir);
-$dir = $baseDir;
-if ($SSO) {
-    // Nur angemeldete Personen; jede hat ihren eigenen Ordner
-    $tok = (string)($req['token'] ?? '');
-    $who = $tok !== '' ? (tokens($baseDir)[hash('sha256', $tok)] ?? null) : null;
-    if (!$who) fail(401, 'Bitte in Junels (neu) mit SSO anmelden');
-    if (!empty($req['logout'])) {
-        tokens($baseDir, function (array $all) use ($tok) { unset($all[hash('sha256', $tok)]); return $all; });
-        echo json_encode(['ok' => true]);
-        exit;
-    }
-    if (!empty($req['whoami'])) {
-        echo json_encode(['ok' => true, 'name' => $who['name'], 'email' => $who['email']], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    $dir = $baseDir . '/u-' . substr(hash('sha256', 'junels:' . $who['sub']), 0, 32);
-    dataDir($dir);
-}
-
-// Gespeicherte Daten dieser Person/dieses Kontos löschen (z. B. nach dem Senken der Datenschutz-Stufe)
-if (!empty($req['wipe'])) {
-    foreach (array_merge(glob($dir . '/*.sqlite') ?: [], glob($dir . '/*.json') ?: []) as $f) {
-        if (basename($f) !== 'tokens.json') @unlink($f);
-    }
-    @unlink($dir . '/allowed.txt');
-    echo json_encode(['ok' => true, 'wiped' => true]);
-    exit;
-}
-
 $account = (string)($req['account'] ?? '');
 if (!preg_match('/^[0-9a-f]{64}$/', $account)) fail(400, 'ungültige Konto-Kennung');
 $since = (int)($req['since'] ?? 0);
 $in = is_array($req['items'] ?? null) ? $req['items'] : [];
+
+$dir = __DIR__ . '/junels-data';
+if (!is_dir($dir) && !@mkdir($dir, 0700, true)) fail(500, 'Datenordner kann nicht angelegt werden (Schreibrechte?)');
+if (!file_exists("$dir/.htaccess")) {
+    file_put_contents("$dir/.htaccess", "Require all denied\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n");
+}
+if (!file_exists("$dir/index.html")) file_put_contents("$dir/index.html", '');
 
 // Konto prüfen
 $allowedFile = "$dir/allowed.txt";

@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.38.1', [
+    'Junels Agent-API hinter der Weiche (Kanäle Prod/Q/T, Verwaltung, Abnahme, Rollback): nur noch Klar-URLs – /login/<port>, /sync, /whoami, /logout, /wipe; Rücksprung an die App als /sso/<token>',
+    'SSO-Anmeldung läuft jetzt über die Agent-API; die einzelne Datei junels-sync.php bleibt für den Abgleich ohne SSO',
+  ]),
   ('1.38.0', [
     'Geräte-Setups: Einstellungen als „Desktop“, „Handy“ … speichern und anwenden; nach einer Wiederherstellung bekommt jedes Gerät sein eigenes Setup zurück',
     'Apps öffnen & steuern (z. B. Spotify): nur Apps aus deiner Freigabeliste – öffnen, Wiedergabe steuern, Suche öffnen. Nie tippen, kaufen, bestellen oder bezahlen; Bank/Shop-Apps nur öffnen; optional mit Rückfrage und nur, wenn du dabei bist',

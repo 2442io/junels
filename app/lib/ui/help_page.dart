@@ -223,7 +223,7 @@ Je App einstellbar: *Vor jeder Aktion fragen* und *Auch in Prozessen & geplanten
 3 · **+ Gedächtnis & Wissen**
 4 · **Alles** – zusätzlich alle Chats.
 
-Gespeichert wird auf **deinem eigenen Server** (junels-sync.php) – immer auf dem Gerät mit deinem Sync-Passwort verschlüsselt, Server und SSO sehen nichts davon. Mit **SSO** (z. B. sso.2442.io) darf nur dein Konto speichern, und jede Person hat einen eigenen Bereich: sso-client.php neben junels-sync.php legen, einmal junels-sync.php?login=1 im Browser öffnen und verbinden, dann in Junels „Mit SSO anmelden“. Senkst du die Stufe, kannst du die Daten auf dem Server mit einem Tipp löschen.''',
+Gespeichert wird auf **deinem eigenen Server** – immer auf dem Gerät mit deinem Sync-Passwort verschlüsselt, Server und SSO sehen nichts davon. Mit der **Junels Agent-API** (hinter der Weiche, z. B. agent.2442.io) meldest du dich per **SSO** (sso.2442.io) an: nur dein Konto darf speichern, und jede Person hat einen eigenen Bereich. Einmal https://<domain>/login im Browser öffnen und verbinden, dann in Junels die Adresse eintragen und „Mit SSO anmelden“. Ohne SSO geht weiterhin die einzelne Datei junels-sync.php. Senkst du die Stufe, kannst du die Daten auf dem Server mit einem Tipp löschen.''',
   ),
   HelpArticle(
     id: 'loose-ends',

@@ -182,7 +182,7 @@ class _SyncPageState extends State<SyncPage> {
                       : () async {
                           final has = await sync.serverHasSso();
                           if (has == false) {
-                            _snack('Dein Server hat noch kein SSO: sso-client.php neben junels-sync.php legen (siehe unten).');
+                            _snack('Dieser Server hat kein SSO – dafür die Agent-API mit Weiche verwenden (siehe unten).');
                             return;
                           }
                           try {
@@ -204,10 +204,11 @@ class _SyncPageState extends State<SyncPage> {
                   title: Text('Server für SSO einrichten', style: t.bodyMedium),
                   children: [
                     Text(
-                      '1. junels-sync.php auf deinen Webspace laden (z. B. https://deine-domain/junels/).\n'
-                      '2. sso-client.php aus der SSO-Verwaltung (https://sso.2442.io/download/sso-client.php) daneben legen.\n'
-                      '3. junels-sync.php?login=1 im Browser öffnen, „Mit SSO verbinden“ klicken und im SSO bestätigen.\n'
-                      '4. Hier „Mit SSO anmelden“ tippen.',
+                      '1. Paket „Junels Agent-API“ (Weiche) auf den Webspace laden und eine Domain darauf zeigen lassen, '
+                      'z. B. agent.2442.io.\n'
+                      '2. /control öffnen, einrichten und die Version junels-api_v1.zip hochladen und zuweisen.\n'
+                      '3. https://<domain>/login im Browser öffnen, „Mit SSO verbinden“ klicken und im SSO bestätigen.\n'
+                      '4. Hier die Adresse (https://<domain>) eintragen und „Mit SSO anmelden“ tippen.',
                       style: t.bodySmall,
                     ),
                   ],
