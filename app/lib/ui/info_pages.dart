@@ -10,6 +10,16 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.25.0', [
+    'Watchlist ist Teil der Prozesse: jede Beobachtung ist ein Auslöser „Beobachten“ im Canvas, an den du weitere Schritte hängst',
+    'Watchlist: prüft auf Wunsch jede Minute (1, 5, 10, 15, 30 Minuten … wöchentlich), Suchanfragen wie bei Google ("Phrase", -ohne, site:, OR), Beschreibung in eigenen Worten mit Relevanzprüfung durch den Agenten, „Nur Aktuelles“ und „Jetzt testen“',
+    'Canvas: neue Bausteine Web-API (REST mit API-Schlüssel, Token, Benutzer/Passwort oder OAuth/SSO wie Google, Microsoft, GitHub, eigener OpenID-Anbieter) und MCP-Server-Tool',
+    'Canvas: Vorab-Check vor dem Start (Modell, Internet, Zugänge, Erreichbarkeit) mit Lösungsvorschlägen',
+    'Canvas: Stopp-Knopf, animierter Ablauf (aktueller Schritt, Fortschritt, Datenfluss), Fehler mit Hinweis – „Agent beheben lassen“, „Selbst ändern“ oder „ab hier erneut“',
+    'Canvas am Handy: Verbinden per Tippen (Punkt, dann Ziel) und „Verbinden mit …“, große Tippflächen, logisches Auto-Verbinden, untere Leiste ohne Überlappung',
+    'Gespräch: Stimme wird vorab geladen, nächste Sätze entstehen schon während des Sprechens – keine Pause mehr nach dem ersten Satz; „Moment …“, wenn der Agent im Internet nachsieht',
+    'Stimme klingt besser: Lautstärke angeglichen, keine Knackser, Abkürzungen/Uhrzeiten/Grad/Prozent/Euro ausgesprochen, keine Bluetooth-Telefonqualität mehr; Probehören in den Einstellungen',
+  ]),
   ('1.24.0', [
     'Neues Design: Graphit und Mint, Schrift Inter, ruhige Karten mit feinen Rändern, Statuschips – hell und dunkel',
     'Menü neu geordnet: Automatik (Geplante Aufgaben, Prozesse, Watchlist), Arbeitsbereich (Prompt-Vorlagen, Wissen, Aktivitäten), Chats mit Suche; Einstellungen und Hilfe unten',

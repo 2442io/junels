@@ -53,7 +53,7 @@ const helpArticles = <HelpArticle>[
     body: '''Junels ist ein persönlicher KI-Agent für Mac und Android. Das Sprachmodell läuft **auf deinem Gerät** – deine Fragen, Dateien und Notizen verlassen es nicht.
 
 **So ist die App aufgebaut**
-- **Links** die Seitenleiste: Modellstatus, Neuer Chat, Gesprächsmodus, Automatik (Geplante Aufgaben, Prozesse, Watchlist), Arbeitsbereich (Prompt-Vorlagen, Wissen, Aktivitäten) und deine Chats. Ganz unten Einstellungen und Hilfe.
+- **Links** die Seitenleiste: Modellstatus, Neuer Chat, Gesprächsmodus, Automatik (Geplante Aufgaben, Prozesse & Watchlist), Arbeitsbereich (Prompt-Vorlagen, Wissen, Aktivitäten) und deine Chats. Ganz unten Einstellungen und Hilfe.
 - **In der Mitte** der Chat mit Eingabefeld.
 - **Rechts** Artefakte (erzeugte Dokumente, Tabellen, Diagramme) und Metriken.
 
@@ -232,7 +232,9 @@ Auswahl und Optionen unter Einstellungen → Sprache.''',
 - **Freigaben** (Internet, E-Mail senden) werden gesprochen gestellt und mit „Ja“ oder „Nein“ beantwortet.
 - Deine Frage wird nur am Bildschirm gezeigt, nie vorgelesen.
 
-**Stimmen**: Kokoro Martin und Victoria (sehr natürlich) sowie Piper-Stimmen – im Systemcheck unter Stimmen laden.''',
+**Stimmen**: Kokoro Martin und Victoria (sehr natürlich) sowie Piper-Stimmen – im Systemcheck unter Stimmen laden. Unter Einstellungen → Sprache kannst du probehören.
+
+**Schneller und flüssiger**: Die Stimme wird beim Start des Gesprächs geladen, die nächsten Sätze entstehen schon, während der vorige gesprochen wird. Braucht der Agent das Internet, sagt er kurz „Moment …“. Abkürzungen, Uhrzeiten, Grad, Prozent und Euro werden ausgesprochen. Mit Bluetooth-Kopfhörern oder im Auto bleibt die Wiedergabe in voller Qualität (kein Telefonmodus).''',
   ),
 
   // ------------------------------------------------------------------- Automatik
@@ -262,22 +264,26 @@ Auswahl und Optionen unter Einstellungen → Sprache.''',
     summary: 'Abläufe aus Bausteinen bauen – oder per Prompt erzeugen lassen.',
     shot: 'flows',
     open: 'flows',
-    keywords: 'prozess workflow canvas baustein knoten n8n automatisierung ablauf verbinden auslöser',
+    keywords: 'prozess workflow canvas baustein knoten n8n automatisierung ablauf verbinden auslöser api rest mcp sso oauth google stopp fehler',
     body: '''Ein Prozess ist eine Kette von **Bausteinen**, die der Agent nacheinander ausführt – ähnlich wie bei n8n.
 
 **Bausteine**
-- **Auslöser** – manuell, nach Zeitplan oder bei einer Watchlist-Änderung.
+- **Auslöser** – manuell, nach Zeitplan oder **Beobachten** (Webseite oder Thema, bis zu minütlich).
 - **Agent** – ein Auftrag an den Agenten mit allen Werkzeugen.
 - **Werkzeug** – ein bestimmtes Werkzeug direkt aufrufen (Websuche, Wetter, Nachrichten …).
+- **Web-API** – eine REST-Schnittstelle aufrufen (GET, POST …), optional mit **Zugang**: API-Schlüssel, Token, Benutzer/Passwort oder Anmeldung per **OAuth/SSO** (Google, Microsoft, GitHub, eigener OpenID-Anbieter). „Wert auslesen“ holt ein Feld aus der JSON-Antwort.
+- **MCP-Server** – ein Tool eines verbundenen MCP-Servers, inklusive Anmeldung.
 - **Bedingung** – weiter nur, wenn das vorige Ergebnis etwas enthält.
 - **Benachrichtigung** – Push-Nachricht mit dem Ergebnis.
 - **Notiz speichern** – Ergebnis ins Gedächtnis bzw. als Dokument.
 
-**Bauen**: Bausteine über „+ Baustein“ hinzufügen, verschieben, an den Punkten verbinden. Ein Tipp auf einen Baustein öffnet seine Einstellungen. Mit {{vorher}} nutzt ein Baustein das Ergebnis des vorigen.
+**Bauen**: „+ Baustein“ in der Leiste unten hängt den neuen Baustein automatisch an den gewählten bzw. ans Ende der Kette. **Verbinden am Handy**: den Punkt rechts am Baustein antippen, dann den Ziel-Baustein antippen – oder im Baustein „Verbinden mit …“ wählen. Am Mac geht auch Ziehen. „Auto-verbinden“ verbindet lose Bausteine logisch von links nach rechts; ein Baustein, den du rechts neben einen anderen schiebst, wird ebenfalls verbunden. Mit {{vorher}} nutzt ein Baustein das Ergebnis des vorigen.
 
 **Per Prompt erzeugen**: Beschreibe den Ablauf in einem Satz („Jeden Morgen Tech-News suchen, zusammenfassen und mir schicken“) – der Agent baut den Prozess.
 
-**Ausführen**: ▶ startet den Prozess, jeder Baustein zeigt seinen Status.''',
+**Ausführen**: ▶ prüft zuerst, ob alles bereit ist (Modell, Internet, Zugänge, Erreichbarkeit) und bietet Lösungen an. Während des Laufs zeigt der Canvas animiert, wo der Prozess gerade ist; **Stopp** bricht sofort ab.
+
+**Fehler**: Bleibt ein Baustein hängen, steht dort, was schiefging, und ein Hinweis, was hilft. Du kannst ihn selbst ändern, den **Agenten beheben lassen** oder **ab hier erneut** starten – ohne die vorigen Schritte zu wiederholen.''',
   ),
   HelpArticle(
     id: 'watchlist',
@@ -288,11 +294,14 @@ Auswahl und Optionen unter Einstellungen → Sprache.''',
     shot: 'watch',
     open: 'watch',
     keywords: 'watchlist beobachten überwachen webseite thema änderung preis neu benachrichtigung',
-    body: '''Die Watchlist prüft regelmäßig Webseiten oder Themen und meldet sich, wenn sich etwas ändert.
+    body: '''Die Watchlist prüft regelmäßig Webseiten oder Themen und meldet sich, wenn sich etwas ändert. Sie ist Teil der **Prozesse**: Jede Beobachtung ist ein Prozess mit dem Auslöser „Beobachten“, an den du im Canvas weitere Schritte hängen kannst.
 
 - **Webseite** – z. B. eine Produktseite, ein Blog oder eine Stellenausschreibung. Junels vergleicht den Inhalt mit dem letzten Stand.
-- **Thema** – z. B. „Anthropic“ oder „Wiener Linien Störung“. Junels sucht in Nachrichten und Web nach neuen Treffern.
-- **Intervall** – stündlich, alle 6 Stunden, täglich.
+- **Thema als Suchanfrage** – wie bei Google: "genaue Phrase", -ausschließen, site:orf.at, OR. Beispiel: "Wiener Linien" Störung -Wartung
+- **Thema als Beschreibung** – in eigenen Worten („Neue Förderungen für E-Autos in Österreich, nur offizielle Stellen“). Junels macht daraus eine Suche und der Agent prüft jeden neuen Treffer, ob er wirklich passt.
+- **Nur Aktuelles** – nur Meldungen der letzten 24 Stunden.
+- **Intervall** – von jeder Minute bis wöchentlich. Minütlich prüft Junels, solange die App läuft; im Hintergrund lässt Android oft nur alle paar Minuten zu.
+- **Jetzt testen** zeigt vor dem Speichern, was Junels findet.
 - Optional fasst der Agent die Änderung zusammen und schickt eine Push-Nachricht.
 
 Neue Treffer sind in der Seitenleiste mit einem Punkt markiert. Beim Anlegen erlaubst du den Internetzugriff für genau diesen Eintrag.''',
