@@ -360,6 +360,7 @@ class AppSettings {
     this.ttsVoiceId,
     this.systemVoice = '',
     this.slowVoice = '',
+    Map<String, double>? voiceSpeed,
     this.sttLanguage = 'auto',
     this.autoSpeak = false,
     this.sendAfterVoice = true,
@@ -396,7 +397,8 @@ class AppSettings {
     this.lastWatchScan = 0,
     this.systemCheckSeen = false,
     Map<String, String>? installed,
-  })  : enabledTools = enabledTools ??
+  })  : voiceSpeed = voiceSpeed ?? {},
+        enabledTools = enabledTools ??
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
@@ -426,7 +428,9 @@ class AppSettings {
   String? sttModelId; // Katalog-ID des Whisper-Modells
   String? ttsVoiceId; // Katalog-ID der Piper-Stimme ('__system__' = Stimme des Geräts)
   String systemVoice; // Stimme des Geräts: „Name|Locale“ (leer = Standard)
-  String slowVoice; // diese lokale Stimme war hier langsamer als Echtzeit → Gerätestimme
+  String slowVoice; // (veraltet) früher: Stimme zu langsam → Gerätestimme
+  /// Gemessenes Tempo der lokalen Stimmen (Ordner → ms je Zeichen), fürs Puffern beim Vorlesen.
+  final Map<String, double> voiceSpeed;
   String sttLanguage; // auto | de | en
   bool autoSpeak; // Antworten automatisch vorlesen
   bool sendAfterVoice; // nach Spracheingabe sofort senden
@@ -492,7 +496,7 @@ class AppSettings {
         'sttModelId': sttModelId,
         'ttsVoiceId': ttsVoiceId,
         'systemVoice': systemVoice,
-        if (slowVoice.isNotEmpty) 'slowVoice': slowVoice,
+        if (voiceSpeed.isNotEmpty) 'voiceSpeed': voiceSpeed,
         'sttLanguage': sttLanguage,
         'autoSpeak': autoSpeak,
         'sendAfterVoice': sendAfterVoice,
@@ -543,7 +547,7 @@ class AppSettings {
         sttModelId: j['sttModelId'] as String?,
         ttsVoiceId: j['ttsVoiceId'] as String?,
         systemVoice: j['systemVoice'] as String? ?? '',
-        slowVoice: j['slowVoice'] as String? ?? '',
+        voiceSpeed: {for (final e in ((j['voiceSpeed'] as Map?) ?? const {}).entries) '${e.key}': (e.value as num).toDouble()},
         sttLanguage: j['sttLanguage'] as String? ?? 'auto',
         autoSpeak: j['autoSpeak'] as bool? ?? false,
         sendAfterVoice: j['sendAfterVoice'] as bool? ?? true,

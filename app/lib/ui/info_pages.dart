@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.37.0', [
+    'Stimme ohne Stocken: Junels misst das Tempo der Stimme und puffert kurz vor dem Sprechen – danach läuft die Antwort ohne Pausen durch. Die schöne KI-Stimme bleibt (keine automatische Gerätestimme mehr)',
+    'Mehr Rechenkraft für die Stimme: Piper und Kokoro nutzen jetzt mehr Prozessorkerne',
+    'Schnellere KI-Stimme: Ist die Stimme auf dem Gerät zu langsam, schlägt das Gespräch eine ähnlich klingende, 3–5× schnellere Piper-Stimme vor (ein Tipp: laden & verwenden). Neue Handys starten gleich mit Piper',
+  ]),
   ('1.36.0', [
     'Gespräch & Vorlesen ohne lange Pausen: Ist die gewählte Stimme auf dem Gerät langsamer als Echtzeit, spricht Junels automatisch mit der Gerätestimme weiter (und merkt sich das; in den Gesprächs-Einstellungen umkehrbar)',
     'Offline-Erkennung: Junels merkt, wenn kein Netz da ist – zeigt „Kein Netz“, lässt Internet-Werkzeuge weg, antwortet mit dem Modell auf dem Gerät statt der Cloud und holt Beobachtungen nach, sobald das Netz zurück ist',

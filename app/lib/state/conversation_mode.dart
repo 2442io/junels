@@ -550,7 +550,7 @@ class ConversationMode {
       if (_sttSlow) 'Spracherkennung langsam → im Systemcheck „Canary“ laden (viel schneller)',
       if (firstMs > 6000) 'Antwort langsam → kleineres Sprachmodell (z. B. Gemma 4 E2B)',
       if (out.slowSynth > 0 && out.voiceDir != null)
-        'Pausen: die Stimme ist auf diesem Gerät langsamer als Echtzeit → Einstellungen → Sprache → „Stimme des Geräts“ oder Piper',
+        'die Stimme rechnet hier langsamer als Echtzeit → Junels puffert kurz vor dem Sprechen',
     ];
     if (tips.isNotEmpty) timing.value = '${timing.value}\nTipp: ${tips.join(' · ')}';
     if (myTurn != _turn) return;

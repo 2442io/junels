@@ -245,7 +245,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       device = DeviceProfile.detect();
       voiceLogFile = File('${storage.documentsDir.path}/junels_log.txt');
       voice = VoiceService(await getTemporaryDirectory());
-      voice.output.onTooSlow = () => unawaited(markVoiceSlow(true));
+      Timer? speedSave;
+      voice.output.onSpeed = (m) {
+        settings.voiceSpeed
+          ..clear()
+          ..addAll(m);
+        speedSave?.cancel();
+        speedSave = Timer(const Duration(seconds: 5), () => unawaited(storage.saveSettings(settings)));
+      };
       memory = MemoryStore(File('${storage.root.path}/memory.json'));
       await memory.load();
       activity = ActivityLog(File('${storage.root.path}/activity.json'));
@@ -314,6 +321,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       ];
       refreshFreeDisk();
       settings = await storage.loadSettings();
+      voice.output.speedByDir.addAll(settings.voiceSpeed);
       darkMode.value = settings.darkMode;
       settings.contextSize = device.clampContext(settings.contextSize, null);
       profiles = await storage.loadProfiles();
@@ -780,7 +788,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       CatalogEntry? pick;
       if (kind == ModelKind.tts) {
         // Stimme: am Desktop Kokoro Martin, am Handy die kompakte Kokoro Victoria, sonst Piper
-        final pref = mobile ? ['kokoro-de-victoria', 'piper-de-thorsten'] : ['kokoro-de-martin', 'kokoro-de-victoria', 'piper-de-thorsten'];
+        // Handy: Piper ist 3–5× schneller als Kokoro (Kokoro stockt auf vielen Handys)
+        final pref = mobile ? ['piper-de-thorsten', 'kokoro-de-victoria'] : ['kokoro-de-martin', 'kokoro-de-victoria', 'piper-de-thorsten'];
         pick = [for (final id in pref) ...modelCatalog.where((e) => e.id == id && runsHere(e))].firstOrNull;
       } else {
         final recs = recommendFor(kind, prof, freeDiskBytes: freeDisk, availableMemory: avail);
@@ -968,14 +977,39 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   String? get ttsVoicePath {
     final id = settings.ttsVoiceId;
     if (id == null) return null;
-    // War auf diesem Gerät langsamer als Echtzeit → Gerätestimme (sonst lange Pausen)
-    if (settings.slowVoice == id) return null;
     final p = settings.installed[id];
     return p != null && Directory(p).existsSync() ? p : null;
   }
 
   /// Gewählte lokale Stimme wurde wegen Langsamkeit durch die Gerätestimme ersetzt.
-  bool get voiceTooSlow => settings.ttsVoiceId != null && settings.slowVoice == settings.ttsVoiceId;
+  bool get voiceTooSlow => false;
+
+  /// Schnellere, ähnlich klingende Stimme, wenn die gewählte hier langsamer als Echtzeit ist.
+  CatalogEntry? get fasterVoice {
+    final id = settings.ttsVoiceId;
+    final p = ttsVoicePath;
+    if (id == null || p == null) return null;
+    final ms = voice.output.speedByDir[p] ?? 0;
+    if (ms < 85) return null; // deutsche Sprache ≈ 65 ms Ton je Zeichen → ab ~1,3× langsamer
+    final alt = switch (id) {
+      'kokoro-de-martin' || 'piper-de-thorsten-high' => 'piper-de-thorsten',
+      'kokoro-de-victoria' => 'piper-de-kerstin',
+      _ => null,
+    };
+    return modelCatalog.where((e) => e.id == alt).firstOrNull;
+  }
+
+  /// Schnellere Stimme laden (falls nötig) und verwenden.
+  Future<void> switchToFasterVoice() async {
+    final e = fasterVoice;
+    if (e == null) return;
+    if (settings.installed[e.id] == null) await startDownload(e);
+    if (settings.installed[e.id] != null) {
+      settings.ttsVoiceId = e.id;
+      await storage.saveSettings(settings);
+      notifyListeners();
+    }
+  } // Gerätestimme wird nicht mehr automatisch gewählt (Puffern stattdessen)
 
   Future<void> markVoiceSlow(bool slow) async {
     settings.slowVoice = slow ? (settings.ttsVoiceId ?? '') : '';

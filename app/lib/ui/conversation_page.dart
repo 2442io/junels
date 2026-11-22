@@ -224,6 +224,29 @@ class _ConversationPageState extends State<ConversationPage> {
                               child: Text(tm, style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
                             ),
                     ),
+                    if (app.fasterVoice != null)
+                      Card(
+                        margin: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(
+                              'Die Stimme rechnet auf diesem Gerät langsamer, als sie spricht – deshalb die kurze Pause vor der Antwort. '
+                              '„${app.fasterVoice!.name}“ klingt ähnlich und ist 3–5× schneller.',
+                              style: t.bodySmall,
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: app.downloads.containsKey(app.fasterVoice!.id) ? null : () => app.switchToFasterVoice(),
+                                child: Text(app.downloads.containsKey(app.fasterVoice!.id)
+                                    ? 'Lädt …'
+                                    : (app.settings.installed[app.fasterVoice!.id] != null ? 'Verwenden' : 'Laden & verwenden (${app.fasterVoice!.sizeBytes ~/ (1024 * 1024)} MB)')),
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ),
                     ValueListenableBuilder<String?>(
                       valueListenable: conv.consentPrompt,
                       builder: (context, purpose, _) => purpose == null

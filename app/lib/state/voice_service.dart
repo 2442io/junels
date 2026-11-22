@@ -160,7 +160,7 @@ class SpeechOutput {
   bool _contextSet = false;
 
   /// So viele Sätze werden im Voraus erzeugt, während der aktuelle noch spielt.
-  static const _lookahead = 3;
+  static const _lookahead = 40; // alle bekannten Sätze vorausberechnen (Puffern)
 
   final List<_QueueItem> _queue = [];
   bool _finished = true;
@@ -179,10 +179,10 @@ class SpeechOutput {
 
   /// Wie oft die lokale Stimme langsamer als Echtzeit war (Grund für Pausen).
   int slowSynth = 0;
-  int _slowStreak = 0;
-
-  /// Lokale Stimme zweimal hintereinander zu langsam → auf Gerätestimme umgeschaltet.
-  void Function()? onTooSlow;
+  /// Gemessene Rechenzeit je Zeichen pro Stimme (Ordner → ms) – für das Puffern; wird gespeichert.
+  final Map<String, double> speedByDir = {};
+  double get msPerChar => speedByDir[voiceDir] ?? 0;
+  void Function(Map<String, double> speeds)? onSpeed;
 
   /// Stimmen des Geräts für die Auswahl: (Name, Locale), passend zur Sprache.
   Future<List<(String, String)>> systemVoices(String lang) async {
@@ -224,8 +224,38 @@ class SpeechOutput {
   /// damit zwischen den Sätzen keine Pause entsteht.
   void _prefetch() {
     for (final q in _queue.take(_lookahead)) {
-      q.clip ??= _synth(q.text);
+      if (q.clip != null) continue;
+      q.clip = _synth(q.text)
+        ..then((c) => q.ready = c, onError: (_) {});
     }
+  }
+
+  /// Puffern: Ist die Stimme langsamer als Echtzeit, erst losspielen, wenn genug Ton vorbereitet ist,
+  /// dass die (bekannten) folgenden Sätze ohne Pause anschließen. Einmal kurz warten statt ständig stocken.
+  Future<void> _waitForBuffer(int gen, _Clip current) async {
+    if (msPerChar <= 0) return; // Tempo unbekannt → sofort spielen (misst dabei)
+    final start = DateTime.now();
+    var logged = false;
+    while (gen == _generation && DateTime.now().difference(start).inSeconds < 25) {
+      var ahead = current.seconds;
+      var i = 0;
+      for (; i < _queue.length; i++) {
+        final r = _queue[i].ready;
+        if (r == null) break;
+        ahead += r.seconds;
+      }
+      final pendingChars = _queue.skip(i).fold<int>(0, (n, q) => n + q.text.length);
+      if (pendingChars == 0 && _finished) return;
+      // noch nicht berechnete Sätze + Reserve, falls das Sprachmodell noch weiterschreibt
+      final need = pendingChars * msPerChar / 1000 + (_finished ? 0 : 1.5);
+      if (ahead >= need) break;
+      if (!logged) {
+        logged = true;
+        voiceLog('Puffere: ${ahead.toStringAsFixed(1)} s Ton bereit, brauche ${need.toStringAsFixed(1)} s');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    if (logged) voiceLog('Puffer bereit nach ${DateTime.now().difference(start).inMilliseconds} ms');
   }
 
   /// Stimme vorab laden (z. B. beim Start des Gesprächs), damit der erste Satz sofort kommt.
@@ -332,6 +362,8 @@ class SpeechOutput {
       if (clip == null) {
         await _speakSystem(item.text); // Piper nicht verfügbar → Systemstimme
       } else {
+        await _waitForBuffer(gen, clip);
+        if (gen != _generation) break;
         final ok = await _play(clip);
         if (!ok && gen == _generation) await _speakSystem(item.text);
         unawaited(File(clip.path!).delete().then((_) {}, onError: (_) {}));
@@ -369,18 +401,12 @@ class SpeechOutput {
       // langsamer als Echtzeit → im Protokoll sichtbar (Grund für Pausen)
       if (ms > c.seconds * 1000) slowSynth++;
       if (ms > c.seconds * 1000 * 0.8) voiceLog('Stimme langsam: ${text.length} Zeichen in $ms ms für ${c.seconds.toStringAsFixed(1)} s Audio');
-      // Deutlich langsamer als Echtzeit (bei Sätzen ab ~1 s): Pausen zwischen den Sätzen wären unvermeidlich
-      if (c.seconds >= 0.8 && ms > c.seconds * 1000 * 1.3) {
-        _slowStreak++;
-      } else if (c.seconds >= 0.8) {
-        _slowStreak = 0;
-      }
-      if (_slowStreak >= 2 && voiceDir != null) {
-        voiceLog('Stimme zu langsam für dieses Gerät → ab jetzt Gerätestimme (ohne Pausen)');
-        lastError.value = 'Die gewählte Stimme ist auf diesem Gerät zu langsam – Junels spricht mit der Gerätestimme weiter.';
-        voiceDir = null; // folgende Sätze sofort mit der Gerätestimme
-        _slowStreak = 0;
-        onTooSlow?.call();
+      // Tempo der Stimme merken (für das Puffern: lieber am Anfang kurz warten als mitten im Satz)
+      if (text.length >= 12) {
+        final mpc = ms / text.length;
+        final old = speedByDir[dir] ?? 0;
+        speedByDir[dir] = old <= 0 ? mpc : old * 0.6 + mpc * 0.4;
+        onSpeed?.call(speedByDir);
       }
       return c;
     } catch (e, st) {
@@ -501,6 +527,7 @@ class _QueueItem {
   _QueueItem(this.text);
   final String text;
   Future<_Clip?>? clip;
+  _Clip? ready; // fertig berechnet
 }
 
 class _Clip {
@@ -963,7 +990,9 @@ void _ttsMain(SendPort out) {
           }
           // Kokoro-Stimmen haben eine voices.bin (Stil-Vektoren), Piper nicht
           final voices = files.where((f) => f.path.endsWith('voices.bin')).firstOrNull;
-          final threads = math.max(2, math.min(4, Platform.numberOfProcessors ~/ 2));
+          // Mehr Rechenkraft für die Stimme: alle Kerne bis auf zwei (max. 6) – das Sprachmodell
+          // ist beim Vorlesen meist schon fertig, das Puffern wartet sonst auf die Stimme
+          final threads = math.max(2, math.min(6, Platform.numberOfProcessors - 2));
           tts = sherpa.OfflineTts(sherpa.OfflineTtsConfig(
             model: voices != null
                 ? sherpa.OfflineTtsModelConfig(
@@ -985,8 +1014,7 @@ void _ttsMain(SendPort out) {
                       noiseScale: 0.6,
                       noiseScaleW: 0.75,
                     ),
-                    // Piper ist klein: 2 Threads reichen und lassen dem Sprachmodell Luft
-                    numThreads: 2,
+                    numThreads: threads,
                   ),
           ));
           if (tts!.ptr.address == 0) {
