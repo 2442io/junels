@@ -13,6 +13,9 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.31.3', [
+    'Beobachtungen: Das Thema bleibt oben stehen, der Verlauf läuft wie im Chat – neuester Beitrag unten im Blick, ältere nach oben scrollen',
+  ]),
   ('1.31.2', [
     'Präsentationen werden jetzt zuverlässig als Datei erstellt: Beschreibt der Agent nur Folien oder schreibt eine Anleitung, wird er zum Erstellen angehalten – notfalls baut die App die PowerPoint selbst aus dem Folienplan',
     'Design-Links (z. B. slidesgo) werden nicht mehr im Browser geöffnet, sondern direkt als Vorlage übernommen – inklusive Folien-Vorschauen für genauere Farben',
