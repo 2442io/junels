@@ -542,6 +542,7 @@ class _ToolSection extends StatelessWidget {
     'remember': Icons.bookmark_add_outlined,
     'create_document': Icons.picture_as_pdf_outlined,
     'create_presentation': Icons.slideshow_outlined,
+    'edit_file': Icons.edit_document,
     'create_chart': Icons.bar_chart,
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,

@@ -285,6 +285,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         KnowledgeSearchTool(knowledge),
         CreateDocumentTool(out),
         CreatePresentationTool(out),
+        EditFileTool(out),
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
@@ -1710,7 +1711,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   static final _docWord = RegExp(r'\bpdf\b|word-?dokument|dokument|handout|bericht als', caseSensitive: false);
 
   /// Verlangt die Nachricht eine Datei? → Werkzeug, das der Agent dafür nutzen muss.
-  static String? requiredToolFor(String text) {
+  static final _editIntent = RegExp(r'(folie|abschnitt|kapitel|seite)\s*\d+|überarbeit|ändere|ersetze|lösche|füge .* ein|ergänze|kürze|korrigier',
+      caseSensitive: false);
+
+  static String? requiredToolFor(String text, {bool hasFiles = false}) {
+    // Bestehende Datei ändern („Folie 3 überarbeiten“) – edit_file oder neu erstellen zählt
+    if (hasFiles && _editIntent.hasMatch(text) && !RegExp(r'neue (präsentation|powerpoint|datei|pdf)', caseSensitive: false).hasMatch(text)) {
+      return 'edit_file|create_presentation|create_document';
+    }
     if (!_makeVerb.hasMatch(text)) return null;
     if (_deckWord.hasMatch(text)) return 'create_presentation';
     if (_docWord.hasMatch(text)) return 'create_document';
@@ -1749,6 +1757,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
     'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
+    'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
     'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
     'generate_image': RegExp(r'(erstell|generier|mal|zeichne|erzeug)\w* .*\b(bild|foto|illustration|logo|grafik)|bild von|zeichne|male mir'),
     'knowledge_search': RegExp(r'wissensbasis|meine(n)? (dokument|unterlagen|quellen|notizen)|laut (dem|der|meinen)|im dokument'),
@@ -3327,7 +3336,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         !_deckWord.hasMatch(input) &&
         requiredToolFor(prevUser) != null;
     final gateText = looksLikeFollowUp(input) || designFollowUp ? '$prevUser $input' : input;
-    final requiredTool = requiredToolFor(gateText);
+    final requiredTool = requiredToolFor(gateText,
+        hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf'}.contains(a['kind'])));
     // Gesprächsmodus: gleicher Verlauf und gleicher System-Prompt wie im Chat – so bleibt der
     // vorgerechnete Teil (Cache) gültig und die erste Antwort kommt ohne langes Vorrechnen.
     // Routinen: jede Ausführung für sich (kein Verlauf).
@@ -3342,8 +3352,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (urls.isNotEmpty && urls.every((u) => designReferencesIn(u).isNotEmpty)) {
         runTools = [for (final t in runTools) if (!const {'browser', 'web_fetch', 'site_search', 'web_search'}.contains(t.name)) t];
       }
-      if (!runTools.any((t) => t.name == requiredTool)) {
-        final t = activeTools.where((t) => t.name == requiredTool).firstOrNull;
+      for (final name in requiredTool.split('|')) {
+        if (runTools.any((t) => t.name == name)) continue;
+        final t = activeTools.where((t) => t.name == name).firstOrNull;
         if (t != null) runTools = [...runTools, t];
       }
     }
@@ -3408,9 +3419,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       requestNetwork: (purpose) => _requestNetwork(conv, purpose),
       propose: propose,
       onArtifact: (a) {
+        // gezielt geänderte Datei: alten Eintrag ersetzen statt verdoppeln
+        conv.artifacts.removeWhere((x) => x['content'] == a.content && x['kind'] == a.kind);
         conv.artifacts.add(a.toJson());
         if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) {
-          answer.files.add(a.content);
+          if (!answer.files.contains(a.content)) answer.files.add(a.content);
         } else {
           inspectorAttention = true;
         }

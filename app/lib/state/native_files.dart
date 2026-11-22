@@ -29,6 +29,36 @@ class NativeFiles {
     return (text: (r?['text'] as String?) ?? '', pages: (r?['pages'] as num?)?.toInt() ?? 0);
   }
 
+  /// PDF-Seiten als Bilder (Vorschau). Zwischengespeichert, solange sich die Datei nicht ändert.
+  static Future<List<String>> pdfPages(String path, {int width = 960, int maxPages = 60}) async {
+    final f = File(path);
+    if (!await f.exists()) return const [];
+    final stamp = (await f.lastModified()).millisecondsSinceEpoch;
+    final dir = Directory('${f.parent.path}/.vorschau/${f.uri.pathSegments.last}-$stamp');
+    if (await dir.exists()) {
+      final cached = [
+        for (final e in dir.listSync())
+          if (e is File && e.path.endsWith('.png')) e.path
+      ]..sort((a, b) => _num(a).compareTo(_num(b)));
+      if (cached.isNotEmpty) return cached;
+    }
+    // ältere Vorschauen derselben Datei entfernen
+    final parent = Directory('${f.parent.path}/.vorschau');
+    if (await parent.exists()) {
+      for (final e in parent.listSync()) {
+        if (e is Directory && e.path.split('/').last.startsWith('${f.uri.pathSegments.last}-')) {
+          try {
+            e.deleteSync(recursive: true);
+          } catch (_) {}
+        }
+      }
+    }
+    final r = await _ch.invokeListMethod<String>('pdfPages', {'path': path, 'out': dir.path, 'width': width, 'maxPages': maxPages});
+    return r ?? const [];
+  }
+
+  static int _num(String p) => int.tryParse(RegExp(r'seite-(\d+)').firstMatch(p)?.group(1) ?? '') ?? 0;
+
   static Future<void> open(String path) => _ch.invokeMethod('open', {'path': path, 'mime': mimeFor(path)});
 
   /// Webseite im Standardbrowser öffnen.

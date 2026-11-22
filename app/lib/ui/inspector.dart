@@ -74,7 +74,14 @@ class _ArtifactList extends StatelessWidget {
         if (a.kind == 'image') {
           return Padding(padding: const EdgeInsets.only(bottom: 8), child: ImagePreview(a.content, size: 260));
         }
-        if (a.kind == 'pdf' || a.kind == 'pptx') return FileCard(a.content);
+        if (a.kind == 'pdf' || a.kind == 'pptx') {
+          // PDF neben einer PowerPoint: Vorschau zeigt schon die Präsentation
+          final sibling = a.kind == 'pdf' && items.any((x) => x.kind == 'pptx' && x.content.replaceFirst(RegExp(r'\.pptx$'), '.pdf') == a.content);
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            FileCard(a.content),
+            if (!sibling) SlidePreview(a.content, key: ValueKey(a.content)),
+          ]);
+        }
         return _ArtifactCard(artifact: a);
       },
     );

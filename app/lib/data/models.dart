@@ -388,7 +388,7 @@ class AppSettings {
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
-              'create_document', 'create_presentation', 'create_chart', 'generate_image', 'look_at_image',
+              'create_document', 'create_presentation', 'edit_file', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
@@ -555,7 +555,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 10;
+  static const toolsVersion = 11;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -572,6 +572,7 @@ class AppSettings {
     // 1.19 hatte den Browser für bestehende Installationen vergessen
     if (from < 10 && !enabledTools.contains('browser')) enabledTools.add('browser');
     if (from < 9) enabledTools.add('browser');
+    if (from < 11) enabledTools.add('edit_file');
   }
 }
 

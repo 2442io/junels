@@ -63,6 +63,42 @@ class SlideDesign {
   String get accentColor => accent ?? secondary;
   String get heading => headFont ?? font;
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'primary': primary,
+        'secondary': secondary,
+        if (accent != null) 'accent': accent,
+        'background': background,
+        'text': text,
+        'muted': muted,
+        'titleText': titleText,
+        if (light != null) 'light': light,
+        'font': font,
+        if (headFont != null) 'headFont': headFont,
+        'motif': motif.name,
+        'journey': journey,
+        if (source != null) 'source': source,
+      };
+
+  factory SlideDesign.fromJson(Map<String, dynamic> j) => SlideDesign(
+        id: j['id'] as String? ?? 'eigen',
+        name: j['name'] as String? ?? 'Eigenes Design',
+        primary: j['primary'] as String? ?? '0E6B66',
+        secondary: j['secondary'] as String? ?? 'E07A2E',
+        accent: j['accent'] as String?,
+        background: j['background'] as String? ?? 'FFFFFF',
+        text: j['text'] as String? ?? '222628',
+        muted: j['muted'] as String? ?? '6B757F',
+        titleText: j['titleText'] as String? ?? 'FFFFFF',
+        light: j['light'] as String?,
+        font: j['font'] as String? ?? 'Calibri',
+        headFont: j['headFont'] as String?,
+        motif: DesignMotif.values.where((m) => m.name == j['motif']).firstOrNull ?? DesignMotif.lines,
+        journey: j['journey'] as bool? ?? false,
+        source: j['source'] as String?,
+      );
+
   SlideDesign copyWith({String? source, DesignMotif? motif, bool? journey, String? name, String? font, String? headFont}) =>
       SlideDesign(
         id: id,

@@ -110,6 +110,34 @@ class MainActivity : FlutterActivity() {
                             result.error("url", e.message ?: e.toString(), null)
                         }
                     }
+                    "pdfPages" -> Thread {
+                        // Seiten als PNG (Vorschau zum Durchblättern) – eingebauter PdfRenderer
+                        try {
+                            val outDir = File(call.argument<String>("out") ?: cacheDir.path).apply { mkdirs() }
+                            val width = call.argument<Int>("width") ?: 960
+                            val maxPages = call.argument<Int>("maxPages") ?: 60
+                            val paths = ArrayList<String>()
+                            android.os.ParcelFileDescriptor.open(File(path), android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                                android.graphics.pdf.PdfRenderer(fd).use { r ->
+                                    for (i in 0 until minOf(r.pageCount, maxPages)) {
+                                        r.openPage(i).use { page ->
+                                            val h = (width.toDouble() * page.height / maxOf(page.width, 1)).toInt()
+                                            val bmp = android.graphics.Bitmap.createBitmap(width, h, android.graphics.Bitmap.Config.ARGB_8888)
+                                            bmp.eraseColor(android.graphics.Color.WHITE)
+                                            page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                            val f = File(outDir, "seite-${i + 1}.png")
+                                            f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, it) }
+                                            bmp.recycle()
+                                            paths.add(f.absolutePath)
+                                        }
+                                    }
+                                }
+                            }
+                            runOnUiThread { result.success(paths) }
+                        } catch (e: Throwable) {
+                            runOnUiThread { result.error("pdf", e.message ?: e.toString(), null) }
+                        }
+                    }.start()
                     "pdfText" -> Thread {
                         try {
                             PDFBoxResourceLoader.init(applicationContext)

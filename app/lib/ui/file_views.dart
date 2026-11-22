@@ -3,6 +3,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'theme.dart';
 
@@ -119,6 +120,151 @@ class FileCard extends StatelessWidget {
             style: TextStyle(color: exists ? null : scheme.error)),
         onTap: exists ? () => _guard(context, () => NativeFiles.open(path)) : null,
         trailing: exists ? FileActions(path) : null,
+      ),
+    );
+  }
+}
+
+/// Folien bzw. Seiten zum Durchblättern (PowerPoint über das mit erzeugte PDF).
+class SlidePreview extends StatefulWidget {
+  const SlidePreview(this.path, {super.key});
+  final String path;
+  @override
+  State<SlidePreview> createState() => _SlidePreviewState();
+}
+
+class _SlidePreviewState extends State<SlidePreview> {
+  Future<List<String>>? _pages;
+  int _stamp = 0;
+
+  String get _pdf => widget.path.replaceFirst(RegExp(r'\.pptx$'), '.pdf');
+
+  void _load() {
+    final f = File(_pdf);
+    final stamp = f.existsSync() ? f.lastModifiedSync().millisecondsSinceEpoch : 0;
+    if (_pages != null && stamp == _stamp) return;
+    _stamp = stamp;
+    _pages = stamp == 0 ? Future.value(const <String>[]) : NativeFiles.pdfPages(_pdf, width: 960).catchError((_) => const <String>[]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _load(); // nach einer Änderung (edit_file) neu rendern
+    return FutureBuilder<List<String>>(
+      future: _pages,
+      builder: (context, snap) {
+        final pages = snap.data ?? const <String>[];
+        if (snap.connectionState != ConnectionState.done) {
+          return const SizedBox(height: 96, child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))));
+        }
+        if (pages.isEmpty) return const SizedBox.shrink();
+        final isDeck = widget.path.endsWith('.pptx');
+        return SizedBox(
+          height: isDeck ? 96 : 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: pages.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) => InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  fullscreenDialog: true,
+                  builder: (_) => _PageViewer(pages: pages, start: i, title: widget.path.split(Platform.pathSeparator).last))),
+              child: Stack(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    decoration: BoxDecoration(border: Border.all(color: Theme.of(context).dividerColor)),
+                    child: Image.file(File(pages[i]), fit: BoxFit.contain, cacheWidth: 360),
+                  ),
+                ),
+                Positioned(
+                  left: 4,
+                  bottom: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(4)),
+                    child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PageViewer extends StatefulWidget {
+  const _PageViewer({required this.pages, required this.start, required this.title});
+  final List<String> pages;
+  final int start;
+  final String title;
+  @override
+  State<_PageViewer> createState() => _PageViewerState();
+}
+
+class _PageViewerState extends State<_PageViewer> {
+  late final _ctrl = PageController(initialPage: widget.start);
+  late int _i = widget.start;
+
+  void _go(int d) {
+    final n = (_i + d).clamp(0, widget.pages.length - 1);
+    _ctrl.animateToPage(n, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () => _go(1),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _go(-1),
+        const SingleActivator(LogicalKeyboardKey.space): () => _go(1),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: Text('${widget.title} · ${_i + 1}/${widget.pages.length}', style: const TextStyle(fontSize: 15)),
+          ),
+          body: Stack(children: [
+            PageView.builder(
+              controller: _ctrl,
+              itemCount: widget.pages.length,
+              onPageChanged: (i) => setState(() => _i = i),
+              itemBuilder: (_, i) => InteractiveViewer(
+                maxScale: 4,
+                child: Center(child: Image.file(File(widget.pages[i]), fit: BoxFit.contain)),
+              ),
+            ),
+            if (_i > 0)
+              Positioned(
+                left: 8,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                    child: IconButton.filledTonal(onPressed: () => _go(-1), icon: const Icon(Icons.chevron_left), tooltip: 'Zurück')),
+              ),
+            if (_i < widget.pages.length - 1)
+              Positioned(
+                right: 8,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                    child: IconButton.filledTonal(onPressed: () => _go(1), icon: const Icon(Icons.chevron_right), tooltip: 'Weiter')),
+              ),
+          ]),
+        ),
       ),
     );
   }

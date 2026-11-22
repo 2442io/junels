@@ -31,6 +31,30 @@ enum JunelsFiles {
           }
           DispatchQueue.main.async { result(["text": text, "pages": doc.pageCount]) }
         }
+      case "pdfPages":
+        // Seiten als PNG (Vorschau zum Durchblättern)
+        DispatchQueue.global(qos: .userInitiated).async {
+          guard let doc = PDFDocument(url: url), !doc.isLocked else {
+            DispatchQueue.main.async { result(FlutterError(code: "pdf", message: "PDF konnte nicht geöffnet werden", details: nil)) }
+            return
+          }
+          let outDir = args["out"] as? String ?? NSTemporaryDirectory()
+          let width = CGFloat(args["width"] as? Int ?? 960)
+          try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+          var paths: [String] = []
+          let count = min(doc.pageCount, args["maxPages"] as? Int ?? 60)
+          for i in 0..<count {
+            guard let page = doc.page(at: i) else { continue }
+            let box = page.bounds(for: .mediaBox)
+            let size = NSSize(width: width, height: width * box.height / max(box.width, 1))
+            let img = page.thumbnail(of: size, for: .mediaBox)
+            guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else { continue }
+            let p = (outDir as NSString).appendingPathComponent("seite-\(i + 1).png")
+            if (try? png.write(to: URL(fileURLWithPath: p))) != nil { paths.append(p) }
+          }
+          DispatchQueue.main.async { result(paths) }
+        }
       case "notify":
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in

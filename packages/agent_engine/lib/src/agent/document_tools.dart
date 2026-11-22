@@ -1,12 +1,15 @@
 // Werkzeuge zum Erstellen von Dateien: PDF-Dokumente, Präsentationen (PPTX + PDF),
 // Diagramme und Bilder. Ergebnisse landen im Ausgabe-Ordner und als Artefakt im Chat.
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import '../documents/md_blocks.dart';
 import '../documents/pdf_writer.dart';
 import '../documents/pptx_writer.dart';
+import '../documents/design.dart';
+import '../documents/office_read.dart';
 import 'design_resolver.dart';
 import 'tool.dart';
 
@@ -239,6 +242,7 @@ class CreateDocumentTool extends AgentTool {
         title: title.isEmpty ? 'Dokument' : title, markdown: content, resolveImage: out.resolveImage, theme: look.design.pdfTheme);
     final f = out.fileFor(title.isEmpty ? 'Dokument' : title, 'pdf');
     await f.writeAsBytes(bytes);
+    await FileSource.save(f, type: 'pdf', title: title.isEmpty ? 'Dokument' : title, content: content, design: look.design);
     _artifact(ctx, f, 'pdf');
     return 'PDF erstellt: ${f.uri.pathSegments.last} (${(bytes.length / 1024).ceil()} KB). ${look.design.source != null ? '${look.summary}. ' : ''}'
         'Der Nutzer sieht die Datei im Chat.${_imagesHint(out, content)}';
@@ -311,6 +315,7 @@ class CreatePresentationTool extends AgentTool {
     await f1.writeAsBytes(pptx);
     final f2 = File(f1.path.replaceFirst(RegExp(r'\.pptx$'), '.pdf'));
     await f2.writeAsBytes(pdf);
+    await FileSource.save(f1, type: 'pptx', title: title, content: content, design: look.design, agenda: agenda, templateBytes: look.templateBytes);
     _artifact(ctx, f1, 'pptx');
     _artifact(ctx, f2, 'pdf');
     final pictures = RegExp(r'!\[[^\]]*\]\(([^)]+)\)').allMatches(content).where((m) => out.resolveImage(m.group(1)!) != null).length;
@@ -454,5 +459,260 @@ class LookAtImageTool extends AgentTool {
     final name = (args['name'] ?? '').toString().trim();
     final q = (args['question'] ?? '').toString().trim();
     return ask(name, q.isEmpty ? 'Beschreibe das Bild genau.' : q);
+  }
+}
+
+
+/// Quelle einer erzeugten Datei (Markdown + Design), damit sie später gezielt geändert werden kann.
+/// Liegt unsichtbar neben der Datei: „.Name.pptx.junels.json“.
+class FileSource {
+  FileSource(
+      {required this.file,
+      required this.type,
+      required this.title,
+      required this.content,
+      required this.design,
+      this.agenda = false,
+      this.templatePath});
+  final File file;
+  final String type; // pptx | pdf
+  String title;
+  String content;
+  final SlideDesign design;
+  final bool agenda;
+  final String? templatePath;
+
+  static File _meta(File f) => File('${f.parent.path}/.${f.uri.pathSegments.last}.junels.json');
+
+  static Future<void> save(File f,
+      {required String type,
+      required String title,
+      required String content,
+      required SlideDesign design,
+      bool agenda = false,
+      Uint8List? templateBytes}) async {
+    String? tpl;
+    if (templateBytes != null) {
+      final t = File('${f.parent.path}/.${f.uri.pathSegments.last}.vorlage.pptx');
+      await t.writeAsBytes(templateBytes);
+      tpl = t.path;
+    }
+    await _meta(f).writeAsString(jsonEncode({
+      'type': type,
+      'title': title,
+      'content': content,
+      'design': design.toJson(),
+      if (agenda) 'agenda': true,
+      if (tpl != null) 'template': tpl,
+    }));
+  }
+
+  static FileSource? load(File f) {
+    final m = _meta(f);
+    if (!m.existsSync()) return null;
+    try {
+      final j = jsonDecode(m.readAsStringSync()) as Map<String, dynamic>;
+      return FileSource(
+        file: f,
+        type: j['type'] as String? ?? 'pdf',
+        title: j['title'] as String? ?? '',
+        content: j['content'] as String? ?? '',
+        design: SlideDesign.fromJson((j['design'] as Map?)?.cast<String, dynamic>() ?? const {}),
+        agenda: j['agenda'] as bool? ?? false,
+        templatePath: j['template'] as String?,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Erzeugte Dateien mit Quelle, neueste zuerst.
+  static List<File> editable(Directory dir) {
+    if (!dir.existsSync()) return const [];
+    final list = [
+      for (final e in dir.listSync())
+        if (e is File && !e.uri.pathSegments.last.startsWith('.') && RegExp(r'\.(pptx|pdf)$').hasMatch(e.path) && _meta(e).existsSync()) e
+    ];
+    // PDF neben einer PPTX gehört zur Präsentation
+    list.removeWhere((f) => f.path.endsWith('.pdf') && File(f.path.replaceFirst(RegExp(r'\.pdf$'), '.pptx')).existsSync() && !FileSource._isDoc(f));
+    list.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    return list;
+  }
+
+  static bool _isDoc(File f) => load(f)?.type == 'pdf';
+
+  /// Markdown in Teile: Präsentation → Folien („# “), Dokument → Abschnitte („# “ oder „## “).
+  static (String, List<String>) parts(String md, {required bool slides}) {
+    final head = slides ? RegExp(r'^#\s') : RegExp(r'^#{1,2}\s');
+    final pre = StringBuffer();
+    final out = <StringBuffer>[];
+    var code = false;
+    for (final line in md.split('\n')) {
+      if (line.trimLeft().startsWith('```')) code = !code;
+      if (!code && head.hasMatch(line)) out.add(StringBuffer());
+      (out.isEmpty ? pre : out.last).writeln(line);
+    }
+    return (pre.toString().trim(), [for (final b in out) b.toString().trim()]);
+  }
+
+  static String join(String pre, List<String> parts) => [if (pre.trim().isNotEmpty) pre.trim(), ...parts].join('\n\n');
+}
+
+/// Einzelne Folien oder Abschnitte einer erstellten Datei ändern, statt alles neu zu machen.
+class EditFileTool extends AgentTool {
+  EditFileTool(this.out);
+  final OutputSpace out;
+
+  @override
+  Duration? get timeout => const Duration(minutes: 10);
+  @override
+  String get name => 'edit_file';
+  @override
+  String get title => 'Datei gezielt ändern';
+  @override
+  String get keywords => 'folie abschnitt überarbeiten ändern ersetzen einfügen löschen präsentation dokument korrigieren';
+  @override
+  String get description =>
+      'Ändert eine schon erstellte Präsentation oder ein PDF-Dokument gezielt, ohne alles neu zu erstellen. '
+      'Erst mit aktion "anzeigen" (ohne folie/abschnitt) die Übersicht holen bzw. mit folie/abschnitt den aktuellen Inhalt lesen. '
+      'Dann "ersetzen" (inhalt = neuer Markdown der Folie, beginnt mit "# Titel"), "einfuegen" (nach dieser Folie/diesem Abschnitt) oder "loeschen". '
+      'folie: Nummer wie in PowerPoint (1 = Titelfolie). abschnitt: Nummer oder Überschrift. datei: leer = zuletzt erstellt.';
+  @override
+  List<ToolParam> get params => const [
+        ToolParam('aktion', ParamType.enumeration, 'Was tun', values: ['anzeigen', 'ersetzen', 'einfuegen', 'loeschen']),
+        ToolParam('datei', ParamType.string, 'Dateiname ("" = zuletzt erstellt)'),
+        ToolParam('folie', ParamType.integer, 'Foliennummer der Präsentation (1 = Titelfolie, 0 = keine)'),
+        ToolParam('abschnitt', ParamType.string, 'Abschnitt im Dokument: Nummer oder Überschrift ("" = keiner)'),
+        ToolParam('inhalt', ParamType.string, 'Neuer Inhalt in Markdown ("" bei anzeigen/loeschen)'),
+      ];
+
+  File? _find(String name) {
+    final files = FileSource.editable(out.dir);
+    if (name.trim().isEmpty) return files.firstOrNull;
+    final n = name.trim().toLowerCase();
+    return files.where((f) => f.uri.pathSegments.last.toLowerCase() == n).firstOrNull ??
+        files.where((f) => Uri.decodeComponent(f.uri.pathSegments.last).toLowerCase().contains(n.replaceAll(RegExp(r'\.(pptx|pdf)$'), ''))).firstOrNull;
+  }
+
+  @override
+  Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
+    final f = _find((args['datei'] ?? '').toString());
+    if (f == null) throw ToolException('Keine änderbare Datei gefunden. Nur hier erstellte Präsentationen/PDFs lassen sich gezielt ändern.');
+    final src = FileSource.load(f)!;
+    final deck = src.type == 'pptx';
+    final (pre, parts) = FileSource.parts(src.content, slides: deck);
+    final action = (args['aktion'] ?? 'anzeigen').toString();
+    final inhalt = (args['inhalt'] ?? '').toString().trim();
+    final name = Uri.decodeComponent(f.uri.pathSegments.last);
+    String headOf(String p) => p.split('\n').first.replaceFirst(RegExp(r'^#+\s*'), '').trim();
+
+    // Nummer → Index in parts (Präsentation: 1 = Titel, ggf. 2 = Route)
+    final offset = deck ? (src.agenda && parts.length >= 3 ? 2 : 1) : 0;
+    int? index; // -1 = Titelfolie
+    final folie = int.tryParse('${args['folie'] ?? 0}') ?? 0;
+    if (deck && folie > 0) {
+      final n = folie;
+      if (n == 1) {
+        index = -1;
+      } else if (offset == 2 && n == 2) {
+        throw ToolException('Folie 2 ist die automatische Reiseroute – sie entsteht aus den Folientiteln. Ändere die Titel der anderen Folien.');
+      } else {
+        index = n - 1 - offset;
+      }
+    } else if (!deck && (args['abschnitt'] ?? '').toString().trim().isNotEmpty) {
+      final a = args['abschnitt'].toString().trim();
+      final n = int.tryParse(a);
+      index = n != null ? n - 1 : parts.indexWhere((p) => headOf(p).toLowerCase().contains(a.toLowerCase()));
+    }
+    if (index != null && index != -1 && (index < 0 || index >= parts.length)) {
+      throw ToolException('${deck ? 'Folie' : 'Abschnitt'} gibt es nicht. ${_overview(deck, src, parts, offset)}');
+    }
+
+    if (action == 'anzeigen') {
+      if (index == null) return '$name – ${_overview(deck, src, parts, offset)}';
+      if (index == -1) return 'Folie 1 (Titelfolie):\n# ${src.title}\n$pre';
+      return '${deck ? 'Folie ${index + 1 + offset}' : 'Abschnitt ${index + 1}'} von $name:\n\n${parts[index]}';
+    }
+    if (index == null) throw ToolException('Bitte ${deck ? 'folie' : 'abschnitt'} angeben. ${_overview(deck, src, parts, offset)}');
+
+    var newPre = pre;
+    var newTitle = src.title;
+    String done;
+    if (index == -1) {
+      if (action != 'ersetzen') throw ToolException('Die Titelfolie kann nur ersetzt werden.');
+      final lines = inhalt.split('\n');
+      if (lines.first.startsWith('#')) {
+        newTitle = lines.first.replaceFirst(RegExp(r'^#+\s*'), '').trim();
+        newPre = lines.skip(1).join('\n').trim();
+      } else {
+        newPre = inhalt;
+      }
+      done = 'Titelfolie geändert';
+    } else {
+      String fix(String md) {
+        if (md.isEmpty) throw ToolException('inhalt fehlt.');
+        final h = deck ? '# ' : '## ';
+        return md.startsWith('#') ? md : '$h${headOf(parts[index!])}\n$md';
+      }
+      switch (action) {
+        case 'ersetzen':
+          parts[index] = fix(inhalt);
+          done = '${deck ? 'Folie ${index + 1 + offset}' : 'Abschnitt ${index + 1}'} ersetzt';
+        case 'einfuegen':
+          parts.insert(index + 1, fix(inhalt));
+          done = 'neue ${deck ? 'Folie ${index + 2 + offset}' : 'Abschnitt ${index + 2}'} eingefügt';
+        case 'loeschen':
+          if (parts.length <= 1) throw ToolException('Die letzte ${deck ? 'Folie' : 'Abschnitt'} kann nicht gelöscht werden.');
+          parts.removeAt(index);
+          done = '${deck ? 'Folie ${index + 1 + offset}' : 'Abschnitt ${index + 1}'} gelöscht';
+        default:
+          throw ToolException('Unbekannte aktion "$action".');
+      }
+    }
+    var content = FileSource.join(newPre, parts);
+    // neue Bilder (![…](auto)) erzeugen
+    final (withImages, made) = await autoImages(out, content, ctx);
+    content = withImages;
+
+    if (deck) {
+      final split = splitSlides(content);
+      PptxTemplate? tpl;
+      if (src.templatePath != null && File(src.templatePath!).existsSync()) {
+        tpl = PptxTemplate.parse(File(src.templatePath!).readAsBytesSync());
+      }
+      await f.writeAsBytes(buildPptx(
+          title: newTitle,
+          subtitle: split.subtitle,
+          slides: split.slides,
+          resolveImage: out.resolveImage,
+          design: src.design,
+          template: tpl,
+          agenda: src.agenda));
+      final pdf = File(f.path.replaceFirst(RegExp(r'\.pptx$'), '.pdf'));
+      await pdf.writeAsBytes(buildSlidesPdf(
+          title: newTitle, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage, theme: src.design.pdfTheme));
+      await FileSource.save(f,
+          type: 'pptx',
+          title: newTitle,
+          content: content,
+          design: src.design,
+          agenda: src.agenda,
+          templateBytes: tpl == null ? null : File(src.templatePath!).readAsBytesSync());
+      _artifact(ctx, f, 'pptx');
+      _artifact(ctx, pdf, 'pdf');
+    } else {
+      await f.writeAsBytes(buildPdfDocument(title: newTitle, markdown: content, resolveImage: out.resolveImage, theme: src.design.pdfTheme));
+      await FileSource.save(f, type: 'pdf', title: newTitle, content: content, design: src.design);
+      _artifact(ctx, f, 'pdf');
+    }
+    ctx.answerNow = true;
+    return '$name: $done. Design und übrige ${deck ? 'Folien' : 'Abschnitte'} unverändert.${made > 0 ? ' $made Bild(er) neu erzeugt.' : ''}';
+  }
+
+  String _overview(bool deck, FileSource src, List<String> parts, int offset) {
+    String headOf(String p) => p.split('\n').first.replaceFirst(RegExp(r'^#+\s*'), '').trim();
+    if (!deck) return 'Abschnitte: ${[for (var i = 0; i < parts.length; i++) '${i + 1}. ${headOf(parts[i])}'].join(' · ')}';
+    return 'Folien: 1. ${src.title} (Titel)${offset == 2 ? ' · 2. Reiseroute (automatisch)' : ''} · '
+        '${[for (var i = 0; i < parts.length; i++) '${i + 1 + offset}. ${headOf(parts[i])}'].join(' · ')}';
   }
 }

@@ -13,9 +13,12 @@ import 'tool.dart';
 typedef ImageDecoder = Future<(int, int, Uint8List)?> Function(Uint8List bytes);
 
 class ResolvedDesign {
-  ResolvedDesign(this.design, this.template, this.notes);
+  ResolvedDesign(this.design, this.template, this.notes, {this.templateBytes});
   final SlideDesign design;
   final PptxTemplate? template;
+
+  /// Originaldatei der PowerPoint-Vorlage (für spätere Änderungen gespeichert)
+  final Uint8List? templateBytes;
   final List<String> notes;
 
   /// Kurzbeschreibung für die Rückmeldung.
@@ -107,6 +110,7 @@ Future<ResolvedDesign> resolveDesign({
   ];
   final seen = <String>{};
   PptxTemplate? template;
+  Uint8List? templateBytes;
   OfficeTheme? office;
   final palette = <String>[];
   var fromImages = 0;
@@ -118,6 +122,7 @@ Future<ResolvedDesign> resolveDesign({
       if (lower.contains('.pptx') || lower.contains('.potx') || (!lower.contains('.docx') && !lower.contains('.xlsx'))) {
         final t = PptxTemplate.parse(bytes);
         if (t != null) {
+          if (template == null) templateBytes = bytes;
           template ??= t;
           office ??= t.theme;
           if (!t.wide) notes.add('Hinweis: Die Vorlage ist nicht 16:9 – Folien sind 16:9, Farben und Schriften stammen aus der Vorlage.');
@@ -182,5 +187,5 @@ Future<ResolvedDesign> resolveDesign({
     result = designFromPalette(palette,
         base: base, source: 'Farben aus ${fromImages == 1 ? 'deinem Beispielbild' : 'deinen $fromImages Beispielbildern'}, Stil „${base.name}“');
   }
-  return ResolvedDesign(result, template, notes);
+  return ResolvedDesign(result, template, notes, templateBytes: templateBytes);
 }

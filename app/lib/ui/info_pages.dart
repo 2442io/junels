@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.33.0', [
+    '„Folie 3 überarbeiten“: einzelne Folien oder Abschnitte einer erstellten Präsentation bzw. eines PDFs gezielt ändern, einfügen oder löschen – Design und Rest bleiben',
+    'Vorschau erstellter PowerPoints und PDFs im Artefakt-Bereich: Folien als Bilder, groß zum Durchblättern',
+  ]),
   ('1.32.0', [
     'Beobachtungen mit Schwellenwert: „Melde dich, wenn die Nvidia-Aktie unter 120 fällt“ – Börsenkurs oder Zahl auf einer Webseite, Meldung nur beim Über-/Unterschreiten',
     'Wochenrückblick je Thema: sonntags ein Absatz statt vieler Einzeltreffer (zusätzlich oder statt Einzelmeldungen)',

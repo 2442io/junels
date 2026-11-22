@@ -263,6 +263,45 @@ Future<void> main() async {
     check(streamed.isNotEmpty && streamed.first.thought!.length < 'Ich rechne.'.length, 'Gedanke wird live gestreamt');
   });
 
+  await group('Dateien gezielt ändern', () async {
+    final dir = Directory.systemTemp.createTempSync('edit');
+    final out = OutputSpace(dir);
+    final made = <String>[];
+    final ctx = ToolContext(onArtifact: (a) => made.add(a.title));
+    await CreatePresentationTool(out).run({
+      'title': 'Reise nach Lissabon',
+      'content': 'Unser Plan\n# Anreise\n- Flug\n# Tag 1\n- Alfama\n# Tag 2\n- Belém\n# Heimreise\n- Rückflug',
+      'design': 'reise',
+      'vorlage': '',
+    }, ctx);
+    final edit = EditFileTool(out);
+    final ov = await edit.run({'aktion': 'anzeigen', 'datei': '', 'folie': 0, 'abschnitt': '', 'inhalt': ''}, ctx);
+    check(ov.contains('1. Reise nach Lissabon (Titel)') && ov.contains('2. Reiseroute') && ov.contains('4. Tag 1'), 'Übersicht mit Foliennummern: $ov');
+    final show = await edit.run({'aktion': 'anzeigen', 'datei': '', 'folie': 4, 'abschnitt': '', 'inhalt': ''}, ctx);
+    check(show.contains('# Tag 1') && show.contains('Alfama'), 'Folie 4 lesen');
+    final r = await edit.run({'aktion': 'ersetzen', 'datei': '', 'folie': 4, 'abschnitt': '', 'inhalt': '# Tag 1: Altstadt\n- Alfama\n- Fado am Abend'}, ctx);
+    final pptx = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.pptx')).toList();
+    final txt = officeText(pptx.single.readAsBytesSync(), 'pptx');
+    check(r.contains('Folie 4 ersetzt') && txt.contains('Fado am Abend') && txt.contains('Belém') && pptx.length == 1, 'Folie 4 ersetzt, Rest bleibt, gleiche Datei');
+    check(utf8.decode(readZip(pptx.single.readAsBytesSync())['ppt/slides/slide4.xml']!).contains('0B6E8E'), 'Design bleibt erhalten');
+    await edit.run({'aktion': 'loeschen', 'datei': 'Lissabon', 'folie': 5, 'abschnitt': '', 'inhalt': ''}, ctx);
+    check(!officeText(pptx.single.readAsBytesSync(), 'pptx').contains('Belém'), 'Folie löschen');
+    await edit.run({'aktion': 'ersetzen', 'datei': '', 'folie': 1, 'abschnitt': '', 'inhalt': '# Lissabon 2027\nUnsere Familienreise'}, ctx);
+    check(officeText(pptx.single.readAsBytesSync(), 'pptx').contains('Lissabon 2027'), 'Titelfolie ändern');
+    var err = '';
+    try {
+      await edit.run({'aktion': 'ersetzen', 'datei': '', 'folie': 2, 'abschnitt': '', 'inhalt': 'x'}, ctx);
+    } on ToolException catch (e) {
+      err = e.message;
+    }
+    check(err.contains('Reiseroute'), 'Routenfolie: Hinweis statt Änderung');
+    // Dokument
+    await CreateDocumentTool(out).run({'title': 'Bericht', 'content': '# Bericht\n## Einleitung\nText A\n## Ergebnisse\nText B\n## Fazit\nText C', 'vorlage': ''}, ctx);
+    final d = await edit.run({'aktion': 'ersetzen', 'datei': 'Bericht', 'folie': 0, 'abschnitt': 'Ergebnisse', 'inhalt': '## Ergebnisse\nNeue Zahlen'}, ctx);
+    final src = FileSource.load(File('${dir.path}/Bericht.pdf'))!;
+    check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
+  });
+
   await group('Agent: Datei statt Beschreibung', () async {
     final dir = Directory.systemTemp.createTempSync('deliver');
     final plan = '**Folie 1: Okzitanien (Titel)**\n* **Text:** „Dein Abenteuer im Süden.“\n* **Grafik-Idee:** Karte.\n'

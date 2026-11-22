@@ -338,7 +338,9 @@ class AgentRunner {
     var answerNext = false; // Werkzeug meldet: Ergebnis reicht → nur noch antworten
     final seenCalls = <String, String>{}; // gleiche Aufrufe nicht wiederholen
     final failures = <String, int>{}; // erfolglose Aufrufe je Werkzeug
-    final need = requiredTool != null && activeTools.any((t) => t.name == requiredTool) ? requiredTool : null;
+    // Mehrere erlaubt („edit_file|create_presentation“): das erste vorhandene ist das Ziel, jedes zählt
+    final needs = [for (final n in (requiredTool ?? '').split('|')) if (n.isNotEmpty && activeTools.any((t) => t.name == n)) n];
+    final need = needs.firstOrNull;
     var delivered = false; // Pflicht-Werkzeug erfolgreich genutzt
     var nudges = 0;
 
@@ -538,7 +540,7 @@ class AgentRunner {
       if (observation.length > observationLimit) {
         observation = '${observation.substring(0, observationLimit)}\n[… gekürzt]';
       }
-      if (toolName == need && !isError && !observation.startsWith('Fehler')) delivered = true;
+      if (needs.contains(toolName) && !isError && !observation.startsWith('Fehler') && args['aktion'] != 'anzeigen') delivered = true;
       emit(ToolResult(step, toolName, shown, isError: isError, duration: sw.elapsed));
       scratch.add(ChatMessage('user', 'Beobachtung ($toolName):\n$observation'));
     }
@@ -555,6 +557,8 @@ class AgentRunner {
           '${refs.isEmpty ? '' : '; vorlage = ${refs.join(' ')}'}. Das Design übernimmt das Tool.',
       'create_document' => 'Der Nutzer will eine fertige Datei – keine Beschreibung. Rufe JETZT create_document mit title und dem '
           'vollständigen Inhalt in Markdown auf.',
+      'edit_file' => 'Der Nutzer will die erstellte Datei ändern – nicht beschreiben, sondern ändern. Rufe JETZT edit_file auf '
+          '(erst aktion "anzeigen" für den aktuellen Inhalt, dann "ersetzen"/"einfuegen"/"loeschen").',
       _ => 'Der Nutzer will ein Ergebnis als Datei. Rufe JETZT $tool auf.',
     };
   }

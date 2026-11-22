@@ -190,7 +190,7 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
     icon: Icons.palette_outlined,
     title: 'Designs & Vorlagen',
     summary: 'Präsentationen und Dokumente im passenden Look – oder nach deiner Vorlage.',
-    keywords: 'design vorlage template powerpoint pptx word docx excel xlsx folien farben schrift reise roter faden customer journey slidesgo',
+    keywords: 'folie ändern überarbeiten löschen vorschau durchblättern design vorlage template powerpoint pptx word docx excel xlsx folien farben schrift reise roter faden customer journey slidesgo',
     body: '''Der Agent wählt für Präsentationen automatisch einen Stil, der zum Thema passt (z. B. **Reise** – auch als Landschaft, Vintage oder Nacht –, Natur, Business, Technik, Bildung, Gesundheit). Eine Reise-Präsentation bekommt etwa eine Flugroute auf der Titelfolie, eine **Reiseroute** als Übersicht und unten eine Fortschrittsleiste – so entsteht ein **roter Faden**.
 
 **Eigene Vorlagen nutzen**
@@ -198,7 +198,13 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
 - **Word oder Excel anhängen**: Farben und Schriften des Dokuments werden übernommen.
 - **Beispielbilder oder Links** (z. B. Vorlagen-Seiten wie slidesgo): Der Agent liest die Farben aus den Bildern. Für Links fragt er vorher nach der Internet-Freigabe.
 
-Die Rückmeldung nach dem Erstellen sagt, welches Design verwendet wurde. Angehängte Office-Dateien kann der Agent außerdem lesen und als Inhaltsbasis verwenden.''',
+Die Rückmeldung nach dem Erstellen sagt, welches Design verwendet wurde.
+
+**Gezielt ändern statt neu erstellen**
+Sag z. B. „Überarbeite Folie 3: mehr zu Kulinarik“, „Lösche Folie 5“ oder „Ändere im Bericht den Abschnitt Fazit“. Der Agent ändert nur diese Stelle – Design und übrige Folien bleiben gleich. Die Nummern entsprechen PowerPoint (1 = Titelfolie).
+
+**Vorschau**
+Im Bereich *Artefakte* siehst du die Folien als kleine Bilder. Antippen öffnet sie groß zum Durchblättern (Pfeiltasten am Mac). Angehängte Office-Dateien kann der Agent außerdem lesen und als Inhaltsbasis verwenden.''',
   ),
   HelpArticle(
     id: 'approvals',
