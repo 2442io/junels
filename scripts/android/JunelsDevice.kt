@@ -280,12 +280,12 @@ object JunelsDevice {
                                         CalendarContract.Events.ALL_DAY, CalendarContract.Events.EVENT_LOCATION,
                                         CalendarContract.Events.CALENDAR_DISPLAY_NAME, CalendarContract.Events.DESCRIPTION
                                     ),
-                                    "${CalendarContract.Events.DTSTART} < ? AND (${CalendarContract.Events.DTEND} > ? OR ${CalendarContract.Events.DTEND} IS NULL) AND ${CalendarContract.Events.DELETED} = 0",
+                                    "${CalendarContract.Events.DTSTART} < ? AND ${CalendarContract.Events.DTEND} > ? AND ${CalendarContract.Events.DELETED} = 0 AND (${CalendarContract.Events.RRULE} IS NULL OR ${CalendarContract.Events.RRULE} = '')",
                                     arrayOf(to.toString(), from.toString()), CalendarContract.Events.DTSTART + " ASC"
                                 )?.use { c ->
                                     while (c.moveToNext() && out.size < 100) {
                                         val b0 = c.getLong(1)
-                                        val e0 = if (c.isNull(2)) b0 + 3600000L else c.getLong(2)
+                                        val e0 = c.getLong(2)
                                         out.add(mapOf(
                                             "title" to (c.getString(0) ?: ""), "begin" to b0, "end" to e0,
                                             "allDay" to (c.getInt(3) == 1), "location" to (c.getString(4) ?: ""),
@@ -294,6 +294,23 @@ object JunelsDevice {
                                     }
                                 }
                             }
+                            // Ganztägige Termine liegen in UTC (00:00 UTC) – auf den lokalen Kalendertag umrechnen, sonst rutschen sie
+                            // in Wien einen Tag weiter (z. B. gestriger Geburtstag erscheint heute)
+                            val fixed = out.mapNotNull { e ->
+                                if (e["allDay"] != true) return@mapNotNull e
+                                fun localDay(utcMs: Long): Long {
+                                    val u = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis = utcMs }
+                                    return java.util.Calendar.getInstance().apply {
+                                        clear()
+                                        set(u.get(java.util.Calendar.YEAR), u.get(java.util.Calendar.MONTH), u.get(java.util.Calendar.DAY_OF_MONTH))
+                                    }.timeInMillis
+                                }
+                                val b0 = localDay(e["begin"] as Long)
+                                val e0 = localDay(e["end"] as Long)
+                                if (e0 <= from || b0 >= to) null else e + mapOf("begin" to b0, "end" to e0)
+                            }
+                            out.clear()
+                            out.addAll(fixed)
                             main.post { result.success(out) }
                         } catch (e: Throwable) {
                             main.post { result.error("calendar", e.message ?: e.toString(), null) }

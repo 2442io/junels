@@ -322,14 +322,16 @@ class CalendarListTool extends _DeviceTool {
     final span = to.difference(from).inDays <= 1
         ? '${_wd[from.weekday - 1]}, ${from.day}.${from.month}.'
         : '${from.day}.${from.month}. bis ${to.subtract(const Duration(days: 1)).day}.${to.subtract(const Duration(days: 1)).month}.';
-    if (list.isEmpty) {
-      var info = '';
+    // Wenige Treffer: prüfen, ob Kalender fehlen/nicht synchronisiert sind (Hinweis nur bei Problemen)
+    var info = '';
+    if (list.length < 5) {
       try {
         info = await device.calendarInfo();
       } catch (_) {}
-      return 'Keine Termine ($span).${info.isEmpty ? '' : '\n$info'}';
     }
-    return 'Termine $span (Quelle: Kalender des Geräts):\n${list.map((e) => '- ${formatEvent(e)}').join('\n')}';
+    if (list.isEmpty) return 'Keine Termine ($span).${info.isEmpty ? '' : '\n$info'}';
+    return 'Termine $span (Quelle: Kalender des Geräts):\n${list.map((e) => '- ${formatEvent(e)}').join('\n')}'
+        '${info.isEmpty ? '' : '\n$info'}';
   }
 }
 

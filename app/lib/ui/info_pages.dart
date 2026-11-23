@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.42.1', [
+    'Kalender (Android): ganztägige Termine wie Geburtstage erscheinen am richtigen Tag (wurden wegen UTC einen Tag zu spät angezeigt)',
+    'Kalender: wiederkehrende Termine tauchen nicht mehr fälschlich jeden Tag auf',
+    'Kalender: Sind nur Geburtstage/Feiertage zu sehen und die Google-Kalender leer, sagt Junels, dass die Kalender-Synchronisierung vermutlich aus ist',
+  ]),
   ('1.42.0', [
     'Erinnerungen: „Erinnere mich morgen um 9 an …“ – auf Wunsch zusätzlich als Kalendertermin („… und trag es in den Kalender ein“)',
     'In der Meldung: „Schlummern 10 Min“, „1 Std“ und „Erledigt“ – funktioniert auch bei geschlossener App (Android und Mac)',

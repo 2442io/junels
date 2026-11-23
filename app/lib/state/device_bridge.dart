@@ -178,9 +178,15 @@ class DeviceBridge implements DeviceActions {
     }
     final total = cals.fold<int>(0, (a, c) => a + ((c['events'] as num?)?.toInt() ?? 0));
     final names = cals.map((c) => '${c['name']} (${c['account']}: ${c['events']} Termine${c['sync'] == true ? '' : ', Sync aus'})').join(', ');
-    return 'Gelesene Kalender: $names.${total == 0 ? ' HINWEIS: In keinem Kalender liegen Termine auf dem Gerät – vermutlich ist die '
-        'Kalender-Synchronisierung aus (Android Einstellungen → Konten → Google → Kalender) oder die Termine liegen in einem Arbeitsprofil. '
-        'Sag das dem Nutzer kurz.' : ''}';
+    // Typisch: nur Geburtstage/Feiertage da, das Google-Konto liefert keine eigenen Termine
+    final google = cals.where((c) => '${c['type']}' == 'com.google' && !'${c['name']}'.toLowerCase().contains(RegExp(r'geburtstag|birthday|feiertag|holiday|kontakte|contacts')));
+    final googleEmpty = google.isNotEmpty && google.every((c) => ((c['events'] as num?)?.toInt() ?? 0) == 0);
+    final syncOff = cals.any((c) => c['sync'] != true);
+    if (total > 0 && !googleEmpty && !syncOff) return ''; // alles in Ordnung – kein Hinweis
+    return 'Gelesene Kalender: $names. HINWEIS FÜR DEN NUTZER: '
+        '${total == 0 ? 'In keinem Kalender liegen Termine auf dem Gerät' : googleEmpty ? 'Die Google-Kalender auf dem Gerät sind leer (nur Geburtstage/Feiertage sichtbar)' : 'Bei einigen Kalendern ist die Synchronisierung aus'} – '
+        'vermutlich ist die Kalender-Synchronisierung aus (Android Einstellungen → Konten → Google → Kontosynchronisierung → Kalender) '
+        'oder die Termine liegen in einem Arbeitsprofil. Sag das dem Nutzer kurz, damit er weiß, warum Termine fehlen können.';
   }
 
   @override
