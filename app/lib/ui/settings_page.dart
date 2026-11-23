@@ -88,6 +88,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ),
+              // Direkt erreichbar, ohne Unterseite
+              for (final (icon, title, sub, open) in [
+                (Icons.health_and_safety_outlined, 'Selbsttest', 'Junels prüft sich selbst – Bericht zum Teilen', openSelfTest),
+                (Icons.notifications_outlined, 'Benachrichtigungen', 'Arten an/aus, Ruhezeit, Infos gesammelt', openNotifySettings),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Panel(
+                    padding: EdgeInsets.zero,
+                    onTap: () => open(context),
+                    child: ListTile(
+                      leading: _SectionIcon(icon),
+                      title: Text(title),
+                      subtitle: Text(sub),
+                      trailing: const Icon(Icons.chevron_right),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 8),
               Center(child: MonoText('Junels $appVersion · Build $appBuild')),
             ],
@@ -113,6 +131,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     onTap: () => setState(() => _section = s.id),
                   ),
                 ),
+              const Divider(height: 20),
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.health_and_safety_outlined, size: 20),
+                title: const Text('Selbsttest', style: TextStyle(fontWeight: FontWeight.w500)),
+                onTap: () => openSelfTest(context),
+              ),
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.notifications_outlined, size: 20),
+                title: const Text('Benachrichtigungen', style: TextStyle(fontWeight: FontWeight.w500)),
+                onTap: () => openNotifySettings(context),
+              ),
               const SizedBox(height: 16),
               Center(child: MonoText('Junels $appVersion · Build $appBuild', size: 10.5)),
             ]),

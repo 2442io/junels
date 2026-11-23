@@ -14,6 +14,9 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.47.1', [
+    'Selbsttest und Benachrichtigungen direkt auf der ersten Einstellungsseite und im Raster (Schnell wechseln)',
+  ]),
   ('1.47.0', [
     'Selbsttest (Einstellungen → Selbsttest): Junels prüft Speicher, Modell, Internet, Kalender, Zeitpläne, Prozesse, Watchlist, Werkzeuge, Skills und Sync – Bericht zum Kopieren/Teilen',
     'Nach jedem Update läuft der Selbsttest automatisch still im Hintergrund und meldet Probleme im Benachrichtigungscenter',

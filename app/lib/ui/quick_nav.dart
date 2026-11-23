@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
 import 'nav.dart';
+import 'self_test_page.dart';
 import 'theme.dart';
 
 /// AppBar mit Schnellnavigation (⋯-Raster rechts), sobald man tiefer als die Startseite ist.
@@ -84,7 +85,13 @@ Future<void> showQuickNav(BuildContext context) async {
               ),
             ),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            icon: const Icon(Icons.health_and_safety_outlined, size: 18),
+            label: const Text('Selbsttest'),
+            onPressed: () => Navigator.pop(ctx, 'selftest'),
+          ),
+          const SizedBox(height: 4),
           GridView.count(
             crossAxisCount: 4,
             shrinkWrap: true,
@@ -122,6 +129,10 @@ Future<void> showQuickNav(BuildContext context) async {
   if (picked == null || !rootContext.mounted) return;
   final navigator = Navigator.of(rootContext);
   navigator.popUntil((r) => r.isFirst);
+  if (picked == 'selftest') {
+    if (rootContext.mounted) Navigator.of(rootContext).push(MaterialPageRoute(builder: (_) => const SelfTestPage()));
+    return;
+  }
   if (picked == 'home' || picked == 'new') {
     if (picked == 'new') app.newConversation();
     shell?.go(AppSection.chat);
