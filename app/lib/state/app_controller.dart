@@ -3530,20 +3530,25 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       required Conversation conv,
       required ChatEntry entry,
       void Function(String line)? onProgress,
-      Future<void>? cancel}) async {
-    onProgress?.call('Modell wird vorbereitet …');
+      Future<void>? cancel,
+      Skill? skill}) async {
+    onProgress?.call(skill == null ? 'Modell wird vorbereitet …' : 'Skill „${skill.name}“: Modell wird vorbereitet …');
     final eng = await _automationBackend();
     if (eng == null) throw Exception('Kein Modell bereit (Systemcheck oder KI-Anbieter einrichten).');
     if (running) onProgress?.call('Wartet, bis die laufende Antwort im Chat fertig ist …');
     return _exclusive(conv.id, () async {
-      var tools = toolsFor(prompt, hasImages: false, hasDocs: false);
-      tools = [for (final t in tools) if (t.name != 'browser' && (allowInternet || !t.requiresNetwork)) t];
+      var tools = skill != null
+          ? [for (final t in activeTools) if (skill.tools.contains(t.name)) t]
+          : toolsFor(prompt, hasImages: false, hasDocs: false);
+      tools = [for (final t in tools) if (t.name != 'browser' && t.name != 'begleiten' && (allowInternet || !t.requiresNetwork)) t];
+      if (skill != null) prompt = '${skill.brief()}\nAufgabe: ${prompt.trim().isEmpty ? '(siehe Anleitung)' : prompt}';
       if (wantsGuide(prompt)) {
         prompt = '$prompt\n\n[Hinweis: Dieser Prozess läuft ohne den Nutzer – Anmeldung, Formulare absenden und Zahlungen gehen hier nicht. '
             'Liefere eine kurze Schritt-für-Schritt-Anleitung mit dem Link und schreib am Ende: „Gemeinsam erledigen: im Chat '
             '„Begleite mich: <Link>“ schreiben.“]';
       }
-      final runner = _makeRunner(eng, _systemText(voice: false, tools: tools), tools: tools);
+      final req = skill == null || skill.requiredTool.isEmpty || !tools.any((t) => t.name == skill.requiredTool) ? null : skill.requiredTool;
+      final runner = _makeRunner(eng, _systemText(voice: false, tools: tools), tools: tools, requiredTool: req);
       var answer = '';
       String? error;
       final ctx = ToolContext(

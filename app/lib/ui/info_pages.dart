@@ -14,6 +14,11 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.49.0', [
+    'Prozesse: neuer Baustein „Skill“ – führt einen deiner Skills mit seinen Werkzeugen aus, Ergebnis geht an den nächsten Baustein',
+    'Vorabprüfung erkennt gelöschte oder ausgeschaltete Skills',
+    'Abgleich: eigene und angepasste Skills werden Ende-zu-Ende verschlüsselt über dein Konto synchronisiert (ab Stufe „Einstellungen“)',
+  ]),
   ('1.48.0', [
     'Kalender-Abo (iCal): Google-Kalender und andere per geheimer iCal-Adresse einbinden – funktioniert auch, wenn das Konto nicht mit dem Gerät synchronisiert (Einstellungen → Gerät & Automatik)',
     'Abo-Termine erscheinen überall: Tagesüberblick, Morgen-Übersicht, „Was habe ich heute?“, Termin-Vorbereitung – inkl. Serien, Geburtstagen, abgesagten und ausgenommenen Terminen',

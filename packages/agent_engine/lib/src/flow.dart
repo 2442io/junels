@@ -8,6 +8,7 @@ import 'dart:math' as math;
 enum FlowNodeType {
   trigger('Auslöser'),
   agent('Agent'),
+  skill('Skill'),
   tool('Werkzeug'),
   http('Web-API'),
   mcp('MCP-Server'),
@@ -26,6 +27,7 @@ enum FlowNodeType {
     return switch (v) {
       'start' || 'schedule' || 'zeitplan' || 'manual' || 'manuell' => trigger,
       'llm' || 'prompt' || 'ai' || 'ki' || 'aufgabe' || 'task' => agent,
+      'fähigkeit' || 'skills' => skill,
       'if' || 'filter' || 'wenn' || 'check' => condition,
       'push' || 'notification' || 'nachricht' || 'message' || 'benachrichtigen' => notify,
       'memory' || 'note' || 'notiz' || 'document' || 'dokument' => save,
@@ -65,6 +67,7 @@ class FlowNode {
             _ => 'manuell starten',
           },
         FlowNodeType.agent => str('prompt'),
+        FlowNodeType.skill => str('skillName').isEmpty ? 'Skill wählen' : '/${str('skillCommand')} ${_short(str('prompt'), 60)}'.trim(),
         FlowNodeType.tool => '${str('tool')} ${(config['args'] is Map && (config['args'] as Map).isNotEmpty) ? jsonEncode(config['args']) : ''}'.trim(),
         FlowNodeType.http => '${str('method', 'GET')} ${str('url')}'.trim(),
         FlowNodeType.mcp => str('tool').isEmpty ? 'Server und Tool wählen' : '${str('serverName', str('server'))} · ${str('tool')}',

@@ -26,6 +26,7 @@ String _two(int v) => v.toString().padLeft(2, '0');
 IconData flowIcon(FlowNodeType t) => switch (t) {
       FlowNodeType.trigger => Icons.play_circle_outline,
       FlowNodeType.agent => Icons.smart_toy_outlined,
+      FlowNodeType.skill => Icons.auto_awesome,
       FlowNodeType.tool => Icons.build_outlined,
       FlowNodeType.http => Icons.http,
       FlowNodeType.mcp => Icons.hub_outlined,
@@ -39,6 +40,7 @@ Color flowColor(BuildContext context, FlowNodeType t) {
   return switch (t) {
     FlowNodeType.trigger => c.mint,
     FlowNodeType.agent => c.blue,
+    FlowNodeType.skill => c.amber,
     FlowNodeType.tool => c.violet,
     FlowNodeType.http => c.violet,
     FlowNodeType.mcp => c.blue,
@@ -51,6 +53,7 @@ Color flowColor(BuildContext context, FlowNodeType t) {
 String _nodeHint(FlowNodeType t) => switch (t) {
       FlowNodeType.trigger => 'Wann der Prozess startet',
       FlowNodeType.agent => 'Auftrag an den KI-Agenten',
+      FlowNodeType.skill => 'Einen deiner Skills ausführen',
       FlowNodeType.tool => 'Websuche, Wetter, Nachrichten …',
       FlowNodeType.http => 'REST-API aufrufen, mit Anmeldung',
       FlowNodeType.mcp => 'Tool eines MCP-Servers',
@@ -588,6 +591,7 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
       title: switch (type) {
         FlowNodeType.trigger => 'Start',
         FlowNodeType.agent => 'Agent-Auftrag',
+        FlowNodeType.skill => 'Skill',
         FlowNodeType.tool => 'Werkzeug',
         FlowNodeType.http => 'Web-API',
         FlowNodeType.mcp => 'MCP-Tool',
@@ -598,6 +602,7 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
       config: switch (type) {
         FlowNodeType.trigger => {'mode': 'manual'},
         FlowNodeType.agent => {'prompt': ''},
+        FlowNodeType.skill => {'skill': '', 'skillName': '', 'skillCommand': '', 'prompt': '{{vorher}}'},
         FlowNodeType.tool => {'tool': 'weather', 'args': <String, dynamic>{}},
         FlowNodeType.http => {'method': 'GET', 'url': '', 'headers': '', 'body': ''},
         FlowNodeType.mcp => {
@@ -2005,6 +2010,37 @@ class _NodeInspectorState extends State<_NodeInspector> {
           ],
           if (mode == 'manual') Text('Startet nur über „Ausführen“.', style: t.bodySmall),
         ]);
+      case FlowNodeType.skill:
+        final skills = AppScope.read(context).skills.enabled;
+        final cur = skills.where((s) => s.id == n.str('skill')).firstOrNull;
+        children.add(DropdownButtonFormField<String>(
+          initialValue: cur?.id,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Skill'),
+          items: [
+            for (final s in skills) DropdownMenuItem(value: s.id, child: Text('${s.name}  /${s.command}', overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => setState(() {
+            final s = skills.firstWhere((x) => x.id == v);
+            n.config
+              ..['skill'] = s.id
+              ..['skillName'] = s.name
+              ..['skillCommand'] = s.command;
+            if (n.title == 'Skill') n.title = s.name;
+            widget.onChanged();
+          }),
+        ));
+        if (cur != null) {
+          children.add(Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('${cur.when}\nWerkzeuge: ${cur.tools.isEmpty ? 'keine' : cur.tools.join(', ')}', style: t.bodySmall),
+          ));
+        }
+        children.add(const SizedBox(height: 12));
+        children.add(_field('prompt', 'Aufgabe für den Skill',
+            lines: 4,
+            hint: 'z. B. {{vorher}} oder „November“',
+            helper: 'Der Skill nutzt nur seine Werkzeuge. {{vorher}} = Ergebnis des vorigen Bausteins, {{datum}}, {{uhrzeit}}.'));
       case FlowNodeType.agent:
         children.add(_field('prompt', 'Auftrag an den Agenten',
             lines: 5,

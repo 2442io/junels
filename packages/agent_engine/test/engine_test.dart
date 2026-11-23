@@ -757,6 +757,8 @@ Future<void> main() async {
     final unknown = Workflow.fromModelJson('{"nodes": [{"type": "tool", "config": {"tool": "fax"}}]}', id: 'u', toolNames: {'news'});
     check(unknown!.trigger != null && unknown.nodes.last.type == FlowNodeType.agent, 'unbekanntes Werkzeug → Agent, Auslöser ergänzt');
     check(Workflow.fromModelJson('kein json', id: 'q') == null, 'ungültig → null');
+    check(FlowNodeType.parse('skill') == FlowNodeType.skill && FlowNodeType.parse('Fähigkeit') == FlowNodeType.skill, 'Skill-Baustein erkannt');
+    check(FlowNode(id: 's', type: FlowNodeType.skill, title: 'S', config: {'skillName': 'Bericht', 'skillCommand': 'bericht', 'prompt': 'Nov'}).summary.contains('/bericht'), 'Skill-Zusammenfassung');
 
     final h = Workflow.fromDescription('Jeden Morgen um 6:45 die Wetterlage für Wien prüfen und mir schicken', id: 'h');
     check(h.trigger!.config['hour'] == 6 && h.trigger!.config['minute'] == 45 && h.nodes.length == 3, 'Ohne Modell: Zeitplan erkannt (${h.trigger!.config})');

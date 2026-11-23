@@ -13,6 +13,7 @@ import '../data/models.dart';
 import 'app_controller.dart';
 import 'memory_store.dart';
 import 'native_files.dart';
+import 'skills.dart';
 import 'vault.dart';
 import 'voice_service.dart' show appLog;
 
@@ -25,7 +26,8 @@ enum SyncCategory {
   mcp('mcp', 'MCP-Server'),
   knowledge('kb', 'Wissensbasis'),
   setups('setup', 'Geräte-Setups'),
-  designs('design', 'Eigene Designs');
+  designs('design', 'Eigene Designs'),
+  skills('skill', 'Skills');
 
   const SyncCategory(this.prefix, this.label);
   final String prefix;
@@ -44,12 +46,12 @@ class PrivacyLevel {
   static const all = [
     PrivacyLevel(0, 'Nur dieses Gerät', 'Nichts verlässt das Gerät. Kein Konto, kein Abgleich.', {}, '🔒'),
     PrivacyLevel(1, 'Konto ohne Daten', 'Mit SSO angemeldet – nur deine Identität. Es werden keine Daten gespeichert.', {}, '🪪'),
-    PrivacyLevel(2, 'Einstellungen', 'Geräte-Setups, Prompt-Vorlagen, Agenten-Profile, Designs und MCP-Server. Keine Inhalte.',
-        {'setup', 'design', 'prompt', 'profile', 'mcp'}, '⚙️'),
+    PrivacyLevel(2, 'Einstellungen', 'Geräte-Setups, Prompt-Vorlagen, Skills, Agenten-Profile, Designs und MCP-Server. Keine Inhalte.',
+        {'setup', 'design', 'prompt', 'skill', 'profile', 'mcp'}, '⚙️'),
     PrivacyLevel(3, '+ Gedächtnis & Wissen', 'Zusätzlich, was sich der Agent über dich merkt, und deine Wissensbasis.',
-        {'setup', 'design', 'prompt', 'profile', 'mcp', 'mem', 'kb'}, '🧠'),
+        {'setup', 'design', 'prompt', 'skill', 'profile', 'mcp', 'mem', 'kb'}, '🧠'),
     PrivacyLevel(4, 'Alles', 'Zusätzlich alle Chats – volle Übergabe zwischen deinen Geräten.',
-        {'setup', 'design', 'prompt', 'profile', 'mcp', 'mem', 'kb', 'chat'}, '☁️'),
+        {'setup', 'design', 'prompt', 'skill', 'profile', 'mcp', 'mem', 'kb', 'chat'}, '☁️'),
   ];
 }
 
@@ -509,6 +511,12 @@ class SyncService implements SyncSource {
         out['design:${d.id}'] = jsonEncode(d.design.toJson());
       }
     }
+    if (_on(SyncCategory.skills)) {
+      // eigene Skills und angepasste Basis-Skills
+      for (final s in [...app.skills.own, ...app.skills.basis.where((b) => b.edited)]) {
+        out['skill:${s.id}'] = jsonEncode(s.toJson());
+      }
+    }
     return out;
   }
 
@@ -612,6 +620,14 @@ class SyncService implements SyncSource {
           DesignLibrary.user.removeWhere((u) => u.id == id);
           DesignLibrary.user.add(UserDesign(design: SlideDesign.fromJson(j), templatePath: keep));
           await app.saveDesigns();
+        }
+      case 'skill':
+        if (j == null) {
+          final s = app.skills.byId(id);
+          if (s != null) s.builtin ? app.skills.reset(s) : app.skills.remove(s);
+        } else {
+          final s = Skill.fromJson({...j, 'id': id, if (id.startsWith('b-')) 'builtin': true});
+          app.skills.upsert(s);
         }
     }
   }

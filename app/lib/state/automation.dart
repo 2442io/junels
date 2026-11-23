@@ -594,7 +594,7 @@ class FlowService {
       }
     }
     final order = wf.order();
-    final needsModel = order.any((n) => n.type == FlowNodeType.agent);
+    final needsModel = order.any((n) => n.type == FlowNodeType.agent || n.type == FlowNodeType.skill);
     if (needsModel) {
       if (app.canChat) {
         yield PreflightCheck('Sprachmodell bereit', detail: app.loadedModel?.displayName ?? 'KI-Anbieter');
@@ -642,6 +642,13 @@ class FlowService {
           yield await _checkHttp(n);
         case FlowNodeType.mcp:
           yield _checkMcp(n);
+        case FlowNodeType.skill:
+          final s = app.skills.byId(n.str('skill'));
+          yield PreflightCheck('„${n.title}“: Skill',
+              ok: s != null && s.enabled,
+              detail: s == null ? 'Kein Skill gewählt oder gelöscht' : (s.enabled ? '/${s.command}' : 'Skill ist ausgeschaltet'),
+              nodeId: n.id,
+              fix: s == null || !s.enabled ? 'node' : null);
         case FlowNodeType.agent:
         case FlowNodeType.condition:
         case FlowNodeType.notify:
@@ -934,6 +941,25 @@ class FlowService {
                 cancel: _cancel[wf.id]?.future)
             .timeout(const Duration(minutes: 10),
                 onTimeout: () => throw Exception('Zeitüberschreitung: Der Agent-Schritt lief über 10 Minuten.'));
+      case FlowNodeType.skill:
+        final skill = app.skills.byId(n.str('skill'));
+        if (skill == null) throw Exception('Skill „${n.str('skillName', n.str('skill'))}“ nicht gefunden');
+        var task = Workflow.fill(n.str('prompt', '{{vorher}}'), vars);
+        if (!n.str('prompt').contains('{{') && prevText.trim().isNotEmpty) task = '$task\n\nErgebnis des vorigen Schritts:\n$prevText';
+        final lines = <String>[];
+        void progress(String line) {
+          lines.add(line);
+          if (lines.length > 14) lines.removeAt(0);
+          live[wf.id] = line;
+          step.observation = lines.join('\n');
+          app.refreshUi();
+        }
+
+        return app
+            .automationAgent(task,
+                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill)
+            .timeout(const Duration(minutes: 10),
+                onTimeout: () => throw Exception('Zeitüberschreitung: Der Skill lief über 10 Minuten.'));
       case FlowNodeType.tool:
         final tool = [...app.tools, ...app.mcpTools].where((t) => t.name == n.str('tool')).firstOrNull;
         if (tool == null) throw Exception('Werkzeug „${n.str('tool')}“ nicht gefunden');
