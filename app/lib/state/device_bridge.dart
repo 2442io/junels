@@ -166,6 +166,12 @@ class DeviceBridge implements DeviceActions {
     ];
   }
 
+  /// Rohdaten: welche Kalender Android Junels zeigt (Name, Konto, Typ, Termine, sichtbar, Sync).
+  Future<List<Map>> calendarCalendars() async {
+    if (!Platform.isAndroid) return const [];
+    return (await _call<List>('calendarInfo') ?? const []).cast<Map>();
+  }
+
   @override
   Future<String> calendarInfo() async {
     if (!Platform.isAndroid) return '';

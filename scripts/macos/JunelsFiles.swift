@@ -120,10 +120,10 @@ enum JunelsFiles {
             let secs = at.doubleValue / 1000 - Date().timeIntervalSince1970
             if secs > 1 { trigger = UNTimeIntervalNotificationTrigger(timeInterval: secs, repeats: false) }
           }
-          if kind == "erinnerung" {
-            content.categoryIdentifier = "junels.reminder"
-            content.userInfo = ["kind": kind]
-          }
+          var info: [String: Any] = ["kind": kind]
+          if let target = args["conversation"] as? String { info["target"] = target }
+          content.userInfo = info
+          if kind == "erinnerung" { content.categoryIdentifier = "junels.reminder" }
           let ident = (args["id"] as? NSNumber).map { "junels-\($0.intValue)" } ?? UUID().uuidString
           center.add(UNNotificationRequest(identifier: ident, content: content, trigger: trigger))
         }
@@ -202,6 +202,11 @@ final class JunelsNotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
       JunelsNotifyDelegate.record(req.identifier, "done", Date().timeIntervalSince1970 * 1000)
     default:
       NSApp.activate(ignoringOtherApps: true)
+      // Absprung ins Thema (Chat, Beobachtung, Prozess)
+      if let target = req.content.userInfo["target"] as? String,
+         let enc = target.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+        JunelsDevice.link("junels://open/\(enc)")
+      }
     }
     completionHandler()
   }

@@ -17,6 +17,8 @@ import 'conversation_page.dart';
 import 'sidebar.dart';
 import 'system_check.dart';
 import 'nav.dart';
+import 'watchlist_page.dart';
+import 'flows_page.dart';
 import 'theme.dart';
 
 /// Fragt, ob der Agent ins Internet darf.
@@ -142,9 +144,14 @@ class _HomeShellState extends State<HomeShell> {
     app.pendingLaunch.value = null;
     if (a == 'conversation') {
       openConversation(context);
-    } else if (a == 'watch' || a == 'flows' || a == 'tasks') {
+    } else if (a.startsWith('watch:') && app.watchlist.items.any((w) => w.id == a.substring(6))) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => WatchDetailPage(id: a.substring(6))));
+    } else if (a.startsWith('flow:') && app.flows.flows.any((f) => f.id == a.substring(5))) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: a.substring(5))));
+    } else if (a.startsWith('watch:') || a.startsWith('flow:') || a == 'watch' || a == 'flows' || a == 'tasks') {
+      final a2 = a.startsWith('watch:') ? 'watch' : (a.startsWith('flow:') ? 'flows' : a);
       // Watchlist gehört jetzt zu den Prozessen
-      final s = a == 'watch' ? AppSection.flows : AppSection.values.firstWhere((x) => x.name == a);
+      final s = a2 == 'watch' ? AppSection.flows : AppSection.values.firstWhere((x) => x.name == a2);
       final desktop = MediaQuery.sizeOf(context).width >= 1100 && !_focus;
       if (desktop) {
         _go(s);

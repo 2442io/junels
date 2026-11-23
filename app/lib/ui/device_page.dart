@@ -72,6 +72,48 @@ class DevicePage extends StatefulWidget {
 }
 
 class _DevicePageState extends State<DevicePage> {
+  Future<void> _checkCalendar(BuildContext context) async {
+    final app = AppScope.read(context);
+    final now = DateTime.now();
+    String text;
+    try {
+      final cals = await app.deviceBridge.calendarCalendars();
+      final events = await app.deviceBridge.calendarList(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1));
+      final b = StringBuffer();
+      if (cals.isNotEmpty) {
+        b.writeln('Kalender auf dem Gerät:');
+        for (final c in cals) {
+          b.writeln('• ${c['name']} – ${c['account']} (${c['type']}): ${c['events']} Termine'
+              '${c['sync'] == true ? '' : ' · Sync AUS'}${c['visible'] == true ? '' : ' · ausgeblendet'}');
+        }
+        b.writeln();
+      }
+      b.writeln('Heute gefunden: ${events.length}');
+      for (final e in events.take(12)) {
+        b.writeln('• ${e.allDay ? 'ganztägig' : '${e.begin.hour}:${e.begin.minute.toString().padLeft(2, '0')}'} ${e.title} (${e.calendar})');
+      }
+      final google = cals.where((c) => '${c['type']}' == 'com.google');
+      if (cals.isNotEmpty && (google.isEmpty || google.every((c) => (c['events'] as num? ?? 0) == 0))) {
+        b
+          ..writeln()
+          ..writeln('Kein Google-Kalender mit Terminen sichtbar. Prüfe: Einstellungen → Konten → Google → Kontosynchronisierung → '
+              '„Google Kalender“ an, dann in der Google-Kalender-App ⋮ → Aktualisieren. Termine aus einem Arbeitsprofil kann Junels nicht lesen.');
+      }
+      text = b.toString().trim();
+    } catch (e) {
+      text = 'Kalender nicht lesbar: $e';
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kalender'),
+        content: SingleChildScrollView(child: SelectableText(text)),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+      ),
+    );
+  }
+
   late final _city = TextEditingController(text: AppScope.read(context).settings.homeCity);
   late final _cc = TextEditingController(text: AppScope.read(context).settings.countryCode);
 
@@ -106,6 +148,17 @@ class _DevicePageState extends State<DevicePage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          card('Kalender prüfen', Icons.event_available_outlined, [
+            Text('Zeigt, welche Kalender Junels auf diesem Gerät lesen kann und welche Termine heute gefunden werden. '
+                'Die Datenschutz-Stufe hat darauf keinen Einfluss – sie regelt nur, was auf deinen Server synchronisiert wird.',
+                style: t.bodySmall),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.search),
+              label: const Text('Kalender prüfen'),
+              onPressed: () => _checkCalendar(context),
+            ),
+          ]),
           card('Über dich', Icons.place_outlined, [
             TextField(
               controller: _city,

@@ -768,7 +768,7 @@ class _WatchCard extends StatelessWidget {
         : (item.promptMode ? '„${item.searchQuery}“ (geprüft vom Agenten)' : '„${item.target}“');
     return Panel(
       padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _WatchDetail(id: item.id))),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => WatchDetailPage(id: item.id))),
       child: Row(
         children: [
           Container(
@@ -841,14 +841,14 @@ class _WatchCard extends StatelessWidget {
   }
 }
 
-class _WatchDetail extends StatefulWidget {
-  const _WatchDetail({required this.id});
+class WatchDetailPage extends StatefulWidget {
+  const WatchDetailPage({required this.id});
   final String id;
   @override
-  State<_WatchDetail> createState() => _WatchDetailState();
+  State<WatchDetailPage> createState() => WatchDetailPageState();
 }
 
-class _WatchDetailState extends State<_WatchDetail> {
+class WatchDetailPageState extends State<WatchDetailPage> {
   /// Beim Öffnen ungelesene Meldungen – bleiben als „Neu“ markiert, auch wenn sie jetzt als gelesen gelten.
   final _fresh = <WatchEvent>{};
   bool _onlyNew = false;

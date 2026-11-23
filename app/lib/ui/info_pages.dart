@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.44.1', [
+    'Benachrichtigungen springen direkt ins Thema: Beobachtung öffnet die Beobachtung (nicht die Watchlist), Prozess-Fehler öffnen den Prozess – auch beim Antippen der Meldung am Mac',
+    'Einstellungen → Gerät & Automatik → „Kalender prüfen“: zeigt, welche Kalender Junels sieht, wie viele Termine darin liegen und ob die Synchronisierung aus ist',
+  ]),
   ('1.44.0', [
     'Benachrichtigungscenter: nichts verschwindet mehr von selbst – Meldungen bleiben, bis du sie archivierst',
     'Gelesen/ungelesen: je Meldung (Wischen nach rechts oder Menü ⋮) und für alle auf einmal; Filter „Ungelesen“',

@@ -413,7 +413,16 @@ class _TodoSection extends StatelessWidget {
           icon: Icons.radar,
           title: '$unseen neue ${unseen == 1 ? 'Meldung' : 'Meldungen'} in der Watchlist',
           detail: 'Noch nicht angesehen',
-          primary: ('Ansehen', () => openSection(context, AppSection.watch)),
+          primary: ('Ansehen', () {
+            // genau eine Beobachtung mit Neuem → direkt dorthin, sonst die Liste
+            final items = app.watchlist.items.where((w) => w.unseen > 0).toList();
+            if (items.length == 1) {
+              _leave(context);
+              app.openConversationById('watch:${items.first.id}');
+            } else {
+              openSection(context, AppSection.watch);
+            }
+          }),
         ),
     ];
     if (cards.isEmpty) return const SizedBox.shrink();

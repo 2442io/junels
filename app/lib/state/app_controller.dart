@@ -3221,7 +3221,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         pendingLaunch.value = a;
       })
       ..onShared = receiveShared
-      ..onLink = ((u) => unawaited(sync.handleLink(u)))
+      ..onLink = ((u) {
+        // junels://open/<ziel> – aus einer angetippten Mitteilung (Mac): direkt ins Thema
+        if (u.host == 'open' && u.pathSegments.isNotEmpty) {
+          openConversationById(Uri.decodeComponent(u.pathSegments.join('/')));
+          return;
+        }
+        unawaited(sync.handleLink(u));
+      })
       ..onNetwork = _setOnline
       ..init();
     await deviceBridge.grantFolders([
@@ -3684,8 +3691,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     for (final i in notifier.items) {
       if (i.target == id && !i.read) notifier.markRead(i);
     }
-    if (id.startsWith('watch:')) {
-      pendingLaunch.value = 'watch';
+    if (id.startsWith('watch:') || id.startsWith('flow:')) {
+      // direkt ins Thema: die Beobachtung bzw. den Prozess öffnen, nicht nur die Übersicht
+      pendingLaunch.value = id;
       return;
     }
     if (id.startsWith('followup:')) {

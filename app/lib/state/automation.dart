@@ -883,7 +883,7 @@ class FlowService {
         final fe = errors[wf.id]?.values.firstOrNull;
         unawaited(app.notifyUser(NotifyKind.warnung, '${wf.name} fehlgeschlagen',
             fe == null ? 'Ein Baustein ist fehlgeschlagen.' : '${fe.message} · ${fe.hint}',
-            target: conv.id, source: 'flow:${wf.id}'));
+            target: 'flow:${wf.id}', source: 'flow:${wf.id}'));
       }
       log
         ..text = stopped
@@ -1026,8 +1026,10 @@ class FlowService {
                     ? NotifyKind.info
                     : NotifyKind.ergebnis)
             : NotifyKindX.parse(n.str('kind'));
+        // Absprung ins Thema: bei Beobachtungen die Beobachtung, sonst der Ergebnis-Chat des Prozesses
+        final watchItem = wf.trigger?.str('mode') == 'watch' ? app.watchlist.forFlow(wf.id) : null;
         await app.notifyUser(kind, title.isEmpty ? wf.name : title, text.length > 240 ? '${text.substring(0, 240)}…' : text,
-            target: conv.id, source: 'flow:${wf.id}');
+            target: watchItem != null ? 'watch:${watchItem.id}' : conv.id, source: 'flow:${wf.id}');
         return prevText;
       case FlowNodeType.save:
         final content = prevText.trim();
