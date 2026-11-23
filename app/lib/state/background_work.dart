@@ -73,7 +73,7 @@ class BackgroundWork {
         'body': body,
         'conversation': conversationId,
         'kind': kind,
-        'id': (id ?? '${conversationId ?? title}${at?.millisecondsSinceEpoch ?? ''}').hashCode & 0x7FFFFFFF,
+        'id': stableId(id ?? '${conversationId ?? title}${at?.millisecondsSinceEpoch ?? ''}'),
         if (at != null) 'at': at.millisecondsSinceEpoch,
       };
       if (Platform.isAndroid) {
@@ -82,6 +82,48 @@ class BackgroundWork {
         await _files.invokeMethod('notify', args);
       }
     } catch (_) {}
+  }
+
+  /// Gleiche Zeichenkette → gleiche Nummer, auch nach Neustart (String.hashCode ist das nicht).
+  static int stableId(String s) {
+    var h = 0x811C9DC5;
+    for (final c in s.codeUnits) {
+      h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+    }
+    return h & 0x7FFFFFFF;
+  }
+
+  /// Geplante oder angezeigte Meldung entfernen.
+  static Future<void> cancelNotify(String id) async {
+    try {
+      final args = {'id': stableId(id)};
+      if (Platform.isAndroid) {
+        await _channel.invokeMethod('cancelNotify', args);
+      } else if (Platform.isMacOS) {
+        await _files.invokeMethod('cancelNotify', args);
+      }
+    } catch (_) {}
+  }
+
+  /// „Schlummern“/„Erledigt“, die in Meldungen getippt wurden (seit dem letzten Abruf).
+  static Future<List<({int id, String action, DateTime at})>> takeNotifyEvents() async {
+    try {
+      final r = Platform.isAndroid
+          ? await _channel.invokeMethod<List>('takeNotifyEvents')
+          : Platform.isMacOS
+              ? await _files.invokeMethod<List>('takeNotifyEvents')
+              : null;
+      return [
+        for (final m in (r ?? const []).cast<Map>())
+          (
+            id: (m['id'] as num).toInt(),
+            action: '${m['action']}',
+            at: DateTime.fromMillisecondsSinceEpoch((m['at'] as num?)?.toInt() ?? 0),
+          ),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   static Future<void> requestNotifyPermission() async {

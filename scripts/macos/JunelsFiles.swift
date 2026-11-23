@@ -40,6 +40,7 @@ enum JunelsFiles {
   }
 
   static func register(_ controller: FlutterViewController) {
+    JunelsNotifyDelegate.install()
     let channel = FlutterMethodChannel(name: "junels/files", binaryMessenger: controller.engine.binaryMessenger)
     channel.setMethodCallHandler { call, result in
       let args = call.arguments as? [String: Any] ?? [:]
@@ -119,9 +120,26 @@ enum JunelsFiles {
             let secs = at.doubleValue / 1000 - Date().timeIntervalSince1970
             if secs > 1 { trigger = UNTimeIntervalNotificationTrigger(timeInterval: secs, repeats: false) }
           }
-          center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger))
+          if kind == "erinnerung" {
+            content.categoryIdentifier = "junels.reminder"
+            content.userInfo = ["kind": kind]
+          }
+          let ident = (args["id"] as? NSNumber).map { "junels-\($0.intValue)" } ?? UUID().uuidString
+          center.add(UNNotificationRequest(identifier: ident, content: content, trigger: trigger))
         }
         result(true)
+      case "cancelNotify":
+        if let id = args["id"] as? NSNumber {
+          let ident = "junels-\(id.intValue)"
+          UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [ident])
+          UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [ident])
+        }
+        result(true)
+      case "takeNotifyEvents":
+        let d = UserDefaults.standard
+        let ev = d.array(forKey: "junels.notifyEvents") ?? []
+        d.set([], forKey: "junels.notifyEvents")
+        result(ev)
       case "open":
         result(NSWorkspace.shared.open(url))
       case "reveal":
@@ -137,5 +155,54 @@ enum JunelsFiles {
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+}
+
+/// Mitteilungen: auch bei offener App zeigen; Erinnerungen mit „Schlummern“ und „Erledigt“.
+final class JunelsNotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
+  static let shared = JunelsNotifyDelegate()
+
+  static func install() {
+    let center = UNUserNotificationCenter.current()
+    center.delegate = shared
+    let snooze = UNNotificationAction(identifier: "snooze", title: "Schlummern 10 Min", options: [])
+    let snoozeH = UNNotificationAction(identifier: "snooze1h", title: "1 Std", options: [])
+    let done = UNNotificationAction(identifier: "done", title: "Erledigt", options: [])
+    center.setNotificationCategories([
+      UNNotificationCategory(identifier: "junels.reminder", actions: [done, snooze, snoozeH], intentIdentifiers: [], options: [])
+    ])
+  }
+
+  private static func record(_ ident: String, _ action: String, _ at: Double) {
+    guard let id = Int(ident.replacingOccurrences(of: "junels-", with: "")) else { return }
+    let d = UserDefaults.standard
+    var ev = d.array(forKey: "junels.notifyEvents") ?? []
+    ev.append(["id": id, "action": action, "at": at])
+    d.set(ev, forKey: "junels.notifyEvents")
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                              withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+    if #available(macOS 11.0, *) { completionHandler([.banner, .list, .sound]) } else { completionHandler([.alert, .sound]) }
+  }
+
+  func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                              withCompletionHandler completionHandler: @escaping () -> Void) {
+    let req = response.notification.request
+    switch response.actionIdentifier {
+    case "snooze", "snooze1h":
+      let mins: Double = response.actionIdentifier == "snooze1h" ? 60 : 10
+      let content = (req.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
+      content.attachments = []
+      center.add(UNNotificationRequest(identifier: req.identifier, content: content,
+                                       trigger: UNTimeIntervalNotificationTrigger(timeInterval: mins * 60, repeats: false)))
+      JunelsNotifyDelegate.record(req.identifier, "snooze", (Date().timeIntervalSince1970 + mins * 60) * 1000)
+    case "done":
+      center.removeDeliveredNotifications(withIdentifiers: [req.identifier])
+      JunelsNotifyDelegate.record(req.identifier, "done", Date().timeIntervalSince1970 * 1000)
+    default:
+      NSApp.activate(ignoringOtherApps: true)
+    }
+    completionHandler()
   }
 }

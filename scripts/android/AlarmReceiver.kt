@@ -15,6 +15,16 @@ class AlarmReceiver : BroadcastReceiver() {
                 JunelsNative.notify(ctx, intent.getStringExtra("title") ?: "Junels", intent.getStringExtra("body") ?: "", null, id, intent.getStringExtra("kind"))
                 JunelsNative.noteFired(ctx, id)
             }
+            "junels.SNOOZE", "junels.SNOOZE_1H" -> {
+                val id = intent.getIntExtra("nid", 7)
+                JunelsNative.snooze(ctx, id, intent.getStringExtra("title") ?: "Junels", intent.getStringExtra("body") ?: "",
+                    intent.getStringExtra("kind") ?: "erinnerung", if (intent.action == "junels.SNOOZE_1H") 60 else 10)
+            }
+            "junels.DONE" -> {
+                val id = intent.getIntExtra("nid", 7)
+                JunelsNative.cancelNote(ctx, id)
+                JunelsNative.recordEvent(ctx, id, "done", System.currentTimeMillis())
+            }
             "junels.RUN_PROMPT" -> {
                 val i = Intent(ctx, AgentService::class.java)
                     .setAction(AgentService.ACTION_RUN)

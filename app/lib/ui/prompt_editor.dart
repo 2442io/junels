@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'notify_style.dart';
 
 Future<void> editPrompt(BuildContext context, {SavedPrompt? prompt, String? initialText, bool scheduled = false}) =>
     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -165,6 +166,11 @@ class _PromptEditorState extends State<PromptEditor> {
                   onChanged: (v) => setState(() => p.notify = v),
                   title: const Text('Benachrichtigen, wenn fertig'),
                 ),
+                if (p.notify)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: NotifyKindField(value: p.notifyKind, onChanged: (v) => setState(() => p.notifyKind = v)),
+                  ),
                 Text(
                   Platform.isAndroid
                       ? 'Läuft auch bei geschlossener App. Das Ergebnis steht als neuer Chat bereit.'

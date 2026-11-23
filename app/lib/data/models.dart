@@ -680,6 +680,7 @@ class SavedPrompt {
     this.weekday = DateTime.monday,
     this.allowInternet = false,
     this.notify = true,
+    this.notifyKind = 'auto',
     this.lastRun,
     this.enabled = true,
   }) : id = id ?? newId();
@@ -694,6 +695,7 @@ class SavedPrompt {
   int weekday; // 1 = Montag … 7 = Sonntag (nur wöchentlich)
   bool allowInternet; // automatisch ohne Nachfrage (für Läufe ohne Nutzer)
   bool notify;
+  String notifyKind; // auto | aktion | warnung | erinnerung | ergebnis | info
   DateTime? lastRun;
   bool enabled; // geplante Aufgabe an/aus (Zeitplan bleibt erhalten)
 
@@ -755,6 +757,7 @@ class SavedPrompt {
         'weekday': weekday,
         'allowInternet': allowInternet,
         'notify': notify,
+        if (notifyKind != 'auto') 'notifyKind': notifyKind,
         if (!enabled) 'enabled': false,
         'lastRun': lastRun?.toIso8601String(),
       };
@@ -770,6 +773,7 @@ class SavedPrompt {
         weekday: (j['weekday'] as num?)?.toInt() ?? 1,
         allowInternet: j['allowInternet'] as bool? ?? false,
         notify: j['notify'] as bool? ?? true,
+        notifyKind: j['notifyKind'] as String? ?? 'auto',
         enabled: j['enabled'] as bool? ?? true,
         lastRun: DateTime.tryParse(j['lastRun'] as String? ?? ''),
       );

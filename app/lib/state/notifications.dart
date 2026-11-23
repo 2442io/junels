@@ -61,6 +61,8 @@ class InboxItem {
     this.source = '',
     this.read = false,
     this.done = false,
+    this.due,
+    this.nativeId,
   });
 
   final String id;
@@ -71,9 +73,12 @@ class InboxItem {
   final String? target; // Chat-Id oder watch:<id>
   final String source;
   bool read;
-  bool done; // Aktion erledigt
+  bool done; // Aktion/Erinnerung erledigt
+  DateTime? due; // Erinnerung: wann sie fällig ist (in der Zukunft = geplant)
+  String? nativeId; // Kennung der geplanten System-Meldung (Schlummern, Abbrechen)
 
-  bool get waiting => kind == NotifyKind.aktion && !done;
+  bool get planned => due != null && due!.isAfter(DateTime.now()) && !done;
+  bool get waiting => (kind == NotifyKind.aktion || kind == NotifyKind.erinnerung) && !done && !planned;
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -85,6 +90,8 @@ class InboxItem {
         if (source.isNotEmpty) 'source': source,
         if (read) 'read': true,
         if (done) 'done': true,
+        if (due != null) 'due': due!.toIso8601String(),
+        if (nativeId != null) 'native': nativeId,
       };
 
   factory InboxItem.fromJson(Map<String, dynamic> j) => InboxItem(
@@ -97,6 +104,8 @@ class InboxItem {
         source: '${j['source'] ?? ''}',
         read: j['read'] == true,
         done: j['done'] == true,
+        due: DateTime.tryParse('${j['due'] ?? ''}'),
+        nativeId: j['native'] as String?,
       );
 }
 
@@ -151,7 +160,7 @@ class Notifier extends ChangeNotifier {
   final Map<String, (int, DateTime)> _bundle = {}; // Quelle → (Anzahl, seit)
   final Map<NotifyKind, List<String>> _deferred = {}; // Ruhezeit: gesammelte Titel je Art
 
-  int get unread => items.where((i) => !i.read && i.kind != NotifyKind.ruhig).length;
+  int get unread => items.where((i) => !i.read && !i.planned && i.kind != NotifyKind.ruhig).length;
   bool get hasWaiting => items.any((i) => i.waiting);
   bool get hasWarning => items.any((i) => !i.read && i.kind == NotifyKind.warnung);
 
@@ -216,9 +225,21 @@ class Notifier extends ChangeNotifier {
     final s = settings();
     if (s.off.contains(kind)) return;
 
-    // Geplante Erinnerung: genau zur Zeit, unabhängig von Ruhezeit
+    // Geplante Erinnerung: genau zur Zeit, unabhängig von Ruhezeit (Schlummern/Erledigt in der Meldung)
     if (at != null) {
-      await BackgroundWork.notify(title, body, conversationId: target, at: at, kind: kind.name);
+      final item = InboxItem(
+        id: '${now.microsecondsSinceEpoch}',
+        kind: kind,
+        title: title,
+        body: body,
+        at: at,
+        target: target,
+        source: source,
+        due: at,
+      )..nativeId = 'rem-${now.microsecondsSinceEpoch}';
+      items.insert(0, item);
+      _save();
+      await BackgroundWork.notify(title, body, conversationId: target, at: at, kind: kind.name, id: item.nativeId);
       return;
     }
     // Infos gesammelt (einmal täglich 18 Uhr)
@@ -273,6 +294,40 @@ class Notifier extends ChangeNotifier {
     i
       ..done = true
       ..read = true;
+    if (i.nativeId != null) unawaited(BackgroundWork.cancelNotify(i.nativeId!));
+    _save();
+  }
+
+  /// Erinnerung verschieben (Schlummern) – neue System-Meldung zur neuen Zeit.
+  Future<void> snooze(InboxItem i, Duration d) async {
+    final when = DateTime.now().add(d);
+    i
+      ..nativeId ??= 'rem-${i.id}'
+      ..due = when
+      ..at = when
+      ..read = true;
+    _save();
+    await BackgroundWork.cancelNotify(i.nativeId!);
+    await BackgroundWork.notify(i.title, i.body, conversationId: i.target, at: when, kind: i.kind.name, id: i.nativeId);
+  }
+
+  /// In Meldungen getipptes „Schlummern“/„Erledigt“ übernehmen (beim Start und wenn die App wieder vorne ist).
+  Future<void> syncNative() async {
+    final ev = await BackgroundWork.takeNotifyEvents();
+    if (ev.isEmpty) return;
+    for (final e in ev) {
+      final i = items.where((i) => i.nativeId != null && BackgroundWork.stableId(i.nativeId!) == e.id).firstOrNull;
+      if (i == null) continue;
+      if (e.action == 'done') {
+        i
+          ..done = true
+          ..read = true;
+      } else if (e.action == 'snooze') {
+        i
+          ..due = e.at
+          ..at = e.at;
+      }
+    }
     _save();
   }
 
@@ -280,7 +335,7 @@ class Notifier extends ChangeNotifier {
   void doneFor(String target) {
     var changed = false;
     for (final i in items) {
-      if (i.waiting && i.target == target) {
+      if (i.waiting && i.kind == NotifyKind.aktion && i.target == target) {
         i
           ..done = true
           ..read = true;

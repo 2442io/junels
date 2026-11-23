@@ -16,6 +16,7 @@ import '../state/app_scope.dart';
 import '../state/automation.dart';
 import 'connections_page.dart';
 import 'mcp_page.dart';
+import 'notify_style.dart';
 import 'theme.dart';
 import 'watchlist_page.dart';
 
@@ -2222,19 +2223,7 @@ class _NodeInspectorState extends State<_NodeInspector> {
           _field('title', 'Titel der Push-Nachricht'),
           _field('text', 'Text', lines: 3, helper: '{{vorher}} = Ergebnis des vorigen Bausteins'),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: n.str('kind', 'auto'),
-            decoration: const InputDecoration(labelText: 'Art der Meldung'),
-            items: const [
-              DropdownMenuItem(value: 'auto', child: Text('Automatisch')),
-              DropdownMenuItem(value: 'aktion', child: Text('Aktion – du musst etwas tun')),
-              DropdownMenuItem(value: 'warnung', child: Text('Warnung – Fehler/Grenze')),
-              DropdownMenuItem(value: 'erinnerung', child: Text('Erinnerung')),
-              DropdownMenuItem(value: 'ergebnis', child: Text('Ergebnis – fertig')),
-              DropdownMenuItem(value: 'info', child: Text('Info – leise')),
-            ],
-            onChanged: (v) => setState(() => _set('kind', v ?? 'auto')),
-          ),
+          NotifyKindField(value: n.str('kind', 'auto'), onChanged: (v) => setState(() => _set('kind', v))),
         ]);
       case FlowNodeType.save:
         children.addAll([

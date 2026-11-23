@@ -38,6 +38,21 @@ object JunelsNative {
                 applySchedule(ctx)
                 result.success(true)
             }
+            "cancelNotify" -> {
+                cancelNote(ctx, call.argument<Int>("id") ?: 0)
+                result.success(true)
+            }
+            "takeNotifyEvents" -> {
+                val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val arr = JSONArray(prefs.getString("events", "[]"))
+                prefs.edit().putString("events", "[]").apply()
+                val out = ArrayList<Map<String, Any>>()
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    out.add(mapOf("id" to o.getInt("id"), "action" to o.getString("action"), "at" to o.optLong("at")))
+                }
+                result.success(out)
+            }
             "notify" -> {
                 val title = call.argument<String>("title") ?: "Junels"
                 val body = call.argument<String>("body") ?: ""
@@ -127,6 +142,37 @@ object JunelsNative {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
+    /** Geplante Meldung entfernen (Wecker + gespeicherte Erinnerung + angezeigte Meldung). */
+    fun cancelNote(ctx: Context, id: Int) {
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val i = Intent(ctx, AlarmReceiver::class.java).setAction("junels.NOTIFY")
+        am.cancel(PendingIntent.getBroadcast(ctx, id, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+        noteFired(ctx, id)
+        (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id)
+    }
+
+    /** Schlummern/Erledigt aus der Meldung: für die App merken (Postfach gleicht beim Öffnen ab). */
+    fun recordEvent(ctx: Context, id: Int, action: String, at: Long) {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val arr = JSONArray(prefs.getString("events", "[]"))
+        arr.put(JSONObject().put("id", id).put("action", action).put("at", at))
+        prefs.edit().putString("events", arr.toString()).apply()
+    }
+
+    /** Erinnerung um [minutes] verschieben. */
+    fun snooze(ctx: Context, id: Int, title: String, body: String, kind: String, minutes: Int) {
+        val at = System.currentTimeMillis() + minutes * 60_000L
+        (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(id)
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val arr = JSONArray(prefs.getString("notes", "[]"))
+        val keep = JSONArray()
+        for (i in 0 until arr.length()) if (arr.getJSONObject(i).optInt("id") != id) keep.put(arr.getJSONObject(i))
+        keep.put(JSONObject().put("id", id).put("title", title).put("body", body).put("at", at).put("kind", kind))
+        prefs.edit().putString("notes", keep.toString()).apply()
+        setNoteAlarm(ctx, id, title, body, at, kind)
+        recordEvent(ctx, id, "snooze", at)
+    }
+
     /** Art der Meldung → Kanal, Farbe, Symbol (Konzept „Benachrichtigungen“). */
     private data class Kind(val channel: String, val name: String, val importance: Int, val color: Int, val label: String)
 
@@ -190,6 +236,19 @@ object JunelsNative {
                 else -> Notification.CATEGORY_RECOMMENDATION
             })
         badge(ctx, kindKey, k.color)?.let { b.setLargeIcon(it) }
+        if (kindKey == "erinnerung") {
+            // Schlummern / Erledigt direkt in der Meldung (funktioniert auch bei geschlossener App)
+            fun action(act: String, label: String, req: Int): Notification.Action {
+                val i = Intent(ctx, AlarmReceiver::class.java).setAction(act)
+                    .putExtra("nid", id).putExtra("title", title).putExtra("body", body).putExtra("kind", kindKey)
+                val pi = PendingIntent.getBroadcast(ctx, id * 4 + req, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                @Suppress("DEPRECATION")
+                return Notification.Action.Builder(null, label, pi).build()
+            }
+            b.addAction(action("junels.SNOOZE", "Schlummern 10 Min", 1))
+            b.addAction(action("junels.SNOOZE_1H", "1 Std", 2))
+            b.addAction(action("junels.DONE", "Erledigt", 3))
+        }
         try {
             nm.notify(id, b.build())
         } catch (_: SecurityException) {

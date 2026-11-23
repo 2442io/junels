@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../state/app_scope.dart';
 import '../state/notifications.dart';
 import 'notify_style.dart';
+import 'slide_to_done.dart';
 import 'theme.dart';
 
 class InboxPage extends StatefulWidget {
@@ -28,10 +29,11 @@ class _InboxPageState extends State<InboxPage> {
       builder: (context, _) {
         final all = [for (final i in n.items) if (i.kind != NotifyKind.ruhig && (_filter == null || i.kind == _filter)) i];
         final waiting = all.where((i) => i.waiting).toList();
+        final planned = all.where((i) => i.planned).toList()..sort((a, b) => a.due!.compareTo(b.due!));
         final now = DateTime.now();
         bool today(InboxItem i) => i.at.year == now.year && i.at.month == now.month && i.at.day == now.day;
-        final todayList = all.where((i) => !i.waiting && today(i)).toList();
-        final older = all.where((i) => !i.waiting && !today(i)).toList();
+        final todayList = all.where((i) => !i.waiting && !i.planned && today(i)).toList();
+        final older = all.where((i) => !i.waiting && !i.planned && !today(i)).toList();
 
         Widget section(String title, List<InboxItem> list) => list.isEmpty
             ? const SizedBox.shrink()
@@ -87,6 +89,7 @@ class _InboxPageState extends State<InboxPage> {
                 ]),
               ),
             section('Wartet auf dich', waiting),
+            section('Geplant', planned),
             section('Heute', todayList),
             section('Früher', older),
           ]),
@@ -151,7 +154,7 @@ class _ItemTile extends StatelessWidget {
                   Row(children: [
                     NotifyChip(item.kind),
                     const SizedBox(width: 6),
-                    Text(_time(item.at), style: t.labelSmall?.copyWith(color: c.muted)),
+                    Text(item.planned ? 'um ${_time(item.due!)}' : _time(item.at), style: t.labelSmall?.copyWith(color: c.muted)),
                     const Spacer(),
                     if (!item.read) Container(width: 8, height: 8, decoration: BoxDecoration(color: fg, shape: BoxShape.circle)),
                   ]),
@@ -161,23 +164,40 @@ class _ItemTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(item.body, maxLines: 3, overflow: TextOverflow.ellipsis, style: t.bodySmall?.copyWith(color: c.muted)),
                   ],
-                  if (item.waiting)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Wrap(spacing: 6, children: [
-                        if (item.target != null)
-                          FilledButton.tonal(
-                            style: FilledButton.styleFrom(backgroundColor: c.violetSoft, foregroundColor: c.violet, visualDensity: VisualDensity.compact),
+                  if (item.waiting || item.planned) ...[
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                      if (item.target != null && item.waiting)
+                        FilledButton.tonal(
+                          style: FilledButton.styleFrom(backgroundColor: c.violetSoft, foregroundColor: c.violet, visualDensity: VisualDensity.compact),
+                          onPressed: () {
+                            n.markRead(item);
+                            Navigator.of(context).pop();
+                            app.openConversationById(item.target!);
+                          },
+                          child: const Text('Öffnen'),
+                        ),
+                      if (item.kind == NotifyKind.erinnerung) ...[
+                        Icon(Icons.snooze, size: 16, color: c.muted),
+                        for (final (label, d) in const [('10 Min', Duration(minutes: 10)), ('1 Std', Duration(hours: 1)), ('Morgen', Duration(hours: 24))])
+                          ActionChip(
+                            label: Text(label),
+                            visualDensity: VisualDensity.compact,
                             onPressed: () {
-                              n.markRead(item);
-                              Navigator.of(context).pop();
-                              app.openConversationById(item.target!);
+                              n.snooze(item, d);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Geschlummert: ${item.title} ($label)')));
                             },
-                            child: const Text('Öffnen'),
                           ),
-                        TextButton(onPressed: () => n.markDone(item), child: const Text('Erledigt')),
-                      ]),
+                      ],
+                    ]),
+                    const SizedBox(height: 8),
+                    SlideToDone(
+                      label: item.planned ? 'Schon erledigt – schieben' : 'Erledigt – schieben',
+                      color: fg,
+                      soft: item.kind.colors(context).$2,
+                      onDone: () => n.markDone(item),
                     ),
+                  ],
                 ]),
               ),
             ]),

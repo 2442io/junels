@@ -509,6 +509,7 @@ class FlowService {
     double? alertValue,
     String valueLabel = '',
     String digest = '',
+    String notifyKind = 'auto',
   }) {
     final wf = Workflow(id: newId(), name: name, description: 'Beobachtet ${kind == WatchKind.page ? 'die Seite' : 'das Thema'} „$target“.');
     wf.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Beobachten', config: {
@@ -534,7 +535,11 @@ class FlowService {
       last = 'n2';
     }
     if (notify) {
-      wf.nodes.add(FlowNode(id: 'n3', type: FlowNodeType.notify, title: 'Push-Nachricht', config: {'title': name, 'text': '{{vorher}}'}));
+      wf.nodes.add(FlowNode(id: 'n3', type: FlowNodeType.notify, title: 'Push-Nachricht', config: {
+        'title': name,
+        'text': '{{vorher}}',
+        if (notifyKind != 'auto') 'kind': notifyKind,
+      }));
       wf.connect(last, 'n3');
     }
     wf.layout();

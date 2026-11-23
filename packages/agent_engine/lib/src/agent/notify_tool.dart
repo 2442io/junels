@@ -40,7 +40,7 @@ DateTime? parseWhen(String raw, DateTime now) {
 }
 
 /// [kind]: aktion | warnung | erinnerung | ergebnis | info (leer = automatisch).
-typedef NotifySender = Future<void> Function(String title, String text, DateTime? at, String kind);
+typedef NotifySender = Future<void> Function(String title, String text, DateTime? at, String kind, bool calendar);
 
 class NotifyTool extends AgentTool {
   NotifyTool(this.send, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
@@ -59,7 +59,9 @@ class NotifyTool extends AgentTool {
       'when: leer = sofort, sonst z. B. "in 30 Minuten", "15:00", "morgen 8:30". '
       'art: erinnerung (Zeitpunkt, den der Nutzer will), aktion (NUR wenn er etwas tun muss, damit es weitergeht), '
       'warnung (NUR bei Fehler oder überschrittener Grenze, mit Zahl), ergebnis (etwas ist fertig), info (sonst). '
-      'Titel ≤ 40 Zeichen sagt was, Text sagt was jetzt zu tun ist – konkrete Zahlen, keine Emojis.';
+      'Titel ≤ 40 Zeichen sagt was, Text sagt was jetzt zu tun ist – konkrete Zahlen, keine Emojis. '
+      'kalender: ja = zusätzlich als Termin in den Kalender eintragen (wenn der Nutzer das möchte oder „Termin“ sagt). '
+      'Erinnerungen haben in der Meldung „Schlummern“ und „Erledigt“.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Kurzer Titel'),
@@ -67,6 +69,7 @@ class NotifyTool extends AgentTool {
         ToolParam('when', ParamType.string, 'Zeitpunkt (leer = sofort)'),
         ToolParam('art', ParamType.enumeration, 'Art der Meldung',
             values: ['erinnerung', 'aktion', 'warnung', 'ergebnis', 'info']),
+        ToolParam('kalender', ParamType.enumeration, 'Auch als Kalendertermin eintragen', values: ['nein', 'ja']),
       ];
 
   @override
@@ -82,10 +85,13 @@ class NotifyTool extends AgentTool {
       throw ToolException('${e.message}. Beispiele: "in 30 Minuten", "15:00", "morgen 8:30".');
     }
     if (at != null && !at.isAfter(now)) at = null;
-    await send(title.isEmpty ? 'Junels' : title, text, at, (args['art'] ?? '').toString().trim());
+    final cal = '${args['kalender'] ?? ''}'.trim().toLowerCase() == 'ja';
+    if (cal && at == null) throw ToolException('Für einen Kalendertermin braucht es eine Zeit (when).');
+    await send(title.isEmpty ? 'Junels' : title, text, at, (args['art'] ?? '').toString().trim(), cal);
     if (at == null) return 'Push-Nachricht gesendet.';
     final hh = at.hour.toString().padLeft(2, '0'), mm = at.minute.toString().padLeft(2, '0');
     final sameDay = at.year == now.year && at.month == now.month && at.day == now.day;
-    return 'Erinnerung geplant für ${sameDay ? 'heute' : '${at.day}.${at.month}.${at.year}'} um $hh:$mm Uhr.';
+    return 'Erinnerung geplant für ${sameDay ? 'heute' : '${at.day}.${at.month}.${at.year}'} um $hh:$mm Uhr'
+        '${cal ? ' und als Termin in den Kalender eingetragen' : ''}. In der Meldung gibt es „Schlummern“ und „Erledigt“.';
   }
 }

@@ -202,7 +202,9 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
 
 **Einstellungen → Benachrichtigungen:** Arten ein/aus, Ruhezeit (Aktionen und Erinnerungen kommen trotzdem), Infos einmal täglich gesammelt. Ton und Vibration je Art stellst du in den Android-Einstellungen bei den Kanälen von Junels ein.
 
-**Prozesse:** Im Baustein „Push-Nachricht“ wählst du die Art oder lässt „Automatisch“.''',
+**Erinnerungen:** „Erinnere mich morgen um 9 an den Anruf“ – mit „… und trag es in den Kalender ein“ zusätzlich als Termin. In der Meldung: Schlummern (10 Min, 1 Std) oder Erledigt. Unter Mitteilungen stehen geplante Erinnerungen unter „Geplant“; fällige bleiben unter „Wartet auf dich“, bis du den Regler „Erledigt“ schiebst.
+
+**Art selbst wählen:** Im Baustein „Push-Nachricht“, im Watchlist-Dialog und bei geplanten Prompts wählst du die Art – oder „Automatisch“.''',
   ),
   HelpArticle(
     id: 'begleiten',

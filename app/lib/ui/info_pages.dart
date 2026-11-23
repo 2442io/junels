@@ -13,6 +13,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.42.0', [
+    'Erinnerungen: „Erinnere mich morgen um 9 an …“ – auf Wunsch zusätzlich als Kalendertermin („… und trag es in den Kalender ein“)',
+    'In der Meldung: „Schlummern 10 Min“, „1 Std“ und „Erledigt“ – funktioniert auch bei geschlossener App (Android und Mac)',
+    'Mitteilungen: geplante Erinnerungen unter „Geplant“, fällige unter „Wartet auf dich“ – Schlummern (10 Min, 1 Std, Morgen) und Schieberegler „Erledigt“',
+    'Art der Benachrichtigung selbst wählen: bei Beobachtungen (Watchlist-Dialog), geplanten Prompts und im Prozess-Baustein „Push-Nachricht“ – oder „Automatisch“',
+    'Der Agent wählt die Art selbst (Erinnerung, Aktion, Warnung, Ergebnis, Info)',
+  ]),
   ('1.41.0', [
     'Benachrichtigungen mit Art, Farbe und Symbol: Aktion (violett, Hand), Warnung (rot, Dreieck), Erinnerung (bernstein, Wecker), Ergebnis (mint, Haken), Info (blau, i)',
     'Android: eigener Kanal je Art (Ton/Vibration im System einstellbar), farbiges Symbol in der Meldung; Mac: Untertitel und Symbol-Bild je Art',

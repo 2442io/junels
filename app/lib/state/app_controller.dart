@@ -261,6 +261,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       activity = ActivityLog(File('${storage.root.path}/activity.json'));
       await activity.load();
       await notifier.load();
+      unawaited(notifier.syncNative());
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
       await knowledge.load();
       outputsDir = Directory('${storage.documentsDir.path}/Ausgaben')..createSync(recursive: true);
@@ -306,7 +307,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
-        NotifyTool((title, text, at, kind) async {
+        NotifyTool((title, text, at, kind, calendar) async {
+          if (calendar && at != null) {
+            // Erinnerung zusätzlich als Termin (30 Min) – Kalender des Geräts
+            await deviceBridge.calendarInsert(CalendarEvent(title, at, at.add(const Duration(minutes: 30)), notes: text));
+          }
           var k = NotifyKindX.parse(kind, fallback: at != null ? NotifyKind.erinnerung : NotifyKind.info);
           // Plausibilität: Warnung braucht Fehler/Grenze/Zahl, Aktion eine Handlung
           final all = '$title $text'.toLowerCase();
@@ -443,6 +448,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       _backgroundSince ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
+      unawaited(notifier.syncNative());
       final since = _backgroundSince;
       _backgroundSince = null;
       final c = current;
@@ -3613,7 +3619,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final answer = conv.entries.lastOrNull;
       final text = answer?.error ?? answer?.text ?? '';
       final short = text.replaceAll(RegExp(r'[#*_`>|]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
-      await notifyUser(answer?.error != null ? NotifyKind.warnung : NotifyKind.ergebnis,
+      await notifyUser(
+          answer?.error != null
+              ? NotifyKind.warnung
+              : (p.notifyKind == 'auto' ? NotifyKind.ergebnis : NotifyKindX.parse(p.notifyKind, fallback: NotifyKind.ergebnis)),
           answer?.error != null ? '${p.title} fehlgeschlagen' : p.title, short.length > 240 ? '${short.substring(0, 240)}…' : short,
           target: conv.id, source: 'prompt:${p.id}');
     }

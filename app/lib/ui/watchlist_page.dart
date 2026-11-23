@@ -9,6 +9,7 @@ import '../state/app_scope.dart';
 import '../state/automation.dart' show copyName;
 import 'flows_page.dart';
 import 'markdown_lite.dart';
+import 'notify_style.dart';
 import 'theme.dart';
 
 String _two(int v) => v.toString().padLeft(2, '0');
@@ -36,6 +37,7 @@ class WatchDraft {
     this.name = '',
     this.summarize = true,
     this.notify = true,
+    this.notifyKind = 'auto',
     this.alertOp = '',
     this.alertValue,
     this.valueLabel = '',
@@ -54,6 +56,7 @@ class WatchDraft {
   String name;
   bool summarize;
   bool notify;
+  String notifyKind; // auto | aktion | warnung | erinnerung | ergebnis | info
 
   String get normalizedTarget {
     final t = target.trim();
@@ -482,6 +485,7 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
   final srcFlow = flowOf(src);
   if (srcFlow != null) {
     // Prozess-Einträge: Zusammenfassen/Push stecken in den Bausteinen
+    draft.notifyKind = srcFlow.nodes.where((n) => n.type == FlowNodeType.notify).firstOrNull?.str('kind', 'auto') ?? 'auto';
     draft
       ..summarize = srcFlow.nodes.any((n) => n.type == FlowNodeType.agent)
       ..notify = srcFlow.nodes.any((n) => n.type == FlowNodeType.notify);
@@ -523,6 +527,12 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
                   onChanged: (v) => set(() => draft.notify = v),
                 ),
                 ],
+                if (draft.notify || flow != null)
+                  NotifyKindField(
+                    value: draft.notifyKind,
+                    label: 'Art der Benachrichtigung (Automatisch: Grenzwert = Warnung, sonst Info)',
+                    onChanged: (v) => set(() => draft.notifyKind = v),
+                  ),
                 if (existing == null)
                   Text(
                     'Wird als Prozess angelegt – im Canvas kannst du weitere Schritte anhängen (z. B. Web-API, Notiz, Bedingung).',
@@ -558,6 +568,7 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
       alertValue: draft.alertValue,
       valueLabel: draft.valueLabel.trim(),
       digest: draft.alertOp.isEmpty ? draft.digest : '',
+      notifyKind: draft.notifyKind,
     );
     await app.flows.upsert(wf);
     if (openCanvas) nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
@@ -579,6 +590,9 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
         ..['valueLabel'] = draft.valueLabel.trim()
         ..['digest'] = draft.alertOp.isEmpty ? draft.digest : '';
       t.config.removeWhere((k, v) => v == null);
+    }
+    for (final n in flow.nodes.where((n) => n.type == FlowNodeType.notify)) {
+      n.config['kind'] = draft.notifyKind;
     }
     flow.name = draft.defaultName;
     await app.flows.upsert(flow);

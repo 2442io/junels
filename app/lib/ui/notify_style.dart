@@ -66,3 +66,39 @@ class NotifyChip extends StatelessWidget {
     );
   }
 }
+
+/// Auswahl der Art („Automatisch“ = Junels entscheidet) – für Prozesse, Beobachtungen, geplante Prompts.
+class NotifyKindField extends StatelessWidget {
+  const NotifyKindField({super.key, required this.value, required this.onChanged, this.label = 'Art der Benachrichtigung'});
+  final String value; // 'auto' oder NotifyKind.name
+  final ValueChanged<String> onChanged;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final kinds = NotifyKind.values.where((k) => k != NotifyKind.ruhig);
+    return DropdownButtonFormField<String>(
+      initialValue: value == 'auto' || kinds.any((k) => k.name == value) ? value : 'auto',
+      decoration: InputDecoration(labelText: label),
+      items: [
+        const DropdownMenuItem(value: 'auto', child: Text('Automatisch')),
+        for (final k in kinds)
+          DropdownMenuItem(
+            value: k.name,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(k.icon, size: 18, color: k.colors(context).$1),
+              const SizedBox(width: 8),
+              Text(switch (k) {
+                NotifyKind.aktion => 'Aktion – du musst etwas tun',
+                NotifyKind.warnung => 'Warnung – Fehler/Grenze',
+                NotifyKind.erinnerung => 'Erinnerung',
+                NotifyKind.ergebnis => 'Ergebnis – fertig',
+                _ => 'Info – leise',
+              }),
+            ]),
+          ),
+      ],
+      onChanged: (v) => onChanged(v ?? 'auto'),
+    );
+  }
+}
