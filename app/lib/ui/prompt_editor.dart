@@ -61,8 +61,13 @@ class _PromptEditorState extends State<PromptEditor> {
       ..title = _title.text.trim().isEmpty ? _text.text.trim().split('\n').first : _title.text.trim()
       ..text = _text.text.trim();
     if (p.title.length > 50) p.title = '${p.title.substring(0, 50)}…';
+    final m = ScaffoldMessenger.of(context);
     await app.savePrompt(p);
     nav.pop();
+    m.showSnackBar(SnackBar(
+        content: Text(p.schedule == ScheduleKind.off
+            ? 'Vorlage „${p.title}“ gespeichert'
+            : '„${p.title}“ gespeichert – läuft ${p.scheduleLabel}. Steht unter Vorlagen und unter „Geplant“.')));
     if (run) await app.runPrompt(p);
   }
 

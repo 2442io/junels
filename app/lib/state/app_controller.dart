@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../data/models.dart';
+import '../version.dart';
 import '../data/storage.dart';
 import 'background_work.dart';
 import 'app_control.dart';
@@ -25,6 +26,7 @@ import 'browser_service.dart';
 import 'device_bridge.dart';
 import 'guide.dart';
 import 'notifications.dart';
+import 'self_test.dart';
 import 'skill_tool.dart';
 import 'skills.dart';
 import 'sync_service.dart';
@@ -264,6 +266,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await activity.load();
       await notifier.load();
       await skills.load();
+      unawaited(_selfTestAfterUpdate());
       unawaited(notifier.syncNative());
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
       await knowledge.load();
@@ -1356,6 +1359,28 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       ..addAll([for (final a in apps) a.toJson()]);
     await storage.saveSettings(settings);
     notifyListeners();
+  }
+
+  /// Nach einem Update einmal still selbst prüfen; Probleme landen als Meldung im Benachrichtigungscenter.
+  Future<void> _selfTestAfterUpdate() async {
+    try {
+      final mark = File('${storage.root.path}/.selftest_version');
+      if (await mark.exists() && (await mark.readAsString()).trim() == appVersion) return;
+      await Future<void>.delayed(const Duration(seconds: 30)); // erst Modell laden lassen
+      final t = SelfTest(this);
+      await t.run();
+      await mark.writeAsString(appVersion);
+      appLog('Selbsttest', t.report());
+      if (t.failed > 0 || t.warned > 0) {
+        final bad = [for (final r in t.results) if (r.state == CheckState.fail || r.state == CheckState.warn) r.name];
+        await notifyUser(t.failed > 0 ? NotifyKind.warnung : NotifyKind.info,
+            'Selbsttest nach Update: ${t.failed > 0 ? '${t.failed} Problem${t.failed == 1 ? '' : 'e'}' : '${t.warned} Hinweis${t.warned == 1 ? '' : 'e'}'}',
+            bad.join(' · '),
+            target: 'selftest', source: 'selftest');
+      }
+    } catch (e) {
+      appLog('Selbsttest', '$e', error: true);
+    }
   }
 
   /// Skills: Anleitung + erlaubte Werkzeuge (Basis-Skills und eigene).
@@ -3702,7 +3727,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     for (final i in notifier.items) {
       if (i.target == id && !i.read) notifier.markRead(i);
     }
-    if (id.startsWith('watch:') || id.startsWith('flow:')) {
+    if (id.startsWith('watch:') || id.startsWith('flow:') || id == 'selftest') {
       // direkt ins Thema: die Beobachtung bzw. den Prozess öffnen, nicht nur die Übersicht
       pendingLaunch.value = id;
       return;

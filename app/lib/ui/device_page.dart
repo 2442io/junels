@@ -1,6 +1,7 @@
 // Gerät & Automatik: Heimatort, Schnellstart-Knöpfe,
 // überwachte Ordner und (Mac) freigegebene Ordner für die Dateihilfe.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -78,8 +79,11 @@ class _DevicePageState extends State<DevicePage> {
     final now = DateTime.now();
     String text;
     try {
-      final cals = await app.deviceBridge.calendarCalendars();
-      final events = await app.deviceBridge.calendarList(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1));
+      final cals = await app.deviceBridge.calendarCalendars().timeout(const Duration(seconds: 15),
+          onTimeout: () => throw TimeoutException('Kalender-Liste antwortet nicht (15 s)'));
+      final events = await app.deviceBridge
+          .calendarList(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1))
+          .timeout(const Duration(seconds: 15), onTimeout: () => throw TimeoutException('Termine lesen antwortet nicht (15 s)'));
       final b = StringBuffer();
       if (cals.isNotEmpty) {
         b.writeln('Kalender auf dem Gerät:');

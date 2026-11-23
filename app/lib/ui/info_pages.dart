@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.47.0', [
+    'Selbsttest (Einstellungen → Selbsttest): Junels prüft Speicher, Modell, Internet, Kalender, Zeitpläne, Prozesse, Watchlist, Werkzeuge, Skills und Sync – Bericht zum Kopieren/Teilen',
+    'Nach jedem Update läuft der Selbsttest automatisch still im Hintergrund und meldet Probleme im Benachrichtigungscenter',
+    'Jede neue Version muss vor der Veröffentlichung automatische App-Logik-Tests bestehen (Präsentation, Begleiten, Skills, Benachrichtigungen, Zeitpläne …)',
+    'Prompt-Vorlagen: Vorlagen mit Zeitplan verschwinden nicht mehr aus der Liste – sie stehen mit „Zeitplan: täglich …“ unter Vorlagen und unter Geplant; Bestätigung nach dem Speichern',
+    'Kalender prüfen: bricht nach 15 Sekunden mit einer klaren Meldung ab, statt zu hängen',
+  ]),
   ('1.46.0', [
     'Skills: wiederverwendbare Fähigkeiten aus Anleitung + erlaubten Werkzeugen – aufrufen mit /befehl im Chat („/“ tippen zeigt alle)',
     'Eigene Skills entwerfen (Bereich „Skills“): Name, Wann nutzen, Anleitung, Werkzeuge, Pflicht-Ergebnis, Angaben, Wissen & Beispiele – mit „Testen“',

@@ -18,6 +18,7 @@ import 'sidebar.dart';
 import 'system_check.dart';
 import 'nav.dart';
 import 'quick_nav.dart';
+import 'self_test_page.dart';
 import 'watchlist_page.dart';
 import 'flows_page.dart';
 import 'theme.dart';
@@ -145,6 +146,8 @@ class _HomeShellState extends State<HomeShell> {
     app.pendingLaunch.value = null;
     if (a == 'conversation') {
       openConversation(context);
+    } else if (a == 'selftest') {
+      openSelfTest(context);
     } else if (a.startsWith('watch:') && app.watchlist.items.any((w) => w.id == a.substring(6))) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => WatchDetailPage(id: a.substring(6))));
     } else if (a.startsWith('flow:') && app.flows.flows.any((f) => f.id == a.substring(5))) {

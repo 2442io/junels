@@ -25,6 +25,7 @@ import 'designs_page.dart';
 import 'setups_page.dart';
 import '../state/sync_service.dart' show PrivacyLevel;
 import 'notify_settings_page.dart';
+import 'self_test_page.dart';
 import 'theme.dart';
 import 'update_page.dart';
 import 'quick_nav.dart';
@@ -225,6 +226,12 @@ class SettingsBody extends StatelessWidget {
         return group(null, [_VoiceSection(app: app)]);
       case 'connections':
         return group(null, [
+          _NavTile(
+            icon: Icons.health_and_safety_outlined,
+            title: 'Selbsttest',
+            subtitle: 'Junels prüft sich selbst (Kalender, Zeitpläne, Modell, Sync …) – Bericht zum Teilen',
+            onTap: () => openSelfTest(context),
+          ),
           _NavTile(
             icon: Icons.notifications_outlined,
             title: 'Benachrichtigungen',

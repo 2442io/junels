@@ -66,6 +66,9 @@ jobs:
         run: |
           flutter test test/help_screenshots_test.dart --update-goldens 2>&1 | grep -E "^Bild|Fertig|init-Fehler|Some tests" || true
           ls assets/help
+      - name: App-Logik-Tests (stoppen die Veröffentlichung bei Fehlern)
+        working-directory: app
+        run: flutter test test/logic_test.dart
       - name: Signatur-Schlüssel
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}

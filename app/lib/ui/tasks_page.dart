@@ -281,7 +281,8 @@ class PromptsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final c = AppColors.of(context);
-    final list = app.prompts.where((p) => p.schedule == ScheduleKind.off).toList();
+    // Alle Vorlagen – auch die mit Zeitplan (die stehen zusätzlich unter „Geplant“)
+    final list = app.prompts.toList();
     return Scaffold(
       appBar: JAppBar(title: const Text('Prompt-Vorlagen'), actions: [
         Padding(
@@ -325,6 +326,10 @@ class PromptsPage extends StatelessWidget {
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            if (p.schedule != ScheduleKind.off) ...[
+                              const SizedBox(height: 4),
+                              StatusChip('Zeitplan: ${p.scheduleLabel}', color: c.violet, icon: Icons.schedule, dense: true),
+                            ],
                             const SizedBox(height: 2),
                             Text(p.text.replaceAll('\n', ' '),
                                 maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),

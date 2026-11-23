@@ -31,3 +31,6 @@ jobs:
       - name: Engine-Tests (ohne Modell)
         working-directory: packages/agent_engine
         run: dart run test/engine_test.dart 2>&1 | grep -E "FAIL|bestanden|^[^ ]" | grep -B1 -E "FAIL|bestanden"
+      - name: App-Logik-Tests
+        working-directory: app
+        run: flutter test test/logic_test.dart
