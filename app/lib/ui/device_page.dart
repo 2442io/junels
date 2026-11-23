@@ -93,16 +93,19 @@ class _DevicePageState extends State<DevicePage> {
         }
         b.writeln();
       }
+      final abos = await DeviceBridge.icsUrls();
+      if (abos.isNotEmpty) b.writeln('Kalender-Abos: ${abos.length}\n');
       b.writeln('Heute gefunden: ${events.length}');
       for (final e in events.take(12)) {
         b.writeln('• ${e.allDay ? 'ganztägig' : '${e.begin.hour}:${e.begin.minute.toString().padLeft(2, '0')}'} ${e.title} (${e.calendar})');
       }
       final google = cals.where((c) => '${c['type']}' == 'com.google');
-      if (cals.isNotEmpty && (google.isEmpty || google.every((c) => (c['events'] as num? ?? 0) == 0))) {
+      if (abos.isEmpty && cals.isNotEmpty && (google.isEmpty || google.every((c) => (c['events'] as num? ?? 0) == 0))) {
         b
           ..writeln()
           ..writeln('Kein Google-Kalender mit Terminen sichtbar. Prüfe: Einstellungen → Konten → Google → Kontosynchronisierung → '
-              '„Google Kalender“ an, dann in der Google-Kalender-App ⋮ → Aktualisieren. Termine aus einem Arbeitsprofil kann Junels nicht lesen.');
+              '„Google Kalender“ an, dann in der Google-Kalender-App ⋮ → Aktualisieren. Termine aus einem Arbeitsprofil kann Junels nicht lesen. '
+              'Sicherer Weg: oben ein Kalender-Abo mit der iCal-Adresse eintragen.');
       }
       text = b.toString().trim();
     } catch (e) {
@@ -153,6 +156,14 @@ class _DevicePageState extends State<DevicePage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          card('Kalender-Abo (Google & Co.)', Icons.event_repeat_outlined, [
+            Text('Kommen deine Google-Termine nicht am Gerät an, trag hier die geheime iCal-Adresse ein. '
+                'Google: calendar.google.com am Computer → ⚙ Einstellungen → links deinen Kalender → '
+                '„Privatadresse im iCal-Format“ kopieren. Junels lädt sie alle 10 Minuten (nur lesen).',
+                style: t.bodySmall),
+            const SizedBox(height: 8),
+            const _IcsEditor(),
+          ]),
           card('Kalender prüfen', Icons.event_available_outlined, [
             Text('Zeigt, welche Kalender Junels auf diesem Gerät lesen kann und welche Termine heute gefunden werden. '
                 'Die Datenschutz-Stufe hat darauf keinen Einfluss – sie regelt nur, was auf deinen Server synchronisiert wird.',
@@ -303,3 +314,92 @@ class _DevicePageState extends State<DevicePage> {
   }
 }
 
+/// iCal-Adressen eintragen (liegen im Tresor, weil sie geheim sind).
+class _IcsEditor extends StatefulWidget {
+  const _IcsEditor();
+
+  @override
+  State<_IcsEditor> createState() => _IcsEditorState();
+}
+
+class _IcsEditorState extends State<_IcsEditor> {
+  List<String> _urls = [];
+  final _ctrl = TextEditingController();
+  String? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    DeviceBridge.icsUrls().then((u) {
+      if (mounted) setState(() => _urls = u);
+    });
+  }
+
+  String _short(String u) {
+    final uri = Uri.tryParse(u);
+    return uri == null ? u : '${uri.host}/…${u.length > 12 ? u.substring(u.length - 8) : ''}';
+  }
+
+  Future<void> _add() async {
+    final u = _ctrl.text.trim();
+    if (!RegExp(r'^(https?|webcal)://').hasMatch(u)) {
+      setState(() => _status = 'Bitte die vollständige Adresse einfügen (beginnt mit https:// oder webcal://)');
+      return;
+    }
+    _urls = [..._urls, u];
+    await DeviceBridge.setIcsUrls(_urls);
+    _ctrl.clear();
+    await _test();
+  }
+
+  Future<void> _test() async {
+    setState(() => _status = 'Lade …');
+    final app = AppScope.read(context);
+    final now = DateTime.now();
+    try {
+      final ev = await app.deviceBridge.icsEvents(DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 7));
+      if (mounted) {
+        setState(() => _status = ev.isEmpty
+            ? 'Keine Termine in den nächsten 7 Tagen gefunden – Adresse prüfen (Protokoll)'
+            : '${ev.length} Termine in den nächsten 7 Tagen, z. B. „${ev.first.title}“');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _status = 'Fehler: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final u in _urls)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          leading: const Icon(Icons.event_note_outlined),
+          title: Text(_short(u)),
+          trailing: IconButton(
+            tooltip: 'Entfernen',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () async {
+              _urls = [..._urls]..remove(u);
+              await DeviceBridge.setIcsUrls(_urls);
+              setState(() {});
+            },
+          ),
+        ),
+      TextField(
+        controller: _ctrl,
+        decoration: const InputDecoration(labelText: 'iCal-Adresse einfügen', hintText: 'https://calendar.google.com/calendar/ical/…/basic.ics'),
+        onSubmitted: (_) => _add(),
+      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        FilledButton.tonal(onPressed: _add, child: const Text('Hinzufügen')),
+        const SizedBox(width: 8),
+        if (_urls.isNotEmpty) OutlinedButton(onPressed: _test, child: const Text('Testen')),
+      ]),
+      if (_status != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(_status!, style: t.bodySmall)),
+    ]);
+  }
+}

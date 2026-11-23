@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/services.dart';
 
+import 'vault.dart';
 import 'voice_service.dart' show appLog;
 
 class SharedContent {
@@ -151,19 +152,80 @@ class DeviceBridge implements DeviceActions {
 
   @override
   Future<List<CalendarEvent>> calendarList(DateTime from, DateTime to) async {
-    final r = await _call<List>('calendarList', {'from': from.millisecondsSinceEpoch, 'to': to.millisecondsSinceEpoch}) ?? const [];
-    return [
-      for (final m in r.cast<Map>())
-        CalendarEvent(
-          m['title'] as String? ?? '',
-          DateTime.fromMillisecondsSinceEpoch((m['begin'] as num).toInt()),
-          DateTime.fromMillisecondsSinceEpoch((m['end'] as num).toInt()),
-          allDay: m['allDay'] == true,
-          location: m['location'] as String? ?? '',
-          notes: m['notes'] as String? ?? '',
-          calendar: m['calendar'] as String? ?? '',
-        ),
-    ];
+    var device = <CalendarEvent>[];
+    Object? deviceError;
+    try {
+      final r = await _call<List>('calendarList', {'from': from.millisecondsSinceEpoch, 'to': to.millisecondsSinceEpoch}) ?? const [];
+      device = [
+        for (final m in r.cast<Map>())
+          CalendarEvent(
+            m['title'] as String? ?? '',
+            DateTime.fromMillisecondsSinceEpoch((m['begin'] as num).toInt()),
+            DateTime.fromMillisecondsSinceEpoch((m['end'] as num).toInt()),
+            allDay: m['allDay'] == true,
+            location: m['location'] as String? ?? '',
+            notes: m['notes'] as String? ?? '',
+            calendar: m['calendar'] as String? ?? '',
+          ),
+      ];
+    } catch (e) {
+      deviceError = e;
+    }
+    // Kalender-Abos (iCal-Adressen, z. B. Google „Privatadresse“) – wenn der Kalender nicht am Gerät ankommt
+    final abo = await icsEvents(from, to);
+    if (deviceError != null && abo.isEmpty) throw deviceError;
+    final seen = {for (final e in device) '${e.title.toLowerCase()}|${e.begin.millisecondsSinceEpoch ~/ 60000}'};
+    final all = [
+      ...device,
+      for (final e in abo)
+        if (seen.add('${e.title.toLowerCase()}|${e.begin.millisecondsSinceEpoch ~/ 60000}')) e,
+    ]..sort((a, b) => a.begin.compareTo(b.begin));
+    return all;
+  }
+
+  // ------------------------------------------------------------ Kalender-Abos (iCal)
+
+  /// Eingetragene iCal-Adressen (geheim → Tresor).
+  static Future<List<String>> icsUrls() async =>
+      [for (final l in ((await Vault.read('calendar:ics')) ?? '').split('\n')) if (l.trim().startsWith('http')) l.trim()];
+
+  static Future<void> setIcsUrls(List<String> urls) async {
+    await Vault.write('calendar:ics', urls.where((u) => u.trim().isNotEmpty).join('\n'));
+    _icsCache.clear();
+  }
+
+  static final Map<String, (DateTime, String)> _icsCache = {};
+
+  /// Termine aus allen Abos (Cache 10 Min; offline: letzter Stand).
+  Future<List<CalendarEvent>> icsEvents(DateTime from, DateTime to) async {
+    final urls = await icsUrls();
+    final out = <CalendarEvent>[];
+    for (final raw in urls) {
+      final url = raw.replaceFirst(RegExp(r'^webcal://'), 'https://');
+      try {
+        final hit = _icsCache[url];
+        String text;
+        if (hit != null && DateTime.now().difference(hit.$1).inMinutes < 10) {
+          text = hit.$2;
+        } else {
+          final cache = File('${Directory.systemTemp.path}/junels_ics_${url.hashCode & 0x7fffffff}.ics');
+          try {
+            text = await httpGetText(Uri.parse(url)).timeout(const Duration(seconds: 15));
+            if (!text.contains('BEGIN:VCALENDAR')) throw Exception('Keine iCal-Daten (Adresse prüfen)');
+            await cache.writeAsString(text);
+          } catch (e) {
+            if (!await cache.exists()) rethrow;
+            text = await cache.readAsString(); // offline: letzter Stand
+            appLog('Kalender', 'Abo offline, letzter Stand: $e');
+          }
+          _icsCache[url] = (DateTime.now(), text);
+        }
+        out.addAll(parseIcs(text, from, to));
+      } catch (e) {
+        appLog('Kalender', 'Abo ${Uri.tryParse(url)?.host ?? ''}: $e', error: true);
+      }
+    }
+    return out;
   }
 
   /// Rohdaten: welche Kalender Android Junels zeigt (Name, Konto, Typ, Termine, sichtbar, Sync).
@@ -189,10 +251,12 @@ class DeviceBridge implements DeviceActions {
     final googleEmpty = google.isNotEmpty && google.every((c) => ((c['events'] as num?)?.toInt() ?? 0) == 0);
     final syncOff = cals.any((c) => c['sync'] != true);
     if (total > 0 && !googleEmpty && !syncOff) return ''; // alles in Ordnung – kein Hinweis
+    if ((await icsUrls()).isNotEmpty) return ''; // Google kommt über das Kalender-Abo
     return 'Gelesene Kalender: $names. HINWEIS FÜR DEN NUTZER: '
         '${total == 0 ? 'In keinem Kalender liegen Termine auf dem Gerät' : googleEmpty ? 'Die Google-Kalender auf dem Gerät sind leer (nur Geburtstage/Feiertage sichtbar)' : 'Bei einigen Kalendern ist die Synchronisierung aus'} – '
         'vermutlich ist die Kalender-Synchronisierung aus (Android Einstellungen → Konten → Google → Kontosynchronisierung → Kalender) '
-        'oder die Termine liegen in einem Arbeitsprofil. Sag das dem Nutzer kurz, damit er weiß, warum Termine fehlen können.';
+        'oder die Termine liegen in einem Arbeitsprofil. Alternative: Einstellungen → Gerät & Automatik → Kalender-Abo (iCal-Adresse von Google). '
+        'Sag das dem Nutzer kurz, damit er weiß, warum Termine fehlen können.';
   }
 
   @override

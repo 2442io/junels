@@ -17,6 +17,7 @@ export 'src/agent/site_search_tool.dart';
 export 'src/agent/browser_tool.dart';
 export 'src/agent/answer_cleanup.dart';
 export 'src/agent/device_tools.dart';
+export 'src/agent/ics.dart';
 export 'src/agent/tool.dart';
 export 'src/catalog.dart';
 export 'src/device_profile.dart';

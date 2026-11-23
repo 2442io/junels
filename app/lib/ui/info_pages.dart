@@ -14,6 +14,11 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.48.0', [
+    'Kalender-Abo (iCal): Google-Kalender und andere per geheimer iCal-Adresse einbinden – funktioniert auch, wenn das Konto nicht mit dem Gerät synchronisiert (Einstellungen → Gerät & Automatik)',
+    'Abo-Termine erscheinen überall: Tagesüberblick, Morgen-Übersicht, „Was habe ich heute?“, Termin-Vorbereitung – inkl. Serien, Geburtstagen, abgesagten und ausgenommenen Terminen',
+    'Selbsttest prüft das Kalender-Abo mit; Kalender prüfen zeigt die Abos',
+  ]),
   ('1.47.1', [
     'Selbsttest und Benachrichtigungen direkt auf der ersten Einstellungsseite und im Raster (Schnell wechseln)',
   ]),

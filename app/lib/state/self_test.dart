@@ -9,6 +9,7 @@ import 'package:agent_engine/agent_engine.dart';
 import '../data/models.dart';
 import '../version.dart';
 import 'app_controller.dart';
+import 'device_bridge.dart';
 import 'guide.dart';
 import 'notifications.dart';
 
@@ -85,8 +86,16 @@ class SelfTest {
         final calText = cals.isEmpty
             ? ''
             : ' · Kalender: ${cals.map((c) => '${c['name']} (${c['events']}${c['sync'] == true ? '' : ', Sync aus'})').join(', ')}';
+        final abos = await DeviceBridge.icsUrls();
+        if (abos.isNotEmpty) {
+          final soon = await app.deviceBridge.icsEvents(now, now.add(const Duration(days: 7)));
+          return soon.isEmpty
+              ? (CheckState.warn, 'Kalender-Abo: keine Termine in 7 Tagen – Adresse prüfen$calText')
+              : (CheckState.ok, 'Heute ${events.length} Termine · Abo: ${soon.length} in 7 Tagen$calText');
+        }
         if (Platform.isAndroid && cals.isNotEmpty && googleEvents == 0) {
-          return (CheckState.warn, 'Heute ${events.length} Termine, aber keine Google-Termine auf dem Gerät – Kalender-Synchronisierung prüfen$calText');
+          return (CheckState.warn,
+              'Heute ${events.length} Termine, aber kein Google-Kalender auf dem Gerät – Kalender-Abo (iCal) eintragen oder Synchronisierung prüfen$calText');
         }
         return (CheckState.ok, 'Heute ${events.length} Termine$calText');
       }, timeout: const Duration(seconds: 15));

@@ -43,6 +43,30 @@ Future<void> main() async {
   final envModel = Platform.environment['AE_TEST_MODEL'] ?? '';
   final modelPath = envModel.isEmpty ? null : envModel;
 
+  await group('Kalender-Abo (iCal)', () async {
+    const ics = 'BEGIN:VCALENDAR\r\nX-WR-CALNAME:Christoph\r\n'
+        'BEGIN:VEVENT\r\nDTSTART;TZID=Europe/Vienna:20261123T110000\r\nDTEND;TZID=Europe/Vienna:20261123T120000\r\n'
+        'SUMMARY:Dawin krallen Termin anrufen\r\nEND:VEVENT\r\n'
+        'BEGIN:VEVENT\r\nDTSTART:20261123T150000Z\r\nDTEND:20261123T160000Z\r\nSUMMARY:Chatbot Event\r\nLOCATION:Wien\\, Austria\r\nEND:VEVENT\r\n'
+        'BEGIN:VEVENT\r\nDTSTART;VALUE=DATE:19900324\r\nDTEND;VALUE=DATE:19900325\r\nRRULE:FREQ=YEARLY\r\nSUMMARY:Geburtstag Dominik\r\nEND:VEVENT\r\n'
+        'BEGIN:VEVENT\r\nDTSTART;TZID=Europe/Vienna:20261102T090000\r\nDTEND;TZID=Europe/Vienna:20261102T093000\r\n'
+        'RRULE:FREQ=WEEKLY;BYDAY=MO,WE\r\nEXDATE;TZID=Europe/Vienna:20261125T090000\r\nSUMMARY:Standup\r\nEND:VEVENT\r\n'
+        'BEGIN:VEVENT\r\nDTSTART:20261124T080000\r\nDTEND:20261124T090000\r\nSUMMARY:Reifenwechseln\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\n'
+        'END:VCALENDAR\r\n';
+    final day = parseIcs(ics, DateTime(2026, 11, 23), DateTime(2026, 11, 24));
+    check(day.map((e) => e.title).toList().toString() == '[Standup, Dawin krallen Termin anrufen, Chatbot Event]',
+        'Tag: Serie, lokaler und UTC-Termin (${day.map((e) => e.title).toList()})');
+    check(day.first.begin.hour == 9 && day[1].begin.hour == 11, 'Uhrzeiten lokal');
+    check(day.last.location == 'Wien, Austria' && day.last.calendar == 'Christoph', 'Ort entschlüsselt, Kalendername');
+    final wed = parseIcs(ics, DateTime(2026, 11, 25), DateTime(2026, 11, 26));
+    check(wed.isEmpty, 'EXDATE nimmt den Mittwoch raus');
+    final bday = parseIcs(ics, DateTime(2027, 3, 24), DateTime(2027, 3, 25)).where((e) => e.title.startsWith('Geburtstag')).toList();
+    check(bday.length == 1 && bday.first.allDay, 'Jährlicher Geburtstag (ganztägig)');
+    check(parseIcs(ics, DateTime(2027, 3, 23), DateTime(2027, 3, 24)).every((e) => !e.title.startsWith('Geburtstag')),
+        'Geburtstag nicht am Vortag');
+    check(parseIcs(ics, DateTime(2026, 11, 24), DateTime(2026, 11, 25)).isEmpty, 'Abgesagter Termin fehlt');
+  });
+
   await group('Rechner', () async {
     double c(String e) => CalculatorTool.evaluate(e);
     check(c('(3+4)*2') == 14, '(3+4)*2 = 14');
