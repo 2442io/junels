@@ -30,10 +30,8 @@ class QuickNavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final route = ModalRoute.of(context);
-    final nav = context.dependOnInheritedWidgetOfExactType<ShellNav>();
-    // Startseite oder eingebetteter Bereich am Desktop (Seitenleiste ist da): nichts zeigen
-    if (route == null || route.isFirst || route is PopupRoute) return const SizedBox.shrink();
-    if (nav != null && nav.embedded && !Navigator.of(context).canPop()) return const SizedBox.shrink();
+    if (route is PopupRoute) return const SizedBox.shrink();
+    // überall gleich: auf jeder Seite, auch am Desktop und auf der Startseite
     return IconButton(
       tooltip: 'Schnell wechseln',
       icon: const Icon(Icons.apps_rounded),
@@ -48,6 +46,8 @@ void goHome(BuildContext context) => Navigator.of(context).popUntil((r) => r.isF
 Future<void> showQuickNav(BuildContext context) async {
   final app = AppScope.read(context);
   final rootContext = Navigator.of(context, rootNavigator: true).context;
+  // Desktop: Bereiche sind eingebettet (Seitenleiste) – dorthin wechseln statt eine Seite zu öffnen
+  final shell = context.getInheritedWidgetOfExactType<ShellNav>();
   final c = AppColors.of(context);
   final sections = [
     (AppSection.inbox, app.todoCount > 0 ? '${app.todoCount}' : null),
@@ -121,12 +121,18 @@ Future<void> showQuickNav(BuildContext context) async {
   if (picked == null || !rootContext.mounted) return;
   final navigator = Navigator.of(rootContext);
   navigator.popUntil((r) => r.isFirst);
-  if (picked == 'home') return;
-  if (picked == 'new') {
-    app.newConversation();
+  if (picked == 'home' || picked == 'new') {
+    if (picked == 'new') app.newConversation();
+    shell?.go(AppSection.chat);
     return;
   }
-  if (picked is AppSection && rootContext.mounted) openSection(rootContext, picked);
+  if (picked is! AppSection) return;
+  if (shell != null && shell.embedded) {
+    shell.go(picked);
+  } else {
+    shell?.go(AppSection.chat);
+    navigator.push(MaterialPageRoute(builder: (_) => pageFor(picked)));
+  }
 }
 
 String _short(AppSection s) => switch (s) {

@@ -14,6 +14,9 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.45.1', [
+    'Schnellnavigation überall: das Raster gibt es jetzt auch im Chat (Handy oben statt Gesprächsmodus – der ist unten im Eingabefeld), am Desktop und in allen Bereichen',
+  ]),
   ('1.45.0', [
     'Schneller navigieren: In jeder Unterseite oben rechts das Raster – direkt „Zum Chat“, „Neuer Chat“ oder in jeden Bereich springen, statt Seite für Seite zurück',
     'Bereiche stapeln sich nicht mehr: wer aus einem Bereich in einen anderen wechselt, ist mit einem Schritt zurück wieder im Chat',

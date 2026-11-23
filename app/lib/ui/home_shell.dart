@@ -17,6 +17,7 @@ import 'conversation_page.dart';
 import 'sidebar.dart';
 import 'system_check.dart';
 import 'nav.dart';
+import 'quick_nav.dart';
 import 'watchlist_page.dart';
 import 'flows_page.dart';
 import 'theme.dart';
@@ -221,11 +222,18 @@ class _HomeShellState extends State<HomeShell> {
             onPressed: () => openSection(context, AppSection.inbox),
           ),
           const SizedBox(width: 6),
-          PillIconButton(
-            icon: Icons.graphic_eq,
-            tooltip: 'Gesprächsmodus',
-            onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
-          ),
+          // Handy: Gesprächsmodus gibt es unten im Eingabefeld – hier die Schnellnavigation wie auf allen Seiten
+          if (compact)
+            PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnell wechseln', onPressed: () => showQuickNav(context))
+          else ...[
+            PillIconButton(
+              icon: Icons.graphic_eq,
+              tooltip: 'Gesprächsmodus',
+              onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
+            ),
+            const SizedBox(width: 6),
+            PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnell wechseln', onPressed: () => showQuickNav(context)),
+          ],
           const SizedBox(width: 6),
           if (!compact) ...[
             PillIconButton(icon: Icons.add, tooltip: 'Neuer Chat', onPressed: app.newConversation),
