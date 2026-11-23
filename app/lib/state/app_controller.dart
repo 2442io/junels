@@ -1368,7 +1368,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Alles, was auf dich wartet – Zahl an Glocke und Seitenleiste.
   int get todoCount =>
-      notifier.items.where((i) => i.waiting).length + pendingApprovals.length + activeGuides.length + memory.pending.length;
+      notifier.visible.where((i) => i.waiting).length + pendingApprovals.length + activeGuides.length + memory.pending.length;
 
   NotifySettings get notifySettings => NotifySettings.fromJson(settings.notifyPrefs);
   Future<void> saveNotifySettings(NotifySettings s) async {

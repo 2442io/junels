@@ -63,6 +63,7 @@ class InboxItem {
     this.done = false,
     this.due,
     this.nativeId,
+    this.archived = false,
   });
 
   final String id;
@@ -76,6 +77,7 @@ class InboxItem {
   bool done; // Aktion/Erinnerung erledigt
   DateTime? due; // Erinnerung: wann sie fällig ist (in der Zukunft = geplant)
   String? nativeId; // Kennung der geplanten System-Meldung (Schlummern, Abbrechen)
+  bool archived; // aus der Liste genommen, aber im Archiv auffindbar
 
   bool get planned => due != null && due!.isAfter(DateTime.now()) && !done;
   bool get waiting => (kind == NotifyKind.aktion || kind == NotifyKind.erinnerung) && !done && !planned;
@@ -92,6 +94,7 @@ class InboxItem {
         if (done) 'done': true,
         if (due != null) 'due': due!.toIso8601String(),
         if (nativeId != null) 'native': nativeId,
+        if (archived) 'archived': true,
       };
 
   factory InboxItem.fromJson(Map<String, dynamic> j) => InboxItem(
@@ -106,6 +109,7 @@ class InboxItem {
         done: j['done'] == true,
         due: DateTime.tryParse('${j['due'] ?? ''}'),
         nativeId: j['native'] as String?,
+        archived: j['archived'] == true,
       );
 }
 
@@ -160,9 +164,10 @@ class Notifier extends ChangeNotifier {
   final Map<String, (int, DateTime)> _bundle = {}; // Quelle → (Anzahl, seit)
   final Map<NotifyKind, List<String>> _deferred = {}; // Ruhezeit: gesammelte Titel je Art
 
-  int get unread => items.where((i) => !i.read && !i.planned && i.kind != NotifyKind.ruhig).length;
-  bool get hasWaiting => items.any((i) => i.waiting);
-  bool get hasWarning => items.any((i) => !i.read && i.kind == NotifyKind.warnung);
+  Iterable<InboxItem> get visible => items.where((i) => !i.archived);
+  int get unread => visible.where((i) => !i.read && !i.planned && i.kind != NotifyKind.ruhig).length;
+  bool get hasWaiting => visible.any((i) => i.waiting);
+  bool get hasWarning => visible.any((i) => !i.read && i.kind == NotifyKind.warnung);
 
   Future<void> load() async {
     try {
@@ -171,8 +176,9 @@ class Notifier extends ChangeNotifier {
       items
         ..clear()
         ..addAll([for (final j in list) InboxItem.fromJson((j as Map).cast())]);
-      final cut = DateTime.now().subtract(const Duration(days: 30));
-      items.removeWhere((i) => i.at.isBefore(cut) && !i.waiting);
+      // Nichts verschwindet von selbst: nur archivierte Meldungen älter als 180 Tage werden entfernt
+      final cut = DateTime.now().subtract(const Duration(days: 180));
+      items.removeWhere((i) => i.archived && i.at.isBefore(cut));
       notifyListeners();
     } catch (_) {}
   }
@@ -284,8 +290,41 @@ class Notifier extends ChangeNotifier {
   }
 
   void markAllRead() {
-    for (final i in items) {
+    for (final i in visible) {
       i.read = true;
+    }
+    _save();
+  }
+
+  void markAllUnread() {
+    for (final i in visible) {
+      if (!i.planned) i.read = false;
+    }
+    _save();
+  }
+
+  void toggleRead(InboxItem i) {
+    i.read = !i.read;
+    _save();
+  }
+
+  /// Aus der Liste nehmen – bleibt im Archiv und lässt sich wiederherstellen.
+  void archive(InboxItem i) {
+    i
+      ..archived = true
+      ..read = true;
+    _save();
+  }
+
+  void restore(InboxItem i) {
+    i.archived = false;
+    _save();
+  }
+
+  /// Gelesenes (außer Offenem) ins Archiv.
+  void archiveRead() {
+    for (final i in items) {
+      if (i.read && !i.waiting && !i.planned) i.archived = true;
     }
     _save();
   }
@@ -350,8 +389,8 @@ class Notifier extends ChangeNotifier {
     _save();
   }
 
-  void clearRead() {
-    items.removeWhere((i) => i.read && !i.waiting);
+  void clearArchive() {
+    items.removeWhere((i) => i.archived);
     _save();
   }
 }
