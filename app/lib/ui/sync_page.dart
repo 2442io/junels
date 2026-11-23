@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../state/app_scope.dart';
 import '../state/sync_service.dart';
+import 'quick_nav.dart';
 
 Future<void> openSync(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SyncPage()));
@@ -74,7 +75,7 @@ class _SyncPageState extends State<SyncPage> {
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Konto, Daten & Abgleich')),
+      appBar: JAppBar(title: const Text('Konto, Daten & Abgleich')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

@@ -63,7 +63,8 @@ void openSection(BuildContext context, AppSection s, {bool fromDrawer = false}) 
     return;
   }
   final navigator = Navigator.of(context);
-  if (fromDrawer) navigator.maybePop();
+  // Bereiche stapeln sich nicht: erst zurück zur Startseite, dann den Bereich öffnen (ein Schritt zurück reicht)
+  navigator.popUntil((r) => r.isFirst);
   nav?.go(AppSection.chat);
   if (s == AppSection.chat) return;
   navigator.push(MaterialPageRoute(builder: (_) => pageFor(s)));

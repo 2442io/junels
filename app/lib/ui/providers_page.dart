@@ -8,6 +8,7 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 class ProvidersSettings extends StatelessWidget {
   const ProvidersSettings({super.key});
@@ -332,7 +333,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
     final t = Theme.of(context).textTheme;
     final app = AppScope.of(context);
     return Scaffold(
-      appBar: AppBar(
+      appBar: JAppBar(
         title: Text(widget.existing == null ? 'Anbieter hinzufügen' : widget.existing!.name),
         actions: [
           if (widget.existing != null)

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 Future<void> openDesigns(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DesignsPage()));
@@ -67,7 +68,7 @@ class DesignsPage extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final list = DesignLibrary.user;
     return Scaffold(
-      appBar: AppBar(title: const Text('Eigene Designs')),
+      appBar: JAppBar(title: const Text('Eigene Designs')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showModalBottomSheet(
           context: context,
@@ -289,7 +290,7 @@ class _DesignEditorState extends State<DesignEditor> {
   Widget build(BuildContext context) {
     final ok = [_primary, _secondary, _background, _text].every((c) => _valid(c.text));
     return Scaffold(
-      appBar: AppBar(
+      appBar: JAppBar(
         title: Text(widget.existing == null ? 'Design anlegen' : 'Design bearbeiten'),
         actions: [
           Padding(

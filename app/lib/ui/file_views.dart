@@ -9,6 +9,7 @@ import 'theme.dart';
 
 import '../state/app_controller.dart' show isImageFile;
 import '../state/native_files.dart';
+import 'quick_nav.dart';
 
 String _size(int b) => b >= 1 << 20 ? '${(b / (1 << 20)).toStringAsFixed(1)} MB' : '${(b / 1024).ceil()} KB';
 
@@ -232,7 +233,7 @@ class _PageViewerState extends State<_PageViewer> {
         autofocus: true,
         child: Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
+          appBar: JAppBar(
             backgroundColor: Colors.black,
             foregroundColor: Colors.white,
             title: Text('${widget.title} · ${_i + 1}/${widget.pages.length}', style: const TextStyle(fontSize: 15)),
@@ -308,7 +309,7 @@ class _ImageViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(
+        appBar: JAppBar(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
           title: Text(path.split(Platform.pathSeparator).last, style: const TextStyle(fontSize: 14)),

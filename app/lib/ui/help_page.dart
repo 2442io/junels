@@ -10,6 +10,7 @@ import 'nav.dart';
 import 'settings_page.dart';
 import 'system_check.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 class HelpArticle {
   const HelpArticle({
@@ -723,22 +724,22 @@ class _HelpPageState extends State<HelpPage> {
             setState(() => _selected = a.id);
           } else {
             Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => Scaffold(appBar: AppBar(title: Text(a.category)), body: HelpArticleView(article: a))));
+                builder: (_) => Scaffold(appBar: JAppBar(title: Text(a.category)), body: HelpArticleView(article: a))));
           }
         },
       );
       if (!wide) {
         if (widget.initial != null) {
           final a = helpArticles.where((x) => x.id == widget.initial).firstOrNull;
-          if (a != null) return Scaffold(appBar: AppBar(title: Text(a.category)), body: HelpArticleView(article: a));
+          if (a != null) return Scaffold(appBar: JAppBar(title: Text(a.category)), body: HelpArticleView(article: a));
         }
-        return Scaffold(appBar: AppBar(title: const Text('Hilfe')), body: list);
+        return Scaffold(appBar: JAppBar(title: const Text('Hilfe')), body: list);
       }
       final article = helpArticles.firstWhere((a) => a.id == (_selected ?? helpArticles.first.id),
           orElse: () => helpArticles.first);
       final c = AppColors.of(context);
       return Scaffold(
-        appBar: AppBar(title: const Text('Hilfe')),
+        appBar: JAppBar(title: const Text('Hilfe')),
         body: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Container(
             width: 330,
@@ -897,7 +898,7 @@ class HelpArticleView extends StatelessWidget {
                           onSelect!(r);
                         } else {
                           Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => Scaffold(appBar: AppBar(title: Text(r.category)), body: HelpArticleView(article: r))));
+                              builder: (_) => Scaffold(appBar: JAppBar(title: Text(r.category)), body: HelpArticleView(article: r))));
                         }
                       },
                     ),

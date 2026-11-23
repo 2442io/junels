@@ -11,6 +11,7 @@ import 'nav.dart';
 import 'notify_style.dart';
 import 'slide_to_done.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 class InboxPage extends StatefulWidget {
   const InboxPage({super.key});
@@ -69,7 +70,7 @@ class _InboxPageState extends State<InboxPage> {
             );
 
         return Scaffold(
-          appBar: AppBar(
+          appBar: JAppBar(
             title: Text(_archive ? 'Archiv' : 'Benachrichtigungen'),
             leading: _archive ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _archive = false)) : null,
             actions: [

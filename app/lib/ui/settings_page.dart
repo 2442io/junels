@@ -27,6 +27,7 @@ import '../state/sync_service.dart' show PrivacyLevel;
 import 'notify_settings_page.dart';
 import 'theme.dart';
 import 'update_page.dart';
+import 'quick_nav.dart';
 
 class SettingsSection {
   const SettingsSection(this.id, this.icon, this.title, this.subtitle);
@@ -67,7 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!wide) {
         if (widget.initial != null) return _SectionPage(id: widget.initial!);
         return Scaffold(
-          appBar: AppBar(title: const Text('Einstellungen')),
+          appBar: JAppBar(title: const Text('Einstellungen')),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
             children: [
@@ -94,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       final current = settingsSections.firstWhere((s) => s.id == _section, orElse: () => settingsSections.first);
       return Scaffold(
-        appBar: AppBar(title: const Text('Einstellungen')),
+        appBar: JAppBar(title: const Text('Einstellungen')),
         body: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Container(
             width: 260,
@@ -160,7 +161,7 @@ class _SectionPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = settingsSections.firstWhere((x) => x.id == id);
     return Scaffold(
-      appBar: AppBar(title: Text(s.title)),
+      appBar: JAppBar(title: Text(s.title)),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 48), children: [SettingsBody(id: id)]),
     );
   }

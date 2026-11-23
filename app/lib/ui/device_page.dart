@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import '../state/device_bridge.dart';
+import 'quick_nav.dart';
 
 Future<void> openDevicePage(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DevicePage()));
@@ -144,7 +145,7 @@ class _DevicePageState extends State<DevicePage> {
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Gerät & Automatik')),
+      appBar: JAppBar(title: const Text('Gerät & Automatik')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

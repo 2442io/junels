@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../state/app_scope.dart';
 import '../state/connections.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 class ConnectionsPage extends StatelessWidget {
   const ConnectionsPage({super.key});
@@ -16,7 +17,7 @@ class ConnectionsPage extends StatelessWidget {
     final c = AppColors.of(context);
     final items = app.connections.items;
     return Scaffold(
-      appBar: AppBar(title: const Text('Zugänge'), actions: [
+      appBar: JAppBar(title: const Text('Zugänge'), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(

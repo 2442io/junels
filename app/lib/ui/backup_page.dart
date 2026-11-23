@@ -9,6 +9,7 @@ import '../state/app_scope.dart';
 import '../state/backup.dart';
 import '../state/native_files.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 Future<void> openBackup(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BackupPage()));
@@ -108,7 +109,7 @@ class _BackupPageState extends State<BackupPage> {
     final c = AppColors.of(context);
     final t = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Sicherung')),
+      appBar: JAppBar(title: const Text('Sicherung')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
         children: [

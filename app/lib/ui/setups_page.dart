@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 Future<void> openSetups(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SetupsPage()));
@@ -54,7 +55,7 @@ class SetupsPage extends StatelessWidget {
     final setups = app.settings.setups;
     final mine = app.deviceSetupName;
     return Scaffold(
-      appBar: AppBar(title: const Text('Geräte-Setups')),
+      appBar: JAppBar(title: const Text('Geräte-Setups')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
         children: [

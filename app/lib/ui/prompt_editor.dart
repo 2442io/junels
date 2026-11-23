@@ -8,6 +8,7 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'notify_style.dart';
+import 'quick_nav.dart';
 
 Future<void> editPrompt(BuildContext context, {SavedPrompt? prompt, String? initialText, bool scheduled = false}) =>
     Navigator.of(context).push(MaterialPageRoute<void>(
@@ -71,7 +72,7 @@ class _PromptEditorState extends State<PromptEditor> {
     final t = Theme.of(context).textTheme;
     final isNew = widget.prompt == null;
     return Scaffold(
-      appBar: AppBar(
+      appBar: JAppBar(
         title: Text(isNew ? 'Neuer Prompt' : 'Prompt bearbeiten'),
         actions: [
           if (!isNew)

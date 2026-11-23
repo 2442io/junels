@@ -11,6 +11,7 @@ import 'flows_page.dart';
 import 'markdown_lite.dart';
 import 'notify_style.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -698,7 +699,7 @@ class WatchlistPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: JAppBar(
         title: const Text('Watchlist'),
         actions: [
           Padding(
@@ -881,7 +882,7 @@ class WatchDetailPageState extends State<WatchDetailPage> {
     final checking = app.watchlist.checkingId == item.id;
     final flow = item.flowId == null ? null : app.flows.flows.where((f) => f.id == item.flowId).firstOrNull;
     return Scaffold(
-      appBar: AppBar(
+      appBar: JAppBar(
         title: Text(item.title),
         actions: [
           IconButton(

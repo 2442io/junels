@@ -10,6 +10,7 @@ import '../state/update_service.dart';
 import '../version.dart';
 import 'info_pages.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 Future<void> openUpdates(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const UpdatePage()));
@@ -64,7 +65,7 @@ class _UpdatePageState extends State<UpdatePage> {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Updates & Versionsverlauf')),
+      appBar: JAppBar(title: const Text('Updates & Versionsverlauf')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

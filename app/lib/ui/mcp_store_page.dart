@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import '../state/native_files.dart';
+import 'quick_nav.dart';
 
 Future<void> openMcpStore(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const McpStorePage()));
@@ -64,7 +65,7 @@ class _McpStorePageState extends State<McpStorePage> {
     final featured = featuredMcpServers.where((e) => _category == 'Alle' || e.category == _category).toList();
     final searching = _search.text.trim().length >= 2;
     return Scaffold(
-      appBar: AppBar(title: const Text('MCP-Store')),
+      appBar: JAppBar(title: const Text('MCP-Store')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../state/app_control.dart';
 import '../state/app_scope.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 Future<void> openAppsPage(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AppsPage()));
@@ -83,7 +84,7 @@ class _AppsPageState extends State<AppsPage> {
     final list = app.allowedApps;
     Future<void> save() => app.saveAllowedApps(list);
     return Scaffold(
-      appBar: AppBar(title: const Text('Apps steuern')),
+      appBar: JAppBar(title: const Text('Apps steuern')),
       floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: const Text('App freigeben')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),

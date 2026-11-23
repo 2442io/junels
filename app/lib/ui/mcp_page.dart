@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'mcp_store_page.dart';
+import 'quick_nav.dart';
 
 Future<void> openMcp(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const McpPage()));
@@ -19,7 +20,7 @@ class McpPage extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('MCP-Server')),
+      appBar: JAppBar(title: const Text('MCP-Server')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _editServer(context, app, null),
         icon: const Icon(Icons.add),

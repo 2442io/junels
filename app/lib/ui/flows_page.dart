@@ -19,6 +19,7 @@ import 'mcp_page.dart';
 import 'notify_style.dart';
 import 'theme.dart';
 import 'watchlist_page.dart';
+import 'quick_nav.dart';
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -129,7 +130,7 @@ class _FlowsPageState extends State<FlowsPage> {
     final flows = app.flows.flows.where((f) => !watchFlows.contains(f.id)).toList();
     final narrow = MediaQuery.sizeOf(context).width < 560;
     return Scaffold(
-      appBar: AppBar(title: const Text('Prozesse'), actions: [
+      appBar: JAppBar(title: const Text('Prozesse'), actions: [
         if (narrow)
           IconButton(tooltip: 'Beobachten', icon: const Icon(Icons.radar), onPressed: () => showWatchDialog(context))
         else
@@ -704,7 +705,7 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
                   },
                 ));
       return Scaffold(
-        appBar: AppBar(
+        appBar: JAppBar(
           title: _NameField(
             name: wf.name,
             onChanged: (v) {

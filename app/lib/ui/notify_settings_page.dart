@@ -6,6 +6,7 @@ import '../state/app_scope.dart';
 import '../state/notifications.dart';
 import 'notify_style.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 void openNotifySettings(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotifySettingsPage()));
@@ -56,7 +57,7 @@ class _NotifySettingsPageState extends State<NotifySettingsPage> {
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Benachrichtigungen')),
+      appBar: JAppBar(title: const Text('Benachrichtigungen')),
       body: ListView(padding: const EdgeInsets.fromLTRB(12, 8, 12, 24), children: [
         Text('Jede Meldung hat eine Art mit eigener Farbe und eigenem Symbol. Ausgeschaltete Arten kommen nicht als Push, '
             'stehen aber weiter unter Mitteilungen (Glocke).',

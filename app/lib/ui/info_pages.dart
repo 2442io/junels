@@ -11,8 +11,13 @@ import 'package:flutter/services.dart';
 import '../state/native_files.dart';
 import '../state/voice_service.dart';
 import '../version.dart';
+import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.45.0', [
+    'Schneller navigieren: In jeder Unterseite oben rechts das Raster – direkt „Zum Chat“, „Neuer Chat“ oder in jeden Bereich springen, statt Seite für Seite zurück',
+    'Bereiche stapeln sich nicht mehr: wer aus einem Bereich in einen anderen wechselt, ist mit einem Schritt zurück wieder im Chat',
+  ]),
   ('1.44.1', [
     'Benachrichtigungen springen direkt ins Thema: Beobachtung öffnet die Beobachtung (nicht die Watchlist), Prozess-Fehler öffnen den Prozess – auch beim Antippen der Meldung am Mac',
     'Einstellungen → Gerät & Automatik → „Kalender prüfen“: zeigt, welche Kalender Junels sieht, wie viele Termine darin liegen und ob die Synchronisierung aus ist',
@@ -472,7 +477,7 @@ class _LogPageState extends State<LogPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
+      appBar: JAppBar(
         title: const Text('Protokoll'),
         actions: [
           IconButton(

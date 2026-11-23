@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'model_import.dart';
+import 'quick_nav.dart';
 
 Future<void> openSystemCheck(BuildContext context) async {
   final app = AppScope.read(context);
@@ -23,7 +24,7 @@ class SystemCheckPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Systemcheck & Modelle')),
+      appBar: JAppBar(title: const Text('Systemcheck & Modelle')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),

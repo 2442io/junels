@@ -10,6 +10,7 @@ import 'chat_view.dart' show showMailAccountDialog;
 import 'device_page.dart' show setupMorningBriefing;
 import 'prompt_editor.dart';
 import 'theme.dart';
+import 'quick_nav.dart';
 
 Future<void> openTasks(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksPage()));
@@ -39,7 +40,7 @@ class TasksPage extends StatelessWidget {
     final now = DateTime.now();
     final active = tasks.where((p) => p.enabled).length;
     return Scaffold(
-      appBar: AppBar(title: const Text('Geplante Aufgaben'), actions: [
+      appBar: JAppBar(title: const Text('Geplante Aufgaben'), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(
@@ -282,7 +283,7 @@ class PromptsPage extends StatelessWidget {
     final c = AppColors.of(context);
     final list = app.prompts.where((p) => p.schedule == ScheduleKind.off).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Prompt-Vorlagen'), actions: [
+      appBar: JAppBar(title: const Text('Prompt-Vorlagen'), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(
@@ -404,7 +405,7 @@ class ActivityPage extends StatelessWidget {
       ));
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Was hat der Agent getan?'), actions: [
+      appBar: JAppBar(title: const Text('Was hat der Agent getan?'), actions: [
         if (items.isNotEmpty)
           IconButton(
             tooltip: 'Verlauf leeren',
@@ -480,7 +481,7 @@ class _VaultPageState extends State<VaultPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tresor & Konten')),
+      appBar: JAppBar(title: const Text('Tresor & Konten')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
 import '../state/memory_store.dart';
+import 'quick_nav.dart';
 
 Future<void> openKnowledge(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const KnowledgePage()));
@@ -61,7 +62,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
     String date(DateTime d) => '${d.day}.${d.month}.${d.year}';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Wissensbasis & Gedächtnis')),
+      appBar: JAppBar(title: const Text('Wissensbasis & Gedächtnis')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
