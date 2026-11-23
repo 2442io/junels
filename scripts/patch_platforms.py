@@ -18,6 +18,15 @@ IOS_MIN = "16.0"
 MAC_MIN = "12.0"
 
 
+NOTIFY_ICONS = {
+    'aktion': 'M9,11.24V7.5C9,6.12 10.12,5 11.5,5S14,6.12 14,7.5v3.74c1.21,-0.81 2,-2.18 2,-3.74C16,5.01 13.99,3 11.5,3S7,5.01 7,7.5C7,9.06 7.79,10.43 9,11.24zM18.84,15.87l-4.54,-2.26c-0.17,-0.07 -0.35,-0.11 -0.54,-0.11H13v-6C13,6.67 12.33,6 11.5,6S10,6.67 10,7.5v10.74c-3.6,-0.76 -3.54,-0.75 -3.67,-0.75c-0.31,0 -0.59,0.13 -0.79,0.33l-0.79,0.8l4.94,4.94C9.96,23.83 10.34,24 10.75,24h6.79c0.75,0 1.33,-0.55 1.44,-1.28l0.75,-5.27c0.01,-0.07 0.02,-0.14 0.02,-0.2C19.75,16.63 19.37,16.09 18.84,15.87z',
+    'warnung': 'M1,21h22L12,2 1,21zM13,18h-2v-2h2v2zM13,14h-2v-4h2v4z',
+    'erinnerung': 'M22,5.72l-4.6,-3.86 -1.29,1.53 4.6,3.86L22,5.72zM7.88,3.39L6.6,1.86 2,5.71l1.29,1.53 4.59,-3.85zM12.5,8H11v6l4.75,2.85 0.75,-1.23 -4,-2.37V8zM12,4c-4.97,0 -9,4.03 -9,9s4.02,9 9,9c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM12,20c-3.87,0 -7,-3.13 -7,-7s3.13,-7 7,-7 7,3.13 7,7 -3.13,7 -7,7z',
+    'ergebnis': 'M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z',
+    'info': 'M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-6h2v6zM13,9h-2L11,7h2v2z',
+    'ruhig': 'M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z',
+}
+
 def log(msg):
     print(f"  · {msg}")
 
@@ -51,6 +60,17 @@ def _widget_resources(res: Path):
     """Startbildschirm-Widget: Layout, Hintergrund, Beschreibung."""
     for d in ("layout", "drawable", "xml"):
         (res / d).mkdir(parents=True, exist_ok=True)
+    # Symbole der Benachrichtigungs-Arten (Aktion, Warnung, Erinnerung, Ergebnis, Info, Ruhig)
+    for kind, path_data in NOTIFY_ICONS.items():
+        (res / f"drawable/junels_n_{kind}.xml").write_text(
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" '
+            'android:viewportWidth="24" android:viewportHeight="24">'
+            f'<path android:fillColor="#FFFFFFFF" android:pathData="{path_data}"/></vector>\n')
+    (res / "raw").mkdir(parents=True, exist_ok=True)
+    (res / "raw/junels_keep.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/junels_n_*" />\n')
     (res / "drawable/junels_widget_bg.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="#F21C2024" />

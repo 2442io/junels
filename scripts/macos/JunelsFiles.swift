@@ -1,6 +1,44 @@
 
 // Kanal "junels/files": PDF-Text lesen (PDFKit), Dateien öffnen, im Finder zeigen, teilen.
 enum JunelsFiles {
+  static func notifyStyle(_ kind: String) -> (label: String, symbol: String, color: NSColor, loud: Bool) {
+    switch kind {
+    case "aktion": return ("Aktion", "hand.tap.fill", NSColor(srgbRed: 0.49, green: 0.31, blue: 0.88, alpha: 1), true)
+    case "warnung": return ("Warnung", "exclamationmark.triangle.fill", NSColor(srgbRed: 0.82, green: 0.27, blue: 0.27, alpha: 1), true)
+    case "erinnerung": return ("Erinnerung", "alarm.fill", NSColor(srgbRed: 0.72, green: 0.53, blue: 0.04, alpha: 1), true)
+    case "ergebnis": return ("Fertig", "checkmark.circle.fill", NSColor(srgbRed: 0.07, green: 0.60, blue: 0.40, alpha: 1), false)
+    case "ruhig": return ("Hintergrund", "arrow.triangle.2.circlepath", NSColor.gray, false)
+    default: return ("Info", "info.circle.fill", NSColor(srgbRed: 0.18, green: 0.42, blue: 0.85, alpha: 1), false)
+    }
+  }
+
+  /// Farbiger Kreis mit weißem SF-Symbol als PNG (Bild in der Mitteilung). Jedes Mal neu (Anhänge werden verschoben).
+  static func badge(symbol: String, color: NSColor, kind: String) -> URL? {
+    guard #available(macOS 11.0, *),
+          let sym = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 44, weight: .semibold)) else { return nil }
+    let size = NSSize(width: 96, height: 96)
+    let img = NSImage(size: size)
+    img.lockFocus()
+    color.setFill()
+    NSBezierPath(ovalIn: NSRect(origin: .zero, size: size)).fill()
+    let tinted = NSImage(size: sym.size)
+    tinted.lockFocus()
+    sym.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1)
+    NSColor.white.set()
+    NSRect(origin: .zero, size: sym.size).fill(using: .sourceAtop)
+    tinted.unlockFocus()
+    let r = NSRect(x: (size.width - sym.size.width) / 2, y: (size.height - sym.size.height) / 2,
+                   width: sym.size.width, height: sym.size.height)
+    tinted.draw(in: r)
+    img.unlockFocus()
+    guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+          let data = rep.representation(using: .png, properties: [:]) else { return nil }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("junels-\(kind)-\(UUID().uuidString).png")
+    do { try data.write(to: url) } catch { return nil }
+    return url
+  }
+
   static func register(_ controller: FlutterViewController) {
     let channel = FlutterMethodChannel(name: "junels/files", binaryMessenger: controller.engine.binaryMessenger)
     channel.setMethodCallHandler { call, result in
@@ -62,7 +100,20 @@ enum JunelsFiles {
           let content = UNMutableNotificationContent()
           content.title = args["title"] as? String ?? "Junels"
           content.body = args["body"] as? String ?? ""
-          content.sound = .default
+          // Art der Meldung: Untertitel, Ton, Unterbrechung, farbiges Symbol (Konzept „Benachrichtigungen“)
+          let kind = args["kind"] as? String ?? "info"
+          let style = JunelsFiles.notifyStyle(kind)
+          content.subtitle = style.label
+          content.threadIdentifier = "junels-\(kind)"
+          if style.loud { content.sound = .default }
+          if #available(macOS 12.0, *) {
+            content.interruptionLevel = (kind == "info" || kind == "ruhig") ? .passive : .active
+          }
+          if let png = JunelsFiles.badge(symbol: style.symbol, color: style.color, kind: kind),
+             let att = try? UNNotificationAttachment(identifier: "art", url: png, options: nil) {
+            content.attachments = [att]
+          }
+
           var trigger: UNNotificationTrigger? = nil
           if let at = args["at"] as? NSNumber {
             let secs = at.doubleValue / 1000 - Date().timeIntervalSince1970

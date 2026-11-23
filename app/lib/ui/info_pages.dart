@@ -13,6 +13,13 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.41.0', [
+    'Benachrichtigungen mit Art, Farbe und Symbol: Aktion (violett, Hand), Warnung (rot, Dreieck), Erinnerung (bernstein, Wecker), Ergebnis (mint, Haken), Info (blau, i)',
+    'Android: eigener Kanal je Art (Ton/Vibration im System einstellbar), farbiges Symbol in der Meldung; Mac: Untertitel und Symbol-Bild je Art',
+    'Mitteilungen (Glocke oben): alles gesammelt, „Wartet auf dich“ zuerst, Filter nach Art; violetter Punkt = Aktion offen, roter = Warnung',
+    'Einstellungen → Benachrichtigungen: Arten an/aus, Ruhezeit (Aktionen und Erinnerungen kommen durch), Infos optional einmal täglich',
+    'Prozesse: Art im Baustein „Push-Nachricht“ wählbar; Fehler in Prozessen melden sich als Warnung, Grenzwerte der Watchlist ebenso',
+  ]),
   ('1.40.0', [
     'Prozesse duplizieren: Menü ⋮ in der Liste oder „Duplizieren“ in den Prozess-Einstellungen – die Kopie startet pausiert und öffnet sich zum Anpassen',
     'Watchlist: Einträge duplizieren (Dialog mit allen Einstellungen vorausgefüllt) und bearbeiten – Menü ⋮ in der Liste oder oben im Eintrag',

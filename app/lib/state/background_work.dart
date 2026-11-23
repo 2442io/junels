@@ -63,13 +63,17 @@ class BackgroundWork {
   }
 
   /// Benachrichtigung sofort oder zum Zeitpunkt [at] (bleibt auch bei geschlossener App).
-  static Future<void> notify(String title, String body, {String? conversationId, DateTime? at}) async {
+  /// [kind]: aktion | warnung | erinnerung | ergebnis | info | ruhig – bestimmt Kanal, Farbe, Symbol, Ton.
+  /// [id]: gleiche id ersetzt eine vorhandene Meldung (Bündeln).
+  static Future<void> notify(String title, String body,
+      {String? conversationId, DateTime? at, String kind = 'info', String? id}) async {
     try {
       final args = {
         'title': title,
         'body': body,
         'conversation': conversationId,
-        'id': ('${conversationId ?? title}${at?.millisecondsSinceEpoch ?? ''}').hashCode & 0x7FFFFFFF,
+        'kind': kind,
+        'id': (id ?? '${conversationId ?? title}${at?.millisecondsSinceEpoch ?? ''}').hashCode & 0x7FFFFFFF,
         if (at != null) 'at': at.millisecondsSinceEpoch,
       };
       if (Platform.isAndroid) {

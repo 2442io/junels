@@ -47,11 +47,15 @@ object JunelsNative {
                     // Erinnerung: Wecker stellen, bleibt auch nach Neustart erhalten
                     val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     val arr = JSONArray(prefs.getString("notes", "[]"))
-                    arr.put(JSONObject().put("id", id).put("title", title).put("body", body).put("at", at))
-                    prefs.edit().putString("notes", arr.toString()).apply()
-                    setNoteAlarm(ctx, id, title, body, at)
+                    val kind = call.argument<String>("kind") ?: "erinnerung"
+                    // gleiche id ersetzt (Bündeln/Ruhezeit)
+                    val keep = JSONArray()
+                    for (i in 0 until arr.length()) if (arr.getJSONObject(i).optInt("id") != id) keep.put(arr.getJSONObject(i))
+                    keep.put(JSONObject().put("id", id).put("title", title).put("body", body).put("at", at).put("kind", kind))
+                    prefs.edit().putString("notes", keep.toString()).apply()
+                    setNoteAlarm(ctx, id, title, body, at, kind)
                 } else {
-                    notify(ctx, title, body, call.argument<String>("conversation"), id)
+                    notify(ctx, title, body, call.argument<String>("conversation"), id, call.argument<String>("kind"))
                 }
                 result.success(true)
             }
@@ -92,15 +96,15 @@ object JunelsNative {
             val at = o.getLong("at")
             if (at < now - 24 * 3600_000L) continue
             keep.put(o)
-            setNoteAlarm(ctx, o.getInt("id"), o.getString("title"), o.getString("body"), maxOf(at, now + 5_000))
+            setNoteAlarm(ctx, o.getInt("id"), o.getString("title"), o.getString("body"), maxOf(at, now + 5_000), o.optString("kind", "erinnerung"))
         }
         old.edit().putString("notes", keep.toString()).apply()
     }
 
-    fun setNoteAlarm(ctx: Context, id: Int, title: String, body: String, at: Long) {
+    fun setNoteAlarm(ctx: Context, id: Int, title: String, body: String, at: Long, kind: String = "erinnerung") {
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val i = Intent(ctx, AlarmReceiver::class.java).setAction("junels.NOTIFY")
-            .putExtra("nid", id).putExtra("title", title).putExtra("body", body)
+            .putExtra("nid", id).putExtra("title", title).putExtra("body", body).putExtra("kind", kind)
         val pi = PendingIntent.getBroadcast(ctx, id, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         var exact = true
         if (Build.VERSION.SDK_INT >= 31) exact = am.canScheduleExactAlarms()
@@ -123,22 +127,71 @@ object JunelsNative {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    fun notify(ctx: Context, title: String, body: String, conversation: String?, id: Int) {
+    /** Art der Meldung → Kanal, Farbe, Symbol (Konzept „Benachrichtigungen“). */
+    private data class Kind(val channel: String, val name: String, val importance: Int, val color: Int, val label: String)
+
+    private fun kindOf(k: String?): Kind = when (k) {
+        "aktion" -> Kind("k_aktion", "Aktionen – Junels wartet auf dich", NotificationManager.IMPORTANCE_HIGH, 0xFF7C4FE0.toInt(), "Aktion")
+        "warnung" -> Kind("k_warnung", "Warnungen – Fehler und Grenzwerte", NotificationManager.IMPORTANCE_HIGH, 0xFFD14545.toInt(), "Warnung")
+        "erinnerung" -> Kind("k_erinnerung", "Erinnerungen", NotificationManager.IMPORTANCE_HIGH, 0xFFB7860B.toInt(), "Erinnerung")
+        "ergebnis" -> Kind("k_ergebnis", "Ergebnisse – etwas ist fertig", NotificationManager.IMPORTANCE_DEFAULT, 0xFF119A67.toInt(), "Fertig")
+        "ruhig" -> Kind("k_ruhig", "Hintergrund", NotificationManager.IMPORTANCE_MIN, 0xFF8A8F98.toInt(), "Hintergrund")
+        else -> Kind("k_info", "Infos – Neues ohne Handlungsbedarf", NotificationManager.IMPORTANCE_LOW, 0xFF2F6BD8.toInt(), "Info")
+    }
+
+    /** Großes Symbol: farbiger Kreis mit weißem Symbol der Art. */
+    private fun badge(ctx: Context, kind: String, color: Int): android.graphics.Bitmap? = try {
+        val res = ctx.resources.getIdentifier("junels_n_$kind", "drawable", ctx.packageName)
+        val size = (48 * ctx.resources.displayMetrics.density).toInt()
+        val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bmp)
+        val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+        cv.drawCircle(size / 2f, size / 2f, size / 2f, p)
+        if (res != 0) {
+            val d = ctx.getDrawable(res)!!.mutate()
+            val pad = size / 4
+            d.setBounds(pad, pad, size - pad, size - pad)
+            d.setTint(0xFFFFFFFF.toInt())
+            d.draw(cv)
+        }
+        bmp
+    } catch (_: Throwable) { null }
+
+    fun notify(ctx: Context, title: String, body: String, conversation: String?, id: Int, kindName: String? = null) {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val k = kindOf(kindName)
+        val kindKey = k.channel.removePrefix("k_")
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel("results", "Ergebnisse geplanter Prompts", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel(k.channel, k.name, k.importance).apply {
+                lightColor = k.color
+                if (kindKey == "erinnerung") setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+                    android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM).build())
+            })
+            try { nm.deleteNotificationChannel("results") } catch (_: Throwable) {}
         }
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)!!
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         if (conversation != null) launch.putExtra("conversation", conversation)
         val open = PendingIntent.getActivity(ctx, id, launch, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         @Suppress("DEPRECATION")
-        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(ctx, "results") else Notification.Builder(ctx)
-        val n = b.setContentTitle(title).setContentText(body)
+        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(ctx, k.channel) else Notification.Builder(ctx)
+        val icon = ctx.resources.getIdentifier("junels_n_$kindKey", "drawable", ctx.packageName)
+        b.setContentTitle(title).setContentText(body)
             .setStyle(Notification.BigTextStyle().bigText(body))
-            .setSmallIcon(ctx.applicationInfo.icon).setAutoCancel(true).setContentIntent(open).build()
+            .setSmallIcon(if (icon != 0) icon else ctx.applicationInfo.icon)
+            .setColor(k.color)
+            .setSubText(k.label)
+            .setAutoCancel(true).setContentIntent(open)
+            .setGroup("junels_$kindKey")
+            .setCategory(when (kindKey) {
+                "erinnerung" -> Notification.CATEGORY_REMINDER
+                "warnung" -> Notification.CATEGORY_ERROR
+                "aktion" -> Notification.CATEGORY_STATUS
+                else -> Notification.CATEGORY_RECOMMENDATION
+            })
+        badge(ctx, kindKey, k.color)?.let { b.setLargeIcon(it) }
         try {
-            nm.notify(id, n)
+            nm.notify(id, b.build())
         } catch (_: SecurityException) {
             // ohne Benachrichtigungs-Erlaubnis
         }

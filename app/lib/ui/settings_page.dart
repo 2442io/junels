@@ -24,6 +24,7 @@ import 'apps_page.dart';
 import 'designs_page.dart';
 import 'setups_page.dart';
 import '../state/sync_service.dart' show PrivacyLevel;
+import 'notify_settings_page.dart';
 import 'theme.dart';
 import 'update_page.dart';
 
@@ -223,6 +224,12 @@ class SettingsBody extends StatelessWidget {
         return group(null, [_VoiceSection(app: app)]);
       case 'connections':
         return group(null, [
+          _NavTile(
+            icon: Icons.notifications_outlined,
+            title: 'Benachrichtigungen',
+            subtitle: 'Arten (Aktion, Warnung, Erinnerung, Ergebnis, Info), Ruhezeit',
+            onTap: () => openNotifySettings(context),
+          ),
           _NavTile(
             icon: Icons.home_outlined,
             title: 'Gerät & Automatik',

@@ -1809,7 +1809,7 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
     }
     check(bad, 'Unsinn → Fehler');
     final sent = <(String, DateTime?)>[];
-    final tool = NotifyTool((t, x, at) async => sent.add((t, at)), clock: () => now);
+    final tool = NotifyTool((t, x, at, k) async => sent.add((t, at)), clock: () => now);
     final r1 = await tool.run({'title': 'A', 'text': 'b', 'when': ''}, ToolContext());
     final r2 = await tool.run({'title': 'B', 'text': 'c', 'when': 'in 10 min'}, ToolContext());
     check(sent.length == 2 && sent[0].$2 == null && sent[1].$2 == DateTime(2026, 11, 19, 14, 10) &&

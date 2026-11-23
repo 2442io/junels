@@ -39,11 +39,12 @@ DateTime? parseWhen(String raw, DateTime now) {
   throw FormatException('Zeitangabe nicht verstanden: "$raw"');
 }
 
-typedef Notifier = Future<void> Function(String title, String text, DateTime? at);
+/// [kind]: aktion | warnung | erinnerung | ergebnis | info (leer = automatisch).
+typedef NotifySender = Future<void> Function(String title, String text, DateTime? at, String kind);
 
 class NotifyTool extends AgentTool {
   NotifyTool(this.send, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
-  final Notifier send;
+  final NotifySender send;
   final DateTime Function() _clock;
 
   @override
@@ -55,12 +56,17 @@ class NotifyTool extends AgentTool {
   @override
   String get description =>
       'Schickt dem Nutzer eine Push-Benachrichtigung aufs Gerät – sofort oder als Erinnerung zu einer Zeit. '
-      'when: leer = sofort, sonst z. B. "in 30 Minuten", "15:00", "morgen 8:30".';
+      'when: leer = sofort, sonst z. B. "in 30 Minuten", "15:00", "morgen 8:30". '
+      'art: erinnerung (Zeitpunkt, den der Nutzer will), aktion (NUR wenn er etwas tun muss, damit es weitergeht), '
+      'warnung (NUR bei Fehler oder überschrittener Grenze, mit Zahl), ergebnis (etwas ist fertig), info (sonst). '
+      'Titel ≤ 40 Zeichen sagt was, Text sagt was jetzt zu tun ist – konkrete Zahlen, keine Emojis.';
   @override
   List<ToolParam> get params => const [
         ToolParam('title', ParamType.string, 'Kurzer Titel'),
         ToolParam('text', ParamType.string, 'Nachrichtentext'),
         ToolParam('when', ParamType.string, 'Zeitpunkt (leer = sofort)'),
+        ToolParam('art', ParamType.enumeration, 'Art der Meldung',
+            values: ['erinnerung', 'aktion', 'warnung', 'ergebnis', 'info']),
       ];
 
   @override
@@ -76,7 +82,7 @@ class NotifyTool extends AgentTool {
       throw ToolException('${e.message}. Beispiele: "in 30 Minuten", "15:00", "morgen 8:30".');
     }
     if (at != null && !at.isAfter(now)) at = null;
-    await send(title.isEmpty ? 'Junels' : title, text, at);
+    await send(title.isEmpty ? 'Junels' : title, text, at, (args['art'] ?? '').toString().trim());
     if (at == null) return 'Push-Nachricht gesendet.';
     final hh = at.hour.toString().padLeft(2, '0'), mm = at.minute.toString().padLeft(2, '0');
     final sameDay = at.year == now.year && at.month == now.month && at.day == now.day;

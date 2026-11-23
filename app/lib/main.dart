@@ -41,7 +41,7 @@ Future<void> backgroundMain() async {
     }
     await app.unloadModel();
   } catch (e) {
-    await BackgroundWork.notify('Geplanter Prompt', 'Fehler: $e');
+    await BackgroundWork.notify('Geplanter Prompt fehlgeschlagen', 'Fehler: $e', kind: 'warnung');
   } finally {
     await BackgroundWork.headlessFinished();
   }

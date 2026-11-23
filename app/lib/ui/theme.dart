@@ -477,7 +477,9 @@ class Panel extends StatelessWidget {
 
 /// Runder Icon-Knopf mit Rand (wie in der Werkzeugleiste).
 class PillIconButton extends StatelessWidget {
-  const PillIconButton({super.key, required this.icon, required this.tooltip, this.onPressed, this.badge = false, this.active = false});
+  const PillIconButton(
+      {super.key, required this.icon, required this.tooltip, this.onPressed, this.badge = false, this.active = false, this.badgeColor});
+  final Color? badgeColor;
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
@@ -502,6 +504,7 @@ class PillIconButton extends StatelessWidget {
             child: Badge(
               isLabelVisible: badge,
               smallSize: 8,
+              backgroundColor: badgeColor,
               child: Icon(icon,
                   size: 19,
                   color: onPressed == null ? c.faint.withValues(alpha: 0.5) : (active ? c.mint : scheme.onSurface)),

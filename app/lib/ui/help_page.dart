@@ -185,6 +185,26 @@ Unter **Metriken** siehst du, wie schnell das Modell arbeitet (Tokens pro Sekund
 Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein und aus, am Handy öffnet er sich von rechts.''',
   ),
   HelpArticle(
+    id: 'mitteilungen',
+    category: 'Einstellungen',
+    icon: Icons.notifications_outlined,
+    title: 'Benachrichtigungen & Mitteilungen',
+    summary: 'Jede Meldung hat eine Art mit Farbe und Symbol – so siehst du sofort, ob du etwas tun musst.',
+    keywords: 'benachrichtigung push mitteilung glocke aktion warnung erinnerung ergebnis info ruhezeit kanal ton farbe symbol',
+    body: '''**Die Arten**
+- **Aktion** (violett, Hand): Junels wartet auf dich – z. B. Anmeldung, „Du bist dran“, Freigabe. Mit Ton.
+- **Warnung** (rot, Dreieck): Fehler oder erreichter Grenzwert. Mit Ton.
+- **Erinnerung** (bernstein, Wecker): ein Zeitpunkt, den du gesetzt hast. Mit Ton, auch in der Ruhezeit.
+- **Ergebnis** (mint, Haken): etwas, das du gestartet hast, ist fertig. Ohne Ton.
+- **Info** (blau, i): Neues ohne Handlungsbedarf, z. B. aus der Watchlist. Leise.
+
+**Mitteilungen:** Die Glocke oben sammelt alles – auch weggewischte Pushes. „Wartet auf dich“ steht oben, bis es erledigt ist. Ein violetter Punkt heißt: eine Aktion ist offen; ein roter: eine Warnung.
+
+**Einstellungen → Benachrichtigungen:** Arten ein/aus, Ruhezeit (Aktionen und Erinnerungen kommen trotzdem), Infos einmal täglich gesammelt. Ton und Vibration je Art stellst du in den Android-Einstellungen bei den Kanälen von Junels ein.
+
+**Prozesse:** Im Baustein „Push-Nachricht“ wählst du die Art oder lässt „Automatisch“.''',
+  ),
+  HelpArticle(
     id: 'begleiten',
     category: 'Chat',
     icon: Icons.explore_outlined,

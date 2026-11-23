@@ -24,6 +24,7 @@ import 'conversation_mode.dart';
 import 'browser_service.dart';
 import 'device_bridge.dart';
 import 'guide.dart';
+import 'notifications.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
 import '../tools/chart_render.dart';
@@ -259,6 +260,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await memory.load();
       activity = ActivityLog(File('${storage.root.path}/activity.json'));
       await activity.load();
+      await notifier.load();
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
       await knowledge.load();
       outputsDir = Directory('${storage.documentsDir.path}/Ausgaben')..createSync(recursive: true);
@@ -304,9 +306,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
-        NotifyTool((title, text, at) async {
-          await BackgroundWork.requestNotifyPermission();
-          await BackgroundWork.notify(title, text, conversationId: current?.id, at: at);
+        NotifyTool((title, text, at, kind) async {
+          var k = NotifyKindX.parse(kind, fallback: at != null ? NotifyKind.erinnerung : NotifyKind.info);
+          // Plausibilität: Warnung braucht Fehler/Grenze/Zahl, Aktion eine Handlung
+          final all = '$title $text'.toLowerCase();
+          if (k == NotifyKind.warnung && !RegExp(r'\d|fehl|error|grenze|unter|über|achtung|ausfall|kaputt|abgelaufen|frist').hasMatch(all)) {
+            k = NotifyKind.info;
+          }
+          if (k == NotifyKind.aktion && !RegExp(r'bitte|tipp|bestätig|entscheid|melde|anmeld|antwort|prüf|freigeb|weiter|jetzt|du (musst|sollst)').hasMatch(all)) {
+            k = NotifyKind.info;
+          }
+          await notifyUser(k, title, text, target: current?.id, source: 'chat:${current?.id}', at: at);
         }),
         SavePromptTool(savePrompt, () => prompts),
         WeatherTool(defaultLocation: () => settings.homeCity),
@@ -1335,6 +1345,28 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Benachrichtigungen: Postfach + Zustellung nach Art (Aktion, Warnung, Erinnerung, Ergebnis, Info).
+  late final Notifier notifier =
+      Notifier(File('${storage.root.path}/inbox.json'), () => NotifySettings.fromJson(settings.notifyPrefs))..addListener(notifyListeners);
+
+  NotifySettings get notifySettings => NotifySettings.fromJson(settings.notifyPrefs);
+  Future<void> saveNotifySettings(NotifySettings s) async {
+    settings.notifyPrefs = s.toJson();
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  /// Benachrichtigen (Push + Postfach). [target] = Chat-Id oder watch:<id>; [source] bündelt Meldungen gleicher Herkunft.
+  Future<void> notifyUser(NotifyKind kind, String title, String body,
+      {String? target, String source = '', DateTime? at}) async {
+    try {
+      await BackgroundWork.requestNotifyPermission();
+      await notifier.send(kind, title, body, target: target, source: source, at: at);
+    } catch (e) {
+      appLog('Mitteilungen', '$e', error: true);
+    }
+  }
+
   late final BrowserTool browserTool = BrowserTool(() => headless ? null : browser);
 
   /// Begleit-Modus: gemeinsam durch Webseiten (Plan, Übergabe, Warten & melden, Vorlage).
@@ -1346,10 +1378,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     },
     browser: browserTool,
     service: browser,
-    notify: (title, body, id) async {
-      await BackgroundWork.requestNotifyPermission();
-      await BackgroundWork.notify(title, body, conversationId: id);
-    },
+    notify: (title, body, id) => notifyUser(NotifyKind.aktion, title, body, target: id, source: 'guide:$id'),
     saveTemplate: (title, text) => savePrompt(SavedPrompt(title: 'Leitfaden: $title', text: text)),
   );
 
@@ -2392,8 +2421,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     unawaited(logActivity(Activity(kind: 'calendar', title: '${events.length} Termin(e) vorbereitet', conversationId: conv.id,
         approval: automated ? 'Geplante Aufgabe „Termine vorbereiten“' : 'Von dir gestartet')));
     if (automated) {
-      unawaited(BackgroundWork.notify('Deine Termine sind vorbereitet', events.map((e) => e.title).join(' · '),
-          conversationId: conv.id));
+      unawaited(notifyUser(NotifyKind.ergebnis, 'Deine Termine sind vorbereitet', events.map((e) => e.title).join(' · '),
+          target: conv.id, source: 'meetings'));
     }
     return conv;
   }
@@ -2418,7 +2447,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       if (e.allDay || !e.end.isAfter(now)) continue;
       final id = 'followup:${base64Url.encode(utf8.encode(e.title)).replaceAll('=', '')}:${e.end.millisecondsSinceEpoch}';
       unawaited(BackgroundWork.notify('Termin vorbei: ${e.title}', 'Soll ich eine Folgemail mit den Zusagen entwerfen?',
-          conversationId: id, at: e.end.add(const Duration(minutes: 2))));
+          conversationId: id, at: e.end.add(const Duration(minutes: 2)), kind: 'erinnerung'));
     }
   }
 
@@ -3546,7 +3575,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     unawaited(_syncAlarms());
     if (!await _ensureEngine()) {
       if (automated && p.notify) {
-        await BackgroundWork.notify(p.title, 'Konnte nicht starten: kein Sprachmodell geladen.');
+        await notifyUser(NotifyKind.warnung, '${p.title} fehlgeschlagen', 'Kein Sprachmodell geladen – ohne Modell läuft der Prompt nicht.',
+            source: 'prompt:${p.id}');
       }
       statusMessage = 'Kein Sprachmodell für „${p.title}“.';
       notifyListeners();
@@ -3583,8 +3613,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final answer = conv.entries.lastOrNull;
       final text = answer?.error ?? answer?.text ?? '';
       final short = text.replaceAll(RegExp(r'[#*_`>|]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
-      await BackgroundWork.notify(p.title, short.length > 240 ? '${short.substring(0, 240)}…' : short,
-          conversationId: conv.id);
+      await notifyUser(answer?.error != null ? NotifyKind.warnung : NotifyKind.ergebnis,
+          answer?.error != null ? '${p.title} fehlgeschlagen' : p.title, short.length > 240 ? '${short.substring(0, 240)}…' : short,
+          target: conv.id, source: 'prompt:${p.id}');
     }
     notifyListeners();
     return conv;
@@ -3626,6 +3657,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void openConversationById(String id) {
+    for (final i in notifier.items) {
+      if (i.target == id && !i.read) notifier.markRead(i);
+    }
     if (id.startsWith('watch:')) {
       pendingLaunch.value = 'watch';
       return;
@@ -3760,6 +3794,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final conv = target ?? _ensureConversation();
+    notifier.doneFor(conv.id); // offene Aktionen dieses Chats gelten als erledigt, sobald du weitermachst
     // Begleit-Modus: Webseite gemeinsam erledigen (URL + „mach mit mir …“ oder laufende Begleitung)
     final guideNow = !voice && !headless && onAnswer == null && (wantsGuide(input) || (Guide.of(conv)?.active ?? false));
     final guideCloud = guideNow && !forceCloud && await _guideWantsCloud(conv);
@@ -4155,10 +4190,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final away = WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed || current?.id != conv.id;
     if (!voice && !headless && away && answer.text.trim().isNotEmpty) {
       final body = cleanModelText(answer.text).replaceAll(RegExp(r'[*_#>`]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
-      unawaited(BackgroundWork.notify(answer.error == null ? 'Junels ist fertig: ${conv.title}' : 'Junels: Fehler in ${conv.title}',
-              body.length > 200 ? '${body.substring(0, 200)}…' : body,
-              conversationId: conv.id)
-          .catchError((_) {}));
+      unawaited(notifyUser(answer.error == null ? NotifyKind.ergebnis : NotifyKind.warnung,
+          answer.error == null ? 'Antwort ist fertig: ${conv.title}' : 'Fehler in „${conv.title}“',
+          body.length > 200 ? '${body.substring(0, 200)}…' : body,
+          target: conv.id, source: 'chat:${conv.id}'));
     }
     if (eng is RemoteBackend) eng.close();
     // Schnelles Modell ist gescheitert → automatisch mit dem starken Modell wiederholen

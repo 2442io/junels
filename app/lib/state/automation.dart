@@ -13,7 +13,7 @@ import 'package:agent_engine/agent_engine.dart';
 import '../data/models.dart';
 import 'activity_log.dart';
 import 'app_controller.dart';
-import 'background_work.dart';
+import 'notifications.dart';
 import 'connections.dart';
 import 'voice_service.dart' show appLog;
 
@@ -179,12 +179,12 @@ class WatchlistService {
     await save();
     app.refreshUi();
     if (item.notify) {
-      unawaited(BackgroundWork.notify(ev.title, text.length > 220 ? '${text.substring(0, 220)}…' : text, conversationId: 'watch:${item.id}')
-          .catchError((_) {}));
+      unawaited(app.notifyUser(NotifyKind.info, ev.title, text.length > 220 ? '${text.substring(0, 220)}…' : text,
+          target: 'watch:${item.id}', source: 'watch:${item.id}'));
     }
     final input = '${ev.title}\n\n$text\n\n${ev.links.map((l) => '- ${l['title']}: ${l['link']}').join('\n')}';
     for (final wf in app.flows.flows) {
-      if (wf.enabled && item.flowId == wf.id) unawaited(app.flows.run(wf, input: input));
+      if (wf.enabled && item.flowId == wf.id) unawaited(app.flows.run(wf, input: input, event: ev.kind));
     }
     return ev;
   }
@@ -253,9 +253,9 @@ class WatchlistService {
         }
         if (item.notify) {
           final body = ev.detail.replaceAll(RegExp(r'\s+'), ' ').trim();
-          unawaited(BackgroundWork.notify(ev.title, body.length > 220 ? '${body.substring(0, 220)}…' : body,
-                  conversationId: 'watch:${item.id}')
-              .catchError((_) {}));
+          unawaited(app.notifyUser(ev.kind == 'alert' ? NotifyKind.warnung : NotifyKind.info, ev.title,
+              body.length > 220 ? '${body.substring(0, 220)}…' : body,
+              target: 'watch:${item.id}', source: 'watch:${item.id}'));
         }
         final input = '${ev.title}\n\n${ev.detail}\n\n${ev.links.map((l) => '- ${l['title']}: ${l['link']}').join('\n')}';
         // Prozesse, die auf diesen Eintrag warten
@@ -264,7 +264,7 @@ class WatchlistService {
           if (!wf.enabled || t == null || t.str('mode') != 'watch') continue;
           final owned = item.flowId == wf.id;
           final legacy = t.config['watchInline'] != true && item.flowId == null && (t.str('watchId').isEmpty || t.str('watchId') == item.id);
-          if (owned || legacy) unawaited(app.flows.run(wf, input: input));
+          if (owned || legacy) unawaited(app.flows.run(wf, input: input, event: ev.kind));
         }
       }
       await save();
@@ -744,8 +744,12 @@ class FlowService {
 
   /// Führt den Prozess aus. [input] ist der Inhalt des Auslösers (z. B. Watchlist-Meldung).
   /// [startAt]: ab diesem Baustein fortsetzen (vorherige Ergebnisse bleiben).
-  Future<void> run(Workflow wf, {String input = '', String? startAt}) async {
+  /// Art des auslösenden Ereignisses (Beobachtung: alert | new | digest …) – bestimmt die Art der Push-Nachricht.
+  final Map<String, String> _event = {};
+
+  Future<void> run(Workflow wf, {String input = '', String? startAt, String event = ''}) async {
     if (!_running.add(wf.id)) return;
+    _event[wf.id] = event;
     final cancel = _cancel[wf.id] = Completer<void>();
     final order = wf.order();
     final prevOut = Map<String, String>.of(outputs[wf.id] ?? const {});
@@ -869,6 +873,13 @@ class FlowService {
       startedAt.remove(wf.id);
       live.remove(wf.id);
       wf.lastStatus = stopped ? 'Gestoppt' : (failed ? 'Fehler' : 'Erfolgreich');
+      _event.remove(wf.id);
+      if (failed && !stopped) {
+        final fe = errors[wf.id]?.values.firstOrNull;
+        unawaited(app.notifyUser(NotifyKind.warnung, '${wf.name} fehlgeschlagen',
+            fe == null ? 'Ein Baustein ist fehlgeschlagen.' : '${fe.message} · ${fe.hint}',
+            target: conv.id, source: 'flow:${wf.id}'));
+      }
       log
         ..text = stopped
             ? 'Der Prozess „${wf.name}“ wurde gestoppt.'
@@ -1001,7 +1012,17 @@ class FlowService {
       case FlowNodeType.notify:
         final text = Workflow.fill(n.str('text', '{{vorher}}'), vars).replaceAll(RegExp(r'[*_#>`]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
         final title = Workflow.fill(n.str('title', wf.name), vars);
-        await BackgroundWork.notify(title.isEmpty ? wf.name : title, text.length > 240 ? '${text.substring(0, 240)}…' : text, conversationId: conv.id);
+        // Art: im Baustein gewählt oder automatisch (Grenzwert → Warnung, Beobachtung → Info, sonst Ergebnis)
+        final ev = _event[wf.id] ?? '';
+        final kind = n.str('kind', 'auto') == 'auto'
+            ? (ev == 'alert'
+                ? NotifyKind.warnung
+                : wf.trigger?.str('mode') == 'watch'
+                    ? NotifyKind.info
+                    : NotifyKind.ergebnis)
+            : NotifyKindX.parse(n.str('kind'));
+        await app.notifyUser(kind, title.isEmpty ? wf.name : title, text.length > 240 ? '${text.substring(0, 240)}…' : text,
+            target: conv.id, source: 'flow:${wf.id}');
         return prevText;
       case FlowNodeType.save:
         final content = prevText.trim();

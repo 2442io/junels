@@ -397,6 +397,7 @@ class AppSettings {
     this.voiceNearField = true,
     this.voiceSmartVad = true,
     this.homeCity = '',
+    this.notifyPrefs,
     this.countryCode = '43',
     List<Map<String, String>>? watchFolders,
     List<Map<String, String>>? grantedFolders,
@@ -504,6 +505,7 @@ class AppSettings {
   bool voiceNearField; // Gesprächsmodus: leisere Stimmen im Hintergrund ignorieren
   bool voiceSmartVad; // Gesprächsmodus: Silero-Spracherkennung statt nur Lautstärke
   String homeCity; // Heimatort für Wetter und Morgen-Übersicht
+  Map<String, dynamic>? notifyPrefs; // Benachrichtigungen: Arten aus, Ruhezeit, Infos gesammelt
   String countryCode; // Landesvorwahl für WhatsApp (ohne +)
   List<Map<String, String>> watchFolders; // überwachte Ordner → Wissensbasis {id, name}
   List<Map<String, String>> grantedFolders; // Mac: freigegebene Ordner für Dateihilfe {id, name, path}
@@ -557,6 +559,7 @@ class AppSettings {
         'voiceNearField': voiceNearField,
         'voiceSmartVad': voiceSmartVad,
         'homeCity': homeCity,
+        if (notifyPrefs != null) 'notifyPrefs': notifyPrefs,
         'countryCode': countryCode,
         'watchFolders': watchFolders,
         'grantedFolders': grantedFolders,
@@ -612,6 +615,7 @@ class AppSettings {
         voiceNearField: j['voiceNearField'] as bool? ?? true,
         voiceSmartVad: j['voiceSmartVad'] as bool? ?? true,
         homeCity: j['homeCity'] as String? ?? '',
+        notifyPrefs: (j['notifyPrefs'] as Map?)?.cast<String, dynamic>(),
         countryCode: j['countryCode'] as String? ?? '43',
         watchFolders: [for (final m in (j['watchFolders'] as List? ?? const [])) (m as Map).cast<String, String>()],
         grantedFolders: [for (final m in (j['grantedFolders'] as List? ?? const [])) (m as Map).cast<String, String>()],
