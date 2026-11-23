@@ -14,6 +14,9 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.45.2', [
+    'Beobachtung: Leiste oben aufgeräumt – „Jetzt prüfen“ und ⋮ (Bearbeiten, Canvas, Duplizieren, Entfernen); nichts überlagert mehr Zurück und Titel',
+  ]),
   ('1.45.1', [
     'Schnellnavigation überall: das Raster gibt es jetzt auch im Chat (Handy oben statt Gesprächsmodus – der ist unten im Eingabefeld), am Desktop und in allen Bereichen',
   ]),

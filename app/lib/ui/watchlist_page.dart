@@ -883,46 +883,45 @@ class WatchDetailPageState extends State<WatchDetailPage> {
     final flow = item.flowId == null ? null : app.flows.flows.where((f) => f.id == item.flowId).firstOrNull;
     return Scaffold(
       appBar: JAppBar(
-        title: Text(item.title),
+        title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
-            tooltip: 'Bearbeiten',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () => showWatchDialog(context, existing: item),
+            tooltip: 'Jetzt prüfen',
+            icon: checking
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh),
+            onPressed: checking ? null : () => app.watchlist.check(item),
           ),
-          if (flow != null)
-            IconButton(
-              tooltip: 'Im Canvas bearbeiten',
-              icon: const Icon(Icons.account_tree_outlined),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: flow.id))),
-            ),
-          IconButton(
-            tooltip: 'Duplizieren',
-            icon: const Icon(Icons.copy_all_outlined),
-            onPressed: () => showWatchDialog(context, prefill: item, openCanvas: false),
-          ),
-          IconButton(
-            tooltip: 'Entfernen',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () async {
-              final nav = Navigator.of(context);
-              if (flow != null) {
-                await app.flows.remove(flow);
-              } else {
-                await app.watchlist.remove(item);
+          // Weniger Häufiges im Menü – sonst wird die Leiste am Handy zu voll
+          PopupMenuButton<String>(
+            tooltip: 'Mehr',
+            onSelected: (v) async {
+              switch (v) {
+                case 'edit':
+                  await showWatchDialog(context, existing: item);
+                case 'canvas':
+                  if (flow != null) {
+                    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: flow.id)));
+                  }
+                case 'copy':
+                  await showWatchDialog(context, prefill: item, openCanvas: false);
+                case 'delete':
+                  final nav = Navigator.of(context);
+                  if (flow != null) {
+                    await app.flows.remove(flow);
+                  } else {
+                    await app.watchlist.remove(item);
+                  }
+                  nav.pop();
               }
-              nav.pop();
             },
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: FilledButton.tonalIcon(
-              onPressed: checking ? null : () => app.watchlist.check(item),
-              icon: checking
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.refresh, size: 18),
-              label: const Text('Jetzt prüfen'),
-            ),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
+              if (flow != null)
+                const PopupMenuItem(value: 'canvas', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Im Canvas bearbeiten'))),
+              const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+              const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Entfernen'))),
+            ],
           ),
         ],
       ),
