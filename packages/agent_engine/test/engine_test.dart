@@ -2105,6 +2105,8 @@ class _FakeBrowser implements BrowserDriver {
 }
 
 class _FakeDevice implements DeviceActions {
+  @override
+  Future<String> calendarInfo() async => 'Gelesene Kalender: Privat (a@b.at: 0 Termine)';
   final log = <String>[];
   bool allow = true;
   String _d(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '

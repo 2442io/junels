@@ -167,6 +167,23 @@ class DeviceBridge implements DeviceActions {
   }
 
   @override
+  Future<String> calendarInfo() async {
+    if (!Platform.isAndroid) return '';
+    final r = await _call<List>('calendarInfo') ?? const [];
+    final cals = r.cast<Map>();
+    appLog('Gerät', 'Kalender: ${cals.map((c) => '${c['name']} (${c['account']}, ${c['events']} Termine, sichtbar ${c['visible']}, Sync ${c['sync']})').join('; ')}');
+    if (cals.isEmpty) {
+      return 'HINWEIS: Junels sieht auf diesem Gerät keinen einzigen Kalender. Sag dem Nutzer: In Android Einstellungen → Konten → '
+          'Google → Kontosynchronisierung „Kalender“ einschalten (Termine aus einem Arbeitsprofil kann Junels nicht lesen).';
+    }
+    final total = cals.fold<int>(0, (a, c) => a + ((c['events'] as num?)?.toInt() ?? 0));
+    final names = cals.map((c) => '${c['name']} (${c['account']}: ${c['events']} Termine${c['sync'] == true ? '' : ', Sync aus'})').join(', ');
+    return 'Gelesene Kalender: $names.${total == 0 ? ' HINWEIS: In keinem Kalender liegen Termine auf dem Gerät – vermutlich ist die '
+        'Kalender-Synchronisierung aus (Android Einstellungen → Konten → Google → Kalender) oder die Termine liegen in einem Arbeitsprofil. '
+        'Sag das dem Nutzer kurz.' : ''}';
+  }
+
+  @override
   Future<List<FileHit>> fileSearch(String query, String ext) async {
     final r = await _call<List>('fileSearch', {'query': query, 'ext': ext}) ?? const [];
     return [

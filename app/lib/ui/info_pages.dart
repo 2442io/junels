@@ -13,6 +13,10 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.39.1', [
+    'Kalender (Android): liest Termine zusätzlich direkt aus der Termin-Tabelle, falls die Tagesansicht des Systems leer bleibt',
+    'Kommen keine Termine, sagt Junels, welche Kalender es sieht und ob die Kalender-Synchronisierung aus ist',
+  ]),
   ('1.39.0', [
     'Begleiten: Link posten („Mach das mit mir: …“) – Junels führt dich Schritt für Schritt durch Amtswege, Tickets, Buchungen und Käufe',
     'Plan mit Häkchen über dem Chat, und du siehst live, was Junels im Browser tut',

@@ -271,7 +271,62 @@ object JunelsDevice {
                                     ))
                                 }
                             }
+                            if (out.isEmpty()) {
+                                // Rückfall: Termine direkt aus der Events-Tabelle (falls Instances nicht befüllt ist)
+                                ctx.contentResolver.query(
+                                    CalendarContract.Events.CONTENT_URI,
+                                    arrayOf(
+                                        CalendarContract.Events.TITLE, CalendarContract.Events.DTSTART, CalendarContract.Events.DTEND,
+                                        CalendarContract.Events.ALL_DAY, CalendarContract.Events.EVENT_LOCATION,
+                                        CalendarContract.Events.CALENDAR_DISPLAY_NAME, CalendarContract.Events.DESCRIPTION
+                                    ),
+                                    "${CalendarContract.Events.DTSTART} < ? AND (${CalendarContract.Events.DTEND} > ? OR ${CalendarContract.Events.DTEND} IS NULL) AND ${CalendarContract.Events.DELETED} = 0",
+                                    arrayOf(to.toString(), from.toString()), CalendarContract.Events.DTSTART + " ASC"
+                                )?.use { c ->
+                                    while (c.moveToNext() && out.size < 100) {
+                                        val b0 = c.getLong(1)
+                                        val e0 = if (c.isNull(2)) b0 + 3600000L else c.getLong(2)
+                                        out.add(mapOf(
+                                            "title" to (c.getString(0) ?: ""), "begin" to b0, "end" to e0,
+                                            "allDay" to (c.getInt(3) == 1), "location" to (c.getString(4) ?: ""),
+                                            "calendar" to (c.getString(5) ?: ""), "notes" to (c.getString(6) ?: "")
+                                        ))
+                                    }
+                                }
+                            }
                             main.post { result.success(out) }
+                        } catch (e: Throwable) {
+                            main.post { result.error("calendar", e.message ?: e.toString(), null) }
+                        }
+                    }.start()
+                }
+                "calendarInfo" -> withPermission(ctx, activity, Manifest.permission.READ_CALENDAR, result) {
+                    // Welche Kalender sieht Junels? (Fehlersuche, wenn keine Termine kommen)
+                    Thread {
+                        try {
+                            val cals = ArrayList<Map<String, Any?>>()
+                            ctx.contentResolver.query(
+                                CalendarContract.Calendars.CONTENT_URI,
+                                arrayOf(
+                                    CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                                    CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
+                                    CalendarContract.Calendars.VISIBLE, CalendarContract.Calendars.SYNC_EVENTS
+                                ), null, null, null
+                            )?.use { c ->
+                                while (c.moveToNext()) {
+                                    var n = 0
+                                    ctx.contentResolver.query(
+                                        CalendarContract.Events.CONTENT_URI, arrayOf(CalendarContract.Events._ID),
+                                        "${CalendarContract.Events.CALENDAR_ID} = ?", arrayOf(c.getLong(0).toString()), null
+                                    )?.use { e -> n = e.count }
+                                    cals.add(mapOf(
+                                        "name" to (c.getString(1) ?: ""), "account" to (c.getString(2) ?: ""),
+                                        "type" to (c.getString(3) ?: ""), "visible" to (c.getInt(4) == 1),
+                                        "sync" to (c.getInt(5) == 1), "events" to n
+                                    ))
+                                }
+                            }
+                            main.post { result.success(cals) }
                         } catch (e: Throwable) {
                             main.post { result.error("calendar", e.message ?: e.toString(), null) }
                         }

@@ -40,6 +40,9 @@ abstract class DeviceActions {
   Future<void> dial(String number);
   Future<void> calendarInsert(CalendarEvent e);
   Future<List<CalendarEvent>> calendarList(DateTime from, DateTime to);
+
+  /// Welche Kalender sind lesbar (Name, Konto, Termine) – für die Fehlersuche, wenn nichts kommt.
+  Future<String> calendarInfo() async => '';
   Future<List<FileHit>> fileSearch(String query, String ext);
   Future<String> fileRename(String path, String newName);
   Future<String> fileMove(String path, String folder);
@@ -319,7 +322,13 @@ class CalendarListTool extends _DeviceTool {
     final span = to.difference(from).inDays <= 1
         ? '${_wd[from.weekday - 1]}, ${from.day}.${from.month}.'
         : '${from.day}.${from.month}. bis ${to.subtract(const Duration(days: 1)).day}.${to.subtract(const Duration(days: 1)).month}.';
-    if (list.isEmpty) return 'Keine Termine ($span).';
+    if (list.isEmpty) {
+      var info = '';
+      try {
+        info = await device.calendarInfo();
+      } catch (_) {}
+      return 'Keine Termine ($span).${info.isEmpty ? '' : '\n$info'}';
+    }
     return 'Termine $span (Quelle: Kalender des Geräts):\n${list.map((e) => '- ${formatEvent(e)}').join('\n')}';
   }
 }
