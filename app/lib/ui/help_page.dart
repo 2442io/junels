@@ -186,6 +186,27 @@ Unter **Metriken** siehst du, wie schnell das Modell arbeitet (Tokens pro Sekund
 Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein und aus, am Handy öffnet er sich von rechts.''',
   ),
   HelpArticle(
+    id: 'skills',
+    category: 'Chat',
+    icon: Icons.auto_awesome,
+    title: 'Skills: eigene Fähigkeiten',
+    summary: 'Anleitung + erlaubte Werkzeuge, aufrufbar mit /befehl – selbst entwerfen, aus einem Chat speichern oder von Junels bauen lassen.',
+    keywords: 'skill skills fähigkeit befehl slash anleitung werkzeuge vorlage wiederverwenden skill.md claude',
+    body: '''Ein **Skill** sagt Junels, *wann* und *wie* es eine Aufgabe erledigt, und welche Werkzeuge es dafür nutzen darf.
+
+**Nutzen:** Im Chat „/“ tippen – passende Skills erscheinen über dem Eingabefeld (auch im ⚡-Menü). Beispiel: „/praesentation Peru-Reise, 8 Folien“. Eigene Skills mit „Automatisch erkennen“ nutzt Junels von selbst, wenn deine Nachricht zur Beschreibung passt. Unter der Antwort steht dann „Skill: …“.
+
+**Entwerfen:** Bereich „Skills“ → „Eigenen Skill entwerfen“: Name, Befehl, Wann nutzen, Anleitung (Schritte), Werkzeuge ankreuzen, optional „Ergebnis muss entstehen mit“ (z. B. Präsentation), Angaben, Wissen & Beispiele. „Testen“ öffnet einen neuen Chat mit dem Befehl.
+
+**Schneller:** „Bau mir einen Skill, der jeden Montag …“ – Junels legt ihn an. Oder unter einer gelungenen Antwort ⋯ → „Als Skill speichern“: Frage, benutzte Werkzeuge und das Ergebnis werden zum Entwurf.
+
+**Basis-Skills** kommen von Junels (Präsentation, Dokument, Erinnerung, Tagesüberblick, Recherche, Begleiten, Liegengebliebenes, Musik & Apps). Du kannst sie anpassen und jederzeit zurücksetzen.
+
+**Warum das hilft:** Ein Skill lädt nur seine Werkzeuge – gerade kleine Modelle am Gerät arbeiten damit viel verlässlicher.
+
+**Teilen:** ⋮ → Als SKILL.md kopieren oder teilen; oben „Importieren“ liest SKILL.md-Dateien (auch Claude-Skills). Skills enthalten nur Text – nichts wird ausgeführt; Zahlen, Passwörter und Bestellungen bleiben bei dir.''',
+  ),
+  HelpArticle(
     id: 'mitteilungen',
     category: 'Einstellungen',
     icon: Icons.notifications_outlined,

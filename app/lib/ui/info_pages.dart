@@ -14,6 +14,14 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.46.0', [
+    'Skills: wiederverwendbare Fähigkeiten aus Anleitung + erlaubten Werkzeugen – aufrufen mit /befehl im Chat („/“ tippen zeigt alle)',
+    'Eigene Skills entwerfen (Bereich „Skills“): Name, Wann nutzen, Anleitung, Werkzeuge, Pflicht-Ergebnis, Angaben, Wissen & Beispiele – mit „Testen“',
+    'Basis-Skills aus den Werkzeugen: Präsentation, Dokument, Erinnerung, Tagesüberblick, Recherche, Begleiten, Liegengebliebenes, Musik & Apps – anpassbar und zurücksetzbar',
+    'Ein Skill lädt nur seine Werkzeuge – dadurch arbeiten die Modelle am Gerät deutlich verlässlicher',
+    '„Bau mir einen Skill, der …“ – Junels entwirft ihn selbst; unter jeder Antwort (⋯) „Als Skill speichern“',
+    'Eigene Skills erkennt Junels automatisch, wenn die Nachricht passt; SKILL.md importieren, kopieren und teilen (kompatibel mit Claude-Skills)',
+  ]),
   ('1.45.2', [
     'Beobachtung: Leiste oben aufgeräumt – „Jetzt prüfen“ und ⋮ (Bearbeiten, Canvas, Duplizieren, Entfernen); nichts überlagert mehr Zurück und Titel',
   ]),

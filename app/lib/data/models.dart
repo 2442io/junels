@@ -212,6 +212,7 @@ class ChatEntry {
     DateTime? time,
     this.via,
     this.cloudOffer = false,
+    this.skill,
   })  : steps = steps ?? [],
         actions = actions ?? [],
         sources = sources ?? [],
@@ -244,10 +245,14 @@ class ChatEntry {
   /// Lokale Antwort hat nicht geklappt – „Mit Cloud beantworten“ anbieten.
   bool cloudOffer;
 
+  /// Mit welchem Skill geantwortet wurde (Name).
+  String? skill;
+
   Map<String, Object?> toJson() => {
         'role': role,
         if (via != null) 'via': via,
         if (cloudOffer) 'cloudOffer': true,
+        if (skill != null) 'skill': skill,
         'text': text,
         'steps': steps.map((s) => s.toJson()).toList(),
         'attachments': attachments,
@@ -279,6 +284,7 @@ class ChatEntry {
         viaVoice: j['voice'] as bool? ?? false,
         time: DateTime.tryParse(j['time'] as String? ?? ''),
         via: j['via'] as String?,
+        skill: j['skill'] as String?,
         cloudOffer: j['cloudOffer'] as bool? ?? false,
       );
 }
@@ -411,7 +417,7 @@ class AppSettings {
             {
               'text_search', 'read_file', 'json_query', 'calculator', 'write_artifact', 'datetime',
               'web_search', 'web_fetch', 'remember', 'search_history', 'knowledge_search',
-              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'control_app', 'begleiten', 'create_chart', 'generate_image', 'look_at_image',
+              'create_document', 'create_presentation', 'edit_file', 'find_loose_ends', 'mail_inbox', 'control_app', 'begleiten', 'skill_erstellen', 'create_chart', 'generate_image', 'look_at_image',
               'send_notification',
               'save_prompt',
               ...AppSettings.deviceTools,
@@ -624,7 +630,7 @@ class AppSettings {
         installed: (j['installed'] as Map?)?.cast<String, String>(),
       ).._migrateTools((j['toolsVersion'] as num?)?.toInt() ?? 1);
 
-  static const toolsVersion = 15;
+  static const toolsVersion = 16;
   static const deviceTools = ['weather', 'news', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'calendar_add', 'calendar_list', 'file_search', 'file_rename', 'file_move'];
 
   /// Neue Tools bei älteren Einstellungen einschalten.
@@ -646,6 +652,7 @@ class AppSettings {
     if (from < 13) enabledTools.add('mail_inbox');
     if (from < 14) enabledTools.add('control_app');
     if (from < 15) enabledTools.add('begleiten');
+    if (from < 16) enabledTools.add('skill_erstellen');
   }
 }
 

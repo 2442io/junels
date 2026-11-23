@@ -25,6 +25,8 @@ import 'browser_service.dart';
 import 'device_bridge.dart';
 import 'guide.dart';
 import 'notifications.dart';
+import 'skill_tool.dart';
+import 'skills.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
 import '../tools/chart_render.dart';
@@ -261,6 +263,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       activity = ActivityLog(File('${storage.root.path}/activity.json'));
       await activity.load();
       await notifier.load();
+      await skills.load();
       unawaited(notifier.syncNative());
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
       await knowledge.load();
@@ -304,6 +307,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         MailInboxTool(imapAccount),
         appControlTool,
         guideTool,
+        SkillCreateTool(
+          available: () => [for (final t in activeTools) if (t.name != 'skill_erstellen') (t.name, t.title)],
+          save: skills.upsert,
+        ),
         CreateChartTool(out, renderChart),
         GenerateImageTool(_generateImage),
         LookAtImageTool(_askAboutImage),
@@ -1351,6 +1358,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Skills: Anleitung + erlaubte Werkzeuge (Basis-Skills und eigene).
+  late final SkillLibrary skills = SkillLibrary(File('${storage.root.path}/skills.json'))..addListener(notifyListeners);
+
   /// Benachrichtigungen: Postfach + Zustellung nach Art (Aktion, Warnung, Erinnerung, Ergebnis, Info).
   late final Notifier notifier =
       Notifier(File('${storage.root.path}/inbox.json'), () => NotifySettings.fromJson(settings.notifyPrefs))..addListener(notifyListeners);
@@ -2194,6 +2204,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
     'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
     'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
+    'skill_erstellen': RegExp(r'\bskills?\b|fähigkeit'),
     'generate_image': RegExp(r'(erstell|generier|mal|zeichne|erzeug)\w* .*\b(bild|foto|illustration|logo|grafik)|bild von|zeichne|male mir'),
     'knowledge_search': RegExp(r'wissensbasis|meine(n)? (dokument|unterlagen|quellen|notizen)|laut (dem|der|meinen)|im dokument'),
     'search_history': RegExp(r'früher|letztes mal|haben wir (schon|mal)|hatte ich|verlauf|vorhin|gestern (gesagt|gefragt)'),
@@ -3826,6 +3837,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final conv = target ?? _ensureConversation();
+    // Skill: /befehl am Anfang oder automatisch erkannt (eigene Skills)
+    final skillHit = skills.match(input);
+    final skill = skillHit?.$1;
+    final skillTask = skillHit?.$2 ?? '';
     notifier.doneFor(conv.id); // offene Aktionen dieses Chats gelten als erledigt, sobald du weitermachst
     // Begleit-Modus: Webseite gemeinsam erledigen (URL + „mach mit mir …“ oder laufende Begleitung)
     final guideNow = !voice && !headless && onAnswer == null && (wantsGuide(input) || (Guide.of(conv)?.active ?? false));
@@ -3862,8 +3877,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         !_deckWord.hasMatch(input) &&
         requiredToolFor(prevUser) != null;
     final gateText = looksLikeFollowUp(input) || designFollowUp ? '$prevUser $input' : input;
-    final requiredTool = requiredToolFor(gateText,
+    var requiredTool = requiredToolFor(gateText,
         hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf'}.contains(a['kind'])));
+    if (skill != null) requiredTool = skill.requiredTool.isEmpty ? null : skill.requiredTool;
     // Gesprächsmodus: gleicher Verlauf und gleicher System-Prompt wie im Chat – so bleibt der
     // vorgerechnete Teil (Cache) gültig und die erste Antwort kommt ohne langes Vorrechnen.
     // Routinen: jede Ausführung für sich (kein Verlauf).
@@ -3902,13 +3918,20 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } else if (runTools.any((t) => t.name == 'browser')) {
       runTools = [for (final t in runTools) if (t.name != 'site_search') t];
     }
+    // Skill: nur seine Werkzeuge (weniger Auswahl = verlässlicher, gerade für kleine Modelle am Gerät)
+    if (skill != null) {
+      var list = [for (final t in activeTools) if (skill.tools.contains(t.name)) t];
+      if (conv.internetOff || !deviceOnline) list = [for (final t in list) if (!t.requiresNetwork) t];
+      if (voice || headless) list = [for (final t in list) if (t.name != 'browser') t];
+      runTools = list;
+    }
     final user = ChatEntry(
         role: 'user',
         text: input.trim(),
         attachments: docs.map((d) => d.name).toList(),
         viaVoice: voice,
         files: [for (final d in docs) if (d.path != null && isImageFile(d.name)) d.path!]);
-    final answer = ChatEntry(role: 'assistant', via: via);
+    final answer = ChatEntry(role: 'assistant', via: via, skill: skill?.name);
     conv.entries..add(user)..add(answer);
     _runningAnswer = answer;
     _noteEntries.clear();
@@ -3936,6 +3959,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         turnInput = '$turnInput\n\n[BEGLEITMODUS: Der Nutzer will das gemeinsam mit dir auf der Webseite erledigen, Schritt für Schritt. '
             'Rufe zuerst begleiten mit aktion start auf (url, ziel). Fasse die Seite nicht nur zusammen und verweise nicht bloß auf den Link.]';
       }
+    }
+    if (skill != null) {
+      final rest = turnInput.replaceFirst(RegExp(r'^\s*/[a-z0-9äöüß-]+\s*', caseSensitive: false), '').trim();
+      turnInput = '${skill.brief()}\nAufgabe des Nutzers: '
+          '${rest.isEmpty || skillTask.isEmpty ? '(keine weiteren Angaben – frag nach dem Nötigen oder leg mit der Anleitung los)\n$rest' : rest}';
     }
     final system = _systemText(tools: runTools);
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);

@@ -13,12 +13,14 @@ import 'package:flutter/services.dart';
 import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import '../state/skills.dart';
 import '../state/smtp.dart';
 import '../state/vault.dart';
 import '../state/voice_service.dart';
 import 'conversation_page.dart';
 import 'file_views.dart';
 import 'markdown_lite.dart';
+import 'skills_page.dart';
 import 'theme.dart';
 import 'prompt_editor.dart';
 import 'system_check.dart';
@@ -676,6 +678,10 @@ class _AssistantMessage extends StatelessWidget {
               padding: const EdgeInsets.only(top: 4),
               child: Row(
                 children: [
+                  if (entry.skill != null) ...[
+                    StatusChip('Skill: ${entry.skill}', color: AppColors.of(context).amber, icon: Icons.auto_awesome, dense: true),
+                    const SizedBox(width: 8),
+                  ],
                   if (entry.via != null) ...[
                     StatusChip(entry.via!.startsWith('Lokal') ? entry.via!.substring(8) : entry.via!.split(' · ').take(2).join(' · '),
                         color: entry.via!.startsWith('Cloud')
@@ -709,16 +715,26 @@ class _AssistantMessage extends StatelessWidget {
                   ),
                   if (entry.text.isNotEmpty) _SpeakButton(entry: entry),
                   if (entry.text.isNotEmpty)
-                    IconButton(
-                      tooltip: 'Antwort kopieren',
-                      visualDensity: VisualDensity.compact,
+                    PopupMenuButton<String>(
+                      tooltip: 'Mehr',
                       iconSize: 16,
-                      icon: const Icon(Icons.copy),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: entry.text));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Kopiert'), duration: Duration(seconds: 1)));
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.more_horiz),
+                      onSelected: (v) {
+                        if (v == 'copy') {
+                          Clipboard.setData(ClipboardData(text: entry.text));
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(content: Text('Kopiert'), duration: Duration(seconds: 1)));
+                        } else if (v == 'skill') {
+                          _saveAsSkill(context, index);
+                        }
                       },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'copy', child: ListTile(dense: true, leading: Icon(Icons.copy, size: 20), title: Text('Antwort kopieren'))),
+                        PopupMenuItem(
+                            value: 'skill',
+                            child: ListTile(dense: true, leading: Icon(Icons.auto_awesome, size: 20), title: Text('Als Skill speichern'))),
+                      ],
                     ),
                 ],
               ),
@@ -1211,6 +1227,42 @@ class _InputBarState extends State<_InputBar> {
                               ]),
                             ),
                     ),
+                  // Skills: „/“ tippen zeigt passende Skills
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _ctrl,
+                    builder: (context, v, _) {
+                      final m = RegExp(r'^/([a-z0-9äöüß-]*)$', caseSensitive: false).firstMatch(v.text.trimLeft());
+                      if (m == null) return const SizedBox.shrink();
+                      final q = m.group(1)!.toLowerCase();
+                      final hits = [
+                        for (final s in app.skills.enabled)
+                          if (s.command.startsWith(q) || s.name.toLowerCase().contains(q)) s
+                      ];
+                      if (hits.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: SizedBox(
+                          height: 40,
+                          child: ListView(scrollDirection: Axis.horizontal, children: [
+                            for (final s in hits.take(12))
+                              Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ActionChip(
+                                  avatar: Icon(skillIcon(s.icon), size: 16),
+                                  label: Text('/${s.command} · ${s.name}'),
+                                  onPressed: () {
+                                    final t = '/${s.command} ';
+                                    _ctrl.text = t;
+                                    _ctrl.selection = TextSelection.collapsed(offset: t.length);
+                                    _focus.requestFocus();
+                                  },
+                                ),
+                              ),
+                          ]),
+                        ),
+                      );
+                    },
+                  ),
                   if (app.attachments.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
@@ -1258,7 +1310,7 @@ class _InputBarState extends State<_InputBar> {
                           onPressed: app.runningHere ? null : _attach,
                         ),
                       PopupMenuButton<String>(
-                        tooltip: 'Prompts & Vorlagen',
+                        tooltip: 'Skills, Prompts & Vorlagen',
                         icon: const Icon(Icons.bolt_outlined),
                         enabled: !app.runningHere,
                         onSelected: (v) {
@@ -1287,6 +1339,17 @@ class _InputBarState extends State<_InputBar> {
                               ),
                             ),
                           if (app.prompts.isNotEmpty) const PopupMenuDivider(),
+                          for (final s in app.skills.enabled.take(10))
+                            PopupMenuItem(
+                              value: '/${s.command} ',
+                              child: ListTile(
+                                dense: true,
+                                leading: Icon(skillIcon(s.icon), size: 20),
+                                title: Text(s.name),
+                                subtitle: Text('/${s.command}'),
+                              ),
+                            ),
+                          const PopupMenuDivider(),
                           for (final (label, text) in promptPresets)
                             PopupMenuItem(value: text, child: Text(label)),
                           const PopupMenuDivider(),
@@ -1668,4 +1731,36 @@ Future<void> showMailAccountDialog(BuildContext context) async {
       );
     }),
   );
+}
+
+/// „Als Skill speichern“: aus Frage + benutzten Werkzeugen einen Skill-Entwurf machen und im Editor öffnen.
+void _saveAsSkill(BuildContext context, int index) {
+  final app = AppScope.read(context);
+  final conv = app.current;
+  if (conv == null || index <= 0 || index >= conv.entries.length) return;
+  final answer = conv.entries[index];
+  final question = conv.entries.take(index).lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text.trim();
+  final used = <String>[];
+  for (final s in answer.steps) {
+    final tool = s.tool;
+    if (tool != null && tool.isNotEmpty && !used.contains(tool) && app.tools.any((t) => t.name == tool)) used.add(tool);
+  }
+  final titles = {for (final t in app.tools) t.name: t.title};
+  final q = question.replaceFirst(RegExp(r'^/[a-z0-9äöüß-]+\s*', caseSensitive: false), '');
+  final name = conv.title == 'Neuer Chat' ? (q.length > 30 ? q.substring(0, 30) : q) : conv.title.replaceAll('…', '');
+  final steps = [
+    for (var i = 0; i < used.length; i++) '${i + 1}. ${titles[used[i]] ?? used[i]} nutzen',
+    '${used.length + 1}. Ergebnis so aufbereiten wie im Beispiel unten',
+  ].join('\n');
+  final created = answer.files.isNotEmpty || used.any((u) => u.startsWith('create_'));
+  final draft = Skill(
+    id: 'u-${DateTime.now().microsecondsSinceEpoch}',
+    name: name.trim(),
+    when: 'Wenn ich so etwas möchte wie: „${q.length > 120 ? '${q.substring(0, 120)}…' : q}“',
+    instructions: steps,
+    tools: used,
+    requiredTool: created ? used.firstWhere((u) => u.startsWith('create_'), orElse: () => '') : '',
+    knowledge: 'Beispiel-Frage: $q\n\nBeispiel-Ergebnis:\n${answer.text.length > 1200 ? '${answer.text.substring(0, 1200)}…' : answer.text}',
+  );
+  Navigator.of(context).push(MaterialPageRoute(builder: (_) => SkillEditor(draft: draft)));
 }

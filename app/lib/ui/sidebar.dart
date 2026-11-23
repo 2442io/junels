@@ -167,6 +167,7 @@ class _SidebarState extends State<Sidebar> {
                   count: app.watchlist.unseen > 0 || app.flows.flows.isEmpty ? null : '${app.flows.flows.length}',
                   dot: app.watchlist.unseen > 0),
               const SectionLabel('Arbeitsbereich'),
+              item(AppSection.skills, count: app.skills.own.isEmpty ? null : '${app.skills.own.length}'),
               item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
               item(AppSection.knowledge, dot: app.memory.pending.isNotEmpty),
               item(AppSection.activity),

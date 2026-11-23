@@ -591,6 +591,7 @@ class _ToolSection extends StatelessWidget {
     'mail_inbox': Icons.inbox_outlined,
     'control_app': Icons.apps,
     'begleiten': Icons.explore_outlined,
+    'skill_erstellen': Icons.auto_awesome,
     'create_chart': Icons.bar_chart,
     'generate_image': Icons.brush_outlined,
     'look_at_image': Icons.visibility_outlined,
