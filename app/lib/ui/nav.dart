@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import 'help_page.dart';
+import 'inbox_page.dart';
 import 'knowledge_page.dart';
 import 'settings_page.dart';
 import 'tasks_page.dart';
@@ -13,6 +14,7 @@ import 'flows_page.dart';
 
 enum AppSection {
   chat('Chat', Icons.forum_outlined),
+  inbox('Benachrichtigungen', Icons.notifications_outlined),
   tasks('Geplante Aufgaben', Icons.schedule),
   flows('Prozesse & Watchlist', Icons.account_tree_outlined),
   watch('Watchlist', Icons.radar),
@@ -28,6 +30,7 @@ enum AppSection {
 }
 
 Widget pageFor(AppSection s) => switch (s) {
+      AppSection.inbox => const InboxPage(),
       AppSection.tasks => const TasksPage(),
       AppSection.flows => const FlowsPage(),
       AppSection.watch => const WatchlistPage(),

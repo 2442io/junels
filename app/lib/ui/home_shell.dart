@@ -10,7 +10,6 @@ import '../state/app_scope.dart';
 import 'browser_panel.dart';
 import 'chat_view.dart';
 import 'guide_card.dart';
-import 'inbox_page.dart';
 import 'inspector.dart';
 import 'prompt_editor.dart';
 import 'internet_menu.dart';
@@ -208,11 +207,11 @@ class _HomeShellState extends State<HomeShell> {
           InternetMenu(compact: compact),
           const SizedBox(width: 6),
           PillIconButton(
-            icon: app.notifier.hasWaiting ? Icons.notifications_active : Icons.notifications_none,
+            icon: app.todoCount > 0 ? Icons.notifications_active : Icons.notifications_none,
             tooltip: 'Mitteilungen',
-            badge: app.notifier.hasWaiting || app.notifier.hasWarning,
-            badgeColor: app.notifier.hasWaiting ? colors.violet : colors.red,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const InboxPage())),
+            badge: app.todoCount > 0 || app.notifier.hasWarning,
+            badgeColor: app.todoCount > 0 ? colors.violet : colors.red,
+            onPressed: () => openSection(context, AppSection.inbox),
           ),
           const SizedBox(width: 6),
           PillIconButton(

@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.43.0', [
+    'Neuer Bereich „Benachrichtigungen“ (Glocke oben und in der Seitenleiste unter „Übersicht“): sammelt alles, was auf dich wartet, und alle Meldungen',
+    '„Zu tun“ zeigt offene Freigaben aus allen Chats (Mail, WhatsApp, App-Aktionen), laufende Begleitungen mit aktuellem Schritt, Gedächtnis-Einträge zum Bestätigen, fällige Erinnerungen und offene Aktionen – direkt mit Knöpfen',
+    'Darunter: Geplant, Heute, Früher – filterbar nach Art; die Zahl an Glocke und Seitenleiste zeigt, wie viel offen ist',
+  ]),
   ('1.42.1', [
     'Kalender (Android): ganztägige Termine wie Geburtstage erscheinen am richtigen Tag (wurden wegen UTC einen Tag zu spät angezeigt)',
     'Kalender: wiederkehrende Termine tauchen nicht mehr fälschlich jeden Tag auf',

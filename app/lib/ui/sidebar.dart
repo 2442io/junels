@@ -155,6 +155,9 @@ class _SidebarState extends State<Sidebar> {
                 ),
               ),
 
+              // ---- Benachrichtigungen & To-dos
+              const SectionLabel('Übersicht'),
+              item(AppSection.inbox, count: app.todoCount == 0 ? null : '${app.todoCount}', dot: app.notifier.hasWarning),
               // ---- Arbeitsbereich
               const SectionLabel('Automatik'),
               item(AppSection.tasks,

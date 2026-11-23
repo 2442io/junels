@@ -198,7 +198,7 @@ Auf großen Bildschirmen blendest du den Bereich mit dem Symbol oben rechts ein 
 - **Ergebnis** (mint, Haken): etwas, das du gestartet hast, ist fertig. Ohne Ton.
 - **Info** (blau, i): Neues ohne Handlungsbedarf, z. B. aus der Watchlist. Leise.
 
-**Mitteilungen:** Die Glocke oben sammelt alles – auch weggewischte Pushes. „Wartet auf dich“ steht oben, bis es erledigt ist. Ein violetter Punkt heißt: eine Aktion ist offen; ein roter: eine Warnung.
+**Benachrichtigungen (Glocke oben, Seitenleiste „Übersicht“):** sammelt alles – auch weggewischte Pushes. Oben steht „Zu tun“: offene Freigaben aus allen Chats, laufende Begleitungen, Gedächtnis-Einträge zum Bestätigen, fällige Erinnerungen und Aktionen – jeweils mit Knopf. Darunter Geplant, Heute, Früher. Ein violetter Punkt an der Glocke heißt: etwas wartet auf dich; ein roter: eine Warnung.
 
 **Einstellungen → Benachrichtigungen:** Arten ein/aus, Ruhezeit (Aktionen und Erinnerungen kommen trotzdem), Infos einmal täglich gesammelt. Ton und Vibration je Art stellst du in den Android-Einstellungen bei den Kanälen von Junels ein.
 

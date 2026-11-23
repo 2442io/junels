@@ -1355,6 +1355,21 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   late final Notifier notifier =
       Notifier(File('${storage.root.path}/inbox.json'), () => NotifySettings.fromJson(settings.notifyPrefs))..addListener(notifyListeners);
 
+  /// Offene Freigaben in Chats (Mail, Nachricht, App …), die auf „Ausführen“ warten.
+  List<(Conversation, ChatEntry, int)> get pendingApprovals => [
+        for (final c in conversations)
+          for (final e in c.entries)
+            for (var i = 0; i < e.actions.length; i++)
+              if (e.actions[i]['status'] == 'pending') (c, e, i),
+      ];
+
+  /// Laufende Begleitungen (Webseiten gemeinsam erledigen).
+  List<Conversation> get activeGuides => [for (final c in conversations) if (Guide.of(c)?.active ?? false) c];
+
+  /// Alles, was auf dich wartet – Zahl an Glocke und Seitenleiste.
+  int get todoCount =>
+      notifier.items.where((i) => i.waiting).length + pendingApprovals.length + activeGuides.length + memory.pending.length;
+
   NotifySettings get notifySettings => NotifySettings.fromJson(settings.notifyPrefs);
   Future<void> saveNotifySettings(NotifySettings s) async {
     settings.notifyPrefs = s.toJson();
