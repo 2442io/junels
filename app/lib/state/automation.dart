@@ -437,6 +437,21 @@ class FlowService {
     app.refreshUi();
   }
 
+  /// Kopie eines Prozesses (pausiert, ohne Verlauf) – zum Anpassen statt neu Anlegen.
+  Future<Workflow> duplicate(Workflow wf) async {
+    final j = wf.toJson()
+      ..['id'] = newId()
+      ..['name'] = copyName(wf.name, {for (final f in flows) f.name})
+      ..remove('lastRun')
+      ..remove('lastStatus');
+    final copy = Workflow.fromJson(jsonDecode(jsonEncode(j)) as Map<String, dynamic>)..enabled = false;
+    // Beobachten-Auslöser: eigener Watchlist-Eintrag statt Verweis auf den des Originals
+    final t = copy.trigger;
+    if (t != null && t.str('mode') == 'watch' && t.config['watchInline'] != true) t.config.remove('watchId');
+    await upsert(copy);
+    return copy;
+  }
+
   Future<void> remove(Workflow wf) async {
     stop(wf);
     flows.removeWhere((x) => x.id == wf.id);
@@ -1060,4 +1075,14 @@ class FlowService {
     appLog('Prozesse', '${wf.name} · ${n.title}: vom Agenten repariert – $change');
     return change;
   }
+}
+
+/// „Name (Kopie)“, „Name (Kopie 2)“ …
+String copyName(String name, Set<String> taken) {
+  final base = name.replaceAll(RegExp(r'\s*\(Kopie( \d+)?\)$'), '');
+  var n = '$base (Kopie)';
+  for (var i = 2; taken.contains(n); i++) {
+    n = '$base (Kopie $i)';
+  }
+  return n;
 }

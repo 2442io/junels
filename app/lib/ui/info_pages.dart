@@ -13,6 +13,11 @@ import '../state/voice_service.dart';
 import '../version.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.40.0', [
+    'Prozesse duplizieren: Menü ⋮ in der Liste oder „Duplizieren“ in den Prozess-Einstellungen – die Kopie startet pausiert und öffnet sich zum Anpassen',
+    'Watchlist: Einträge duplizieren (Dialog mit allen Einstellungen vorausgefüllt) und bearbeiten – Menü ⋮ in der Liste oder oben im Eintrag',
+    'Beobachtungen aus Prozessen lassen sich jetzt auch im einfachen Dialog bearbeiten (Ziel, Intervall, Schwellenwert …), nicht nur im Canvas',
+  ]),
   ('1.39.1', [
     'Kalender (Android): liest Termine zusätzlich direkt aus der Termin-Tabelle, falls die Tagesansicht des Systems leer bleibt',
     'Kommen keine Termine, sagt Junels, welche Kalender es sieht und ob die Kalender-Synchronisierung aus ist',

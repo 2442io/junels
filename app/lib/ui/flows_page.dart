@@ -278,8 +278,36 @@ class _FlowCard extends StatelessWidget {
             app.flows.upsert(wf);
           },
         ),
+        PopupMenuButton<String>(
+          tooltip: 'Mehr',
+          onSelected: (v) async {
+            if (v == 'copy') await duplicateFlow(context, wf);
+            if (v == 'edit' && context.mounted) {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
+            PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+          ],
+        ),
       ]),
     );
+  }
+}
+
+/// Prozess kopieren (pausiert) und die Kopie zum Anpassen öffnen.
+Future<void> duplicateFlow(BuildContext context, Workflow wf, {bool replace = false}) async {
+  final app = AppScope.read(context);
+  final nav = Navigator.of(context);
+  final m = ScaffoldMessenger.of(context);
+  final copy = await app.flows.duplicate(wf);
+  m.showSnackBar(SnackBar(content: Text('„${copy.name}“ angelegt – pausiert. Nach dem Anpassen einschalten.')));
+  final route = MaterialPageRoute<void>(builder: (_) => FlowEditor(id: copy.id));
+  if (replace) {
+    nav.pushReplacement(route);
+  } else {
+    nav.push(route);
   }
 }
 
@@ -1648,6 +1676,12 @@ class _FlowSettings extends StatelessWidget {
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const McpPage())),
           ),
           const SizedBox(height: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.copy_all_outlined),
+            label: const Text('Duplizieren'),
+            onPressed: () => duplicateFlow(context, wf, replace: true),
+          ),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: Icon(Icons.delete_outline, color: c.red),
             label: Text('Prozess löschen', style: TextStyle(color: c.red)),

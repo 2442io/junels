@@ -6,6 +6,7 @@ import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
+import '../state/automation.dart' show copyName;
 import 'flows_page.dart';
 import 'markdown_lite.dart';
 import 'theme.dart';
@@ -470,16 +471,28 @@ class _WatchFieldsState extends State<WatchFields> {
 // ======================================================================== Dialog
 
 /// Neue Beobachtung (als Prozess im Canvas) oder älteren Eintrag bearbeiten.
-Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, bool openCanvas = true}) async {
+/// [prefill]: Werte eines bestehenden Eintrags als Vorlage für einen NEUEN (Duplizieren).
+Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchItem? prefill, bool openCanvas = true}) async {
   final app = AppScope.read(context);
   final nav = Navigator.of(context);
-  final draft = existing == null ? WatchDraft() : WatchDraft.fromItem(existing);
-  final name = TextEditingController(text: existing?.title ?? '');
+  Workflow? flowOf(WatchItem? i) => i?.flowId == null ? null : app.flows.flows.where((f) => f.id == i!.flowId).firstOrNull;
+  final flow = flowOf(existing);
+  final src = existing ?? prefill;
+  final draft = src == null ? WatchDraft() : WatchDraft.fromItem(src);
+  final srcFlow = flowOf(src);
+  if (srcFlow != null) {
+    // Prozess-Einträge: Zusammenfassen/Push stecken in den Bausteinen
+    draft
+      ..summarize = srcFlow.nodes.any((n) => n.type == FlowNodeType.agent)
+      ..notify = srcFlow.nodes.any((n) => n.type == FlowNodeType.notify);
+  }
+  if (prefill != null) draft.name = copyName(prefill.title, {for (final i in app.watchlist.items) i.title});
+  final name = TextEditingController(text: existing?.title ?? (prefill != null ? draft.name : ''));
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) => AlertDialog(
-        title: Text(existing == null ? 'Beobachten' : 'Beobachtung bearbeiten'),
+        title: Text(existing != null ? 'Beobachtung bearbeiten' : (prefill != null ? 'Beobachtung duplizieren' : 'Beobachten')),
         content: SizedBox(
           width: 500,
           child: SingleChildScrollView(
@@ -495,6 +508,7 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, bool op
                   onChanged: (v) => draft.name = v,
                 ),
                 const SizedBox(height: 6),
+                if (flow == null) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Änderungen zusammenfassen'),
@@ -508,6 +522,7 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, bool op
                   value: draft.notify,
                   onChanged: (v) => set(() => draft.notify = v),
                 ),
+                ],
                 if (existing == null)
                   Text(
                     'Wird als Prozess angelegt – im Canvas kannst du weitere Schritte anhängen (z. B. Web-API, Notiz, Bedingung).',
@@ -546,6 +561,27 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, bool op
     );
     await app.flows.upsert(wf);
     if (openCanvas) nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
+    return;
+  }
+  if (flow != null) {
+    // Eintrag gehört zu einem Prozess: dessen Auslöser ändern (der Eintrag folgt automatisch)
+    final t = flow.trigger;
+    if (t != null) {
+      t.config
+        ..['watchKind'] = draft.kind == WatchKind.topic ? 'topic' : 'page'
+        ..['watchTarget'] = draft.normalizedTarget
+        ..['interval'] = draft.interval
+        ..['promptMode'] = draft.kind == WatchKind.topic && draft.promptMode
+        ..['recentOnly'] = draft.recentOnly
+        ..['watchQuery'] = draft.query.trim()
+        ..['alertOp'] = draft.alertValue == null ? '' : draft.alertOp
+        ..['alertValue'] = draft.alertValue
+        ..['valueLabel'] = draft.valueLabel.trim()
+        ..['digest'] = draft.alertOp.isEmpty ? draft.digest : '';
+      t.config.removeWhere((k, v) => v == null);
+    }
+    flow.name = draft.defaultName;
+    await app.flows.upsert(flow);
     return;
   }
   final tgt = draft.normalizedTarget;
@@ -774,6 +810,17 @@ class _WatchCard extends StatelessWidget {
               }
             },
           ),
+          PopupMenuButton<String>(
+            tooltip: 'Mehr',
+            onSelected: (v) {
+              if (v == 'edit') showWatchDialog(context, existing: item);
+              if (v == 'copy') showWatchDialog(context, prefill: item, openCanvas: false);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
+              PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+            ],
+          ),
         ],
       ),
     );
@@ -823,18 +870,22 @@ class _WatchDetailState extends State<_WatchDetail> {
       appBar: AppBar(
         title: Text(item.title),
         actions: [
+          IconButton(
+            tooltip: 'Bearbeiten',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () => showWatchDialog(context, existing: item),
+          ),
           if (flow != null)
             IconButton(
               tooltip: 'Im Canvas bearbeiten',
               icon: const Icon(Icons.account_tree_outlined),
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: flow.id))),
-            )
-          else
-            IconButton(
-              tooltip: 'Bearbeiten',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () => showWatchDialog(context, existing: item),
             ),
+          IconButton(
+            tooltip: 'Duplizieren',
+            icon: const Icon(Icons.copy_all_outlined),
+            onPressed: () => showWatchDialog(context, prefill: item, openCanvas: false),
+          ),
           IconButton(
             tooltip: 'Entfernen',
             icon: const Icon(Icons.delete_outline),
