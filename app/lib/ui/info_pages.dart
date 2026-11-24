@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.53.0', [
+    'Seitenmenü neu: Chats direkt unter der Suche (die letzten 5, dann „Alle x Chats anzeigen“); alle anderen Gruppen eingeklappt und aufklappbar',
+    'Automatisierung: Geplante Aufgaben, Prozesse & Beobachtungen und ihre Ergebnis-Chats (früher „Routinen“) in einer Gruppe',
+    'Benachrichtigungen nicht mehr im Menü, sondern nur oben an der Glocke – mit Punkt in der Farbe der wichtigsten neuen Mitteilung (Warnung rot, Aktion violett, Erinnerung gelb, Fertig grün, Info blau)',
+    'KI-Weiche (lokal/hybrid/Cloud), Internet und Schnellmenü sitzen jetzt direkt über der Eingabe – die obere Leiste ist aufgeräumt',
+    'Android: Menü schließt sich nach „Neuer Chat“, einem Chat oder einem Bereich; Seitenmenü, Artefakte und alle Auswahl-Fenster haben ein ✕ zum Schließen',
+  ]),
   ('1.52.0', [
     'Alle Seiten durchgesehen und aufgeräumt – am Handy kein doppelter Seitentitel mehr, Erklärtexte kurz und dezent',
     'Prozesse am Handy als Schrittliste statt winzigem Canvas: Schritte antippen zum Bearbeiten, „Schritt hinzufügen“ unten; Canvas per Symbol oben umschaltbar',
