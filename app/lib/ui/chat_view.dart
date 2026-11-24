@@ -106,30 +106,27 @@ class _ChatViewState extends State<ChatView> {
                     child: NotificationListener<ScrollNotification>(
                       onNotification: _onScroll,
                       child: SelectionArea(
-                  child: ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                    itemCount: entries.length + 1,
-                    itemBuilder: (context, i) {
-                      if (i == entries.length) {
-                        return Center(
-                          child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 820), child: const _LiveStatus()),
-                        );
-                      }
-                      final e = entries[i];
-                      final live = app.runningHere && i == entries.length - 1;
-                      return Center(
-                        key: ObjectKey(e),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 820),
-                          child: e.role == 'user'
-                              ? _UserBubble(entry: e, index: i)
-                              : _AssistantMessage(entry: e, live: live, index: i),
+                        child: ListView.builder(
+                          controller: _scroll,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                          itemCount: entries.length + 1,
+                          itemBuilder: (context, i) {
+                            if (i == entries.length) {
+                              return Center(
+                                child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: const _LiveStatus()),
+                              );
+                            }
+                            final e = entries[i];
+                            final live = app.runningHere && i == entries.length - 1;
+                            return Center(
+                              key: ObjectKey(e),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 820),
+                                child: e.role == 'user' ? _UserBubble(entry: e, index: i) : _AssistantMessage(entry: e, live: live, index: i),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
                       ),
                     ),
                   ),
@@ -145,8 +142,7 @@ class _ChatViewState extends State<ChatView> {
                           onPressed: () => setState(() {
                             _stickToBottom = true;
                             if (_scroll.hasClients) {
-                              _scroll.animateTo(_scroll.position.maxScrollExtent,
-                                  duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+                              _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
                             }
                           }),
                           child: const Icon(Icons.arrow_downward_rounded),
@@ -228,111 +224,105 @@ class _ResultCarouselState extends State<ResultCarousel> {
           ),
         if (tags.length >= 2) const SizedBox(height: 8),
         SizedBox(
-        height: 300,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: visible.length + extra,
-          separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (context, i) {
-            if (i == visible.length) {
-              // Ende: weitere Karten zeigen bzw. neu suchen lassen
+          height: 300,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: visible.length + extra,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              if (i == visible.length) {
+                // Ende: weitere Karten zeigen bzw. neu suchen lassen
+                return SizedBox(
+                  width: 140,
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: InkWell(
+                      onTap: rest > 0 ? () => setState(() => _shown += _page) : widget.onMore,
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(rest > 0 ? Icons.arrow_forward : Icons.search, color: scheme.primary, size: 32),
+                        const SizedBox(height: 8),
+                        Text(rest > 0 ? 'Weitere laden\n($rest)' : 'Mehr suchen',
+                            textAlign: TextAlign.center, style: t.labelLarge?.copyWith(color: scheme.primary)),
+                      ]),
+                    ),
+                  ),
+                );
+              }
+              final c = visible[i];
+              final link = c['link'] ?? '';
+              final img = c['image'] ?? '';
+              final host = Uri.tryParse(link)?.host.replaceFirst('www.', '') ?? '';
+              final note = c['note'] ?? '';
+              Widget placeholder() => host.isEmpty || !widget.loadImages
+                  ? Icon(Icons.public, size: 40, color: scheme.outline)
+                  : Image.network('https://$host/favicon.ico',
+                      width: 40, height: 40, errorBuilder: (_, __, ___) => Icon(Icons.public, size: 40, color: scheme.outline));
               return SizedBox(
-                width: 140,
+                width: 190,
                 child: Card(
                   margin: EdgeInsets.zero,
+                  clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    onTap: rest > 0 ? () => setState(() => _shown += _page) : widget.onMore,
-                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(rest > 0 ? Icons.arrow_forward : Icons.search, color: scheme.primary, size: 32),
-                      const SizedBox(height: 8),
-                      Text(rest > 0 ? 'Weitere laden\n($rest)' : 'Mehr suchen', textAlign: TextAlign.center,
-                          style: t.labelLarge?.copyWith(color: scheme.primary)),
+                    onTap: link.isEmpty ? null : () => openExternalLink(context, link),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Container(
+                        height: 112,
+                        color: img.isEmpty ? scheme.surfaceContainerHighest : Colors.white,
+                        alignment: Alignment.center,
+                        child: img.isEmpty || !widget.loadImages
+                            ? placeholder()
+                            : Image.network(
+                                img,
+                                fit: BoxFit.cover,
+                                height: 112,
+                                width: 190,
+                                cacheWidth: 420,
+                                errorBuilder: (_, __, ___) => placeholder(),
+                                loadingBuilder: (_, child, p) =>
+                                    p == null ? child : const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                              ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            if ((c['tag'] ?? '').isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 3),
+                                child: Text(c['tag']!.toUpperCase(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: t.labelSmall?.copyWith(color: scheme.primary, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
+                              ),
+                            Text(c['title'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                            if (note.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Expanded(
+                                child: Text(note, maxLines: 4, overflow: TextOverflow.ellipsis, style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                              ),
+                            ] else
+                              const Spacer(),
+                            if ((c['price'] ?? '').isNotEmpty)
+                              Text(c['price']!, style: t.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
+                          ]),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 0, 6, 6),
+                        child: Row(children: [
+                          Expanded(
+                            child: Text(host, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                          ),
+                          if (link.isNotEmpty) Icon(Icons.open_in_new, size: 16, color: scheme.primary),
+                        ]),
+                      ),
                     ]),
                   ),
                 ),
               );
-            }
-            final c = visible[i];
-            final link = c['link'] ?? '';
-            final img = c['image'] ?? '';
-            final host = Uri.tryParse(link)?.host.replaceFirst('www.', '') ?? '';
-            final note = c['note'] ?? '';
-            Widget placeholder() => host.isEmpty || !widget.loadImages
-                ? Icon(Icons.public, size: 40, color: scheme.outline)
-                : Image.network('https://$host/favicon.ico',
-                    width: 40,
-                    height: 40,
-                    errorBuilder: (_, __, ___) => Icon(Icons.public, size: 40, color: scheme.outline));
-            return SizedBox(
-              width: 190,
-              child: Card(
-                margin: EdgeInsets.zero,
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: link.isEmpty ? null : () => openExternalLink(context, link),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Container(
-                      height: 112,
-                      color: img.isEmpty ? scheme.surfaceContainerHighest : Colors.white,
-                      alignment: Alignment.center,
-                      child: img.isEmpty || !widget.loadImages
-                          ? placeholder()
-                          : Image.network(
-                              img,
-                              fit: BoxFit.cover,
-                              height: 112,
-                              width: 190,
-                              cacheWidth: 420,
-                              errorBuilder: (_, __, ___) => placeholder(),
-                              loadingBuilder: (_, child, p) => p == null
-                                  ? child
-                                  : const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-                            ),
-                    ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          if ((c['tag'] ?? '').isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 3),
-                              child: Text(c['tag']!.toUpperCase(),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: t.labelSmall?.copyWith(color: scheme.primary, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
-                            ),
-                          Text(c['title'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis,
-                              style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                          if (note.isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Expanded(
-                              child: Text(note, maxLines: 4, overflow: TextOverflow.ellipsis,
-                                  style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
-                            ),
-                          ] else
-                            const Spacer(),
-                          if ((c['price'] ?? '').isNotEmpty)
-                            Text(c['price']!, style: t.titleSmall?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
-                        ]),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 0, 6, 6),
-                      child: Row(children: [
-                        Expanded(
-                          child: Text(host, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                        ),
-                        if (link.isNotEmpty) Icon(Icons.open_in_new, size: 16, color: scheme.primary),
-                      ]),
-                    ),
-                  ]),
-                ),
-              ),
-            );
-          },
+            },
+          ),
         ),
-      ),
       ]),
     );
   }
@@ -399,8 +389,7 @@ class _LiveStatusState extends State<_LiveStatus> {
         SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: scheme.primary)),
         const SizedBox(width: 10),
         Flexible(
-          child: Text('$label …$el',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+          child: Text('$label …$el', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
         ),
       ]),
     );
@@ -582,22 +571,24 @@ class _UserBubble extends StatelessWidget {
                 border: Border.all(color: AppColors.of(context).border),
                 borderRadius: BorderRadius.circular(18).copyWith(bottomRight: const Radius.circular(6)),
               ),
-              child: Text.rich(TextSpan(children: [
-                if (entry.viaVoice)
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Icon(Icons.mic, size: 14, color: scheme.onSurfaceVariant),
-                    ),
-                  ),
-                TextSpan(text: entry.text),
-                if (app.isQueued(entry))
-                  TextSpan(
-                    text: '\n⏳ wartet auf die laufende Antwort',
-                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-                  ),
-              ]), style: Theme.of(context).textTheme.bodyLarge),
+              child: Text.rich(
+                  TextSpan(children: [
+                    if (entry.viaVoice)
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Icon(Icons.mic, size: 14, color: scheme.onSurfaceVariant),
+                        ),
+                      ),
+                    TextSpan(text: entry.text),
+                    if (app.isQueued(entry))
+                      TextSpan(
+                        text: '\n⏳ wartet auf die laufende Antwort',
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                      ),
+                  ]),
+                  style: Theme.of(context).textTheme.bodyLarge),
             ),
             actions,
           ],
@@ -671,7 +662,9 @@ class _AssistantMessage extends StatelessWidget {
             ),
           if (entry.files.isNotEmpty) FileGallery(entry.files),
           if (!live && entry.sources.isNotEmpty) _Sources(entry.sources),
-          if (!live && entry.cloudOffer && (entry.via == null || entry.via!.startsWith('Lokal')) &&
+          if (!live &&
+              entry.cloudOffer &&
+              (entry.via == null || entry.via!.startsWith('Lokal')) &&
               AppScope.of(context).escalationProvider(AppScope.of(context).current) != null)
             Padding(
               padding: const EdgeInsets.only(top: 10),
@@ -688,35 +681,42 @@ class _AssistantMessage extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  if (entry.skill != null) ...[
-                    StatusChip('Skill: ${entry.skill}', color: AppColors.of(context).amber, icon: Icons.auto_awesome, dense: true),
-                    const SizedBox(width: 8),
-                  ],
-                  if (entry.via != null) ...[
-                    StatusChip(entry.via!.startsWith('Lokal') ? entry.via!.substring(8) : entry.via!.split(' · ').take(2).join(' · '),
-                        color: entry.via!.startsWith('Cloud')
-                            ? AppColors.of(context).blue
-                            : (entry.via!.startsWith('Lokal') ? AppColors.of(context).mint : AppColors.of(context).violet),
-                        icon: entry.via!.startsWith('Cloud')
-                            ? Icons.cloud_outlined
-                            : (entry.via!.startsWith('Lokal') ? Icons.memory : Icons.dns_outlined),
-                        dense: true),
-                    const SizedBox(width: 8),
-                  ],
-                  if (entry.truncated)
-                    Text('gekürzt · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                  if (entry.durationMs != null) ...[
-                    Icon(Icons.timer_outlined, size: 13, color: scheme.onSurfaceVariant),
-                    const SizedBox(width: 3),
-                    Text(formatDuration(entry.durationMs!), style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                    if (entry.tokensPerSecond != null)
-                      Text(' · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                  ],
-                  if (entry.tokensPerSecond != null)
-                    Text('${entry.tokensPerSecond!.toStringAsFixed(1)} Tokens/s',
-                        style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-                  const Spacer(),
+                  // Chips und Zeiten brechen auf schmalen Handys um, statt die Zeile zu sprengen
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (entry.skill != null) ...[
+                          StatusChip('Skill: ${entry.skill}', color: AppColors.of(context).amber, icon: Icons.auto_awesome, dense: true),
+                        ],
+                        if (entry.via != null) ...[
+                          StatusChip(entry.via!.startsWith('Lokal') ? entry.via!.substring(8) : entry.via!.split(' · ').take(2).join(' · '),
+                              color: entry.via!.startsWith('Cloud')
+                                  ? AppColors.of(context).blue
+                                  : (entry.via!.startsWith('Lokal') ? AppColors.of(context).mint : AppColors.of(context).violet),
+                              icon:
+                                  entry.via!.startsWith('Cloud') ? Icons.cloud_outlined : (entry.via!.startsWith('Lokal') ? Icons.memory : Icons.dns_outlined),
+                              dense: true),
+                        ],
+                        if (entry.durationMs != null || entry.tokensPerSecond != null)
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (entry.truncated) Text('gekürzt · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            if (entry.durationMs != null) ...[
+                              Icon(Icons.timer_outlined, size: 13, color: scheme.onSurfaceVariant),
+                              const SizedBox(width: 3),
+                              Text(formatDuration(entry.durationMs!), style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                              if (entry.tokensPerSecond != null) Text(' · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            ],
+                            if (entry.tokensPerSecond != null)
+                              Text('${entry.tokensPerSecond!.toStringAsFixed(1)} Tokens/s', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                          ]),
+                      ],
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Neu generieren',
                     visualDensity: VisualDensity.compact,
@@ -734,8 +734,7 @@ class _AssistantMessage extends StatelessWidget {
                       onSelected: (v) {
                         if (v == 'copy') {
                           Clipboard.setData(ClipboardData(text: entry.text));
-                          ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(content: Text('Kopiert'), duration: Duration(seconds: 1)));
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kopiert'), duration: Duration(seconds: 1)));
                         } else if (v == 'skill') {
                           _saveAsSkill(context, index);
                         } else if (v.startsWith('view:')) {
@@ -745,10 +744,17 @@ class _AssistantMessage extends StatelessWidget {
                       itemBuilder: (_) => [
                         const PopupMenuItem(value: 'copy', child: ListTile(dense: true, leading: Icon(Icons.copy, size: 20), title: Text('Antwort kopieren'))),
                         const PopupMenuItem(
-                            value: 'skill',
-                            child: ListTile(dense: true, leading: Icon(Icons.auto_awesome, size: 20), title: Text('Als Skill speichern'))),
+                            value: 'skill', child: ListTile(dense: true, leading: Icon(Icons.auto_awesome, size: 20), title: Text('Als Skill speichern'))),
                         const PopupMenuDivider(),
-                        for (final v in const [OutputView.text, OutputView.cards, OutputView.table, OutputView.list, OutputView.steps, OutputView.excel, OutputView.word])
+                        for (final v in const [
+                          OutputView.text,
+                          OutputView.cards,
+                          OutputView.table,
+                          OutputView.list,
+                          OutputView.steps,
+                          OutputView.excel,
+                          OutputView.word
+                        ])
                           PopupMenuItem(
                             value: 'view:$v',
                             enabled: !(entry.view == v || (v == OutputView.text && entry.view == null)),
@@ -762,8 +768,7 @@ class _AssistantMessage extends StatelessWidget {
                 ],
               ),
             ),
-          if (!live && (entry.text.isNotEmpty || entry.files.isNotEmpty) && entry.error == null)
-            AiNotice(images: entry.files.any(isImageFile)),
+          if (!live && (entry.text.isNotEmpty || entry.files.isNotEmpty) && entry.error == null) AiNotice(images: entry.files.any(isImageFile)),
         ],
       ),
     );
@@ -812,8 +817,7 @@ class _Sources extends StatelessWidget {
                     ? null
                     : () {
                         Clipboard.setData(ClipboardData(text: r.url!));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Adresse kopiert: ${r.url}'), duration: const Duration(seconds: 2)));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Adresse kopiert: ${r.url}'), duration: const Duration(seconds: 2)));
                       },
               ),
             ),
@@ -884,9 +888,7 @@ class _ThoughtLog extends StatelessWidget {
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : Icon(Icons.account_tree_outlined, color: scheme.primary, size: 20),
           title: Text(
-            live
-                ? 'Denkt nach … Schritt ${steps.length}'
-                : 'Denkschritte: ${steps.length} · $tools Tool-Aufruf${tools == 1 ? '' : 'e'}',
+            live ? 'Denkt nach … Schritt ${steps.length}' : 'Denkschritte: ${steps.length} · $tools Tool-Aufruf${tools == 1 ? '' : 'e'}',
             style: t.bodyMedium,
           ),
           children: [
@@ -927,8 +929,7 @@ class _StepTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (step.thought.isNotEmpty)
-                  Text(step.thought, style: t.bodySmall?.copyWith(fontStyle: FontStyle.italic)),
+                if (step.thought.isNotEmpty) Text(step.thought, style: t.bodySmall?.copyWith(fontStyle: FontStyle.italic)),
                 if (step.tool != null) ...[
                   const SizedBox(height: 4),
                   Wrap(
@@ -941,8 +942,7 @@ class _StepTile extends StatelessWidget {
                         avatar: const Icon(Icons.build_outlined, size: 14),
                         label: Text(step.tool!, style: t.labelSmall),
                       ),
-                      if (step.args != null && step.args!.isNotEmpty)
-                        Text(_shortArgs(step.args!), style: mono),
+                      if (step.args != null && step.args!.isNotEmpty) Text(_shortArgs(step.args!), style: mono),
                     ],
                   ),
                 ],
@@ -952,20 +952,15 @@ class _StepTile extends StatelessWidget {
                     padding: const EdgeInsets.all(8),
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: step.isError
-                          ? scheme.errorContainer.withValues(alpha: 0.5)
-                          : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                      color: step.isError ? scheme.errorContainer.withValues(alpha: 0.5) : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      step.observation!.length > 600
-                          ? '${step.observation!.substring(0, 600)} …'
-                          : step.observation!,
+                      step.observation!.length > 600 ? '${step.observation!.substring(0, 600)} …' : step.observation!,
                       style: mono,
                     ),
                   ),
-                if (step.durationMs > 0)
-                  Text('${step.durationMs} ms', style: t.labelSmall?.copyWith(color: scheme.outline)),
+                if (step.durationMs > 0) Text('${step.durationMs} ms', style: t.labelSmall?.copyWith(color: scheme.outline)),
               ],
             ),
           ),
@@ -1020,8 +1015,7 @@ class _MicButton extends StatelessWidget {
                   bottom: 0,
                   child: ValueListenableBuilder<int>(
                     valueListenable: app.voice.recordSeconds,
-                    builder: (context, s, _) =>
-                        Text('0:${s.toString().padLeft(2, '0')}', style: Theme.of(context).textTheme.labelSmall),
+                    builder: (context, s, _) => Text('0:${s.toString().padLeft(2, '0')}', style: Theme.of(context).textTheme.labelSmall),
                   ),
                 ),
               ],
@@ -1115,10 +1109,7 @@ class _InputBarState extends State<_InputBar> {
   // Enter sendet, Shift+Enter = neue Zeile (Hardware-Tastatur auf Mac/iPad).
   // Android ausgenommen: manche Bildschirmtastaturen senden Enter als Tastenereignis.
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
-    if ((Platform.isMacOS || Platform.isIOS) &&
-        e is KeyDownEvent &&
-        e.logicalKey == LogicalKeyboardKey.enter &&
-        !HardwareKeyboard.instance.isShiftPressed) {
+    if ((Platform.isMacOS || Platform.isIOS) && e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.enter && !HardwareKeyboard.instance.isShiftPressed) {
       _send();
       return KeyEventResult.handled;
     }
@@ -1189,10 +1180,12 @@ class _InputBarState extends State<_InputBar> {
         content: Text(app.visionHint),
         duration: const Duration(seconds: 8),
         action: app.engine != null && app.modelSupportsVision
-            ? SnackBarAction(label: 'Laden', onPressed: () {
-                final c = modelCatalog.where((e) => e.id == app.loadedModel?.catalogId).firstOrNull;
-                if (c != null) app.downloadVision(c);
-              })
+            ? SnackBarAction(
+                label: 'Laden',
+                onPressed: () {
+                  final c = modelCatalog.where((e) => e.id == app.loadedModel?.catalogId).firstOrNull;
+                  if (c != null) app.downloadVision(c);
+                })
             : null,
       ));
     }
@@ -1393,8 +1386,7 @@ class _InputBarState extends State<_InputBar> {
                               ),
                             ),
                           const PopupMenuDivider(),
-                          for (final (label, text) in promptPresets)
-                            PopupMenuItem(value: text, child: Text(label)),
+                          for (final (label, text) in promptPresets) PopupMenuItem(value: text, child: Text(label)),
                           const PopupMenuDivider(),
                           const PopupMenuItem(
                             value: '__save__',
@@ -1467,8 +1459,7 @@ class _InputBarState extends State<_InputBar> {
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                              color: _focus.hasFocus ? c.mint.withValues(alpha: 0.55) : c.borderStrong, width: _focus.hasFocus ? 1.4 : 1),
+                          border: Border.all(color: _focus.hasFocus ? c.mint.withValues(alpha: 0.55) : c.borderStrong, width: _focus.hasFocus ? 1.4 : 1),
                           boxShadow: [
                             BoxShadow(
                                 color: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.25 : 0.06),
@@ -1522,7 +1513,6 @@ class _InputBarState extends State<_InputBar> {
   }
 }
 
-
 /// Freigabe-Karte: Entwurf (E-Mail, WhatsApp) mit „Senden“, „Bearbeiten“, „Verwerfen“.
 class ActionCard extends StatefulWidget {
   const ActionCard({super.key, required this.entry, required this.index});
@@ -1565,8 +1555,7 @@ class _ActionCardState extends State<ActionCard> {
             Icon(appAct ? Icons.apps : (mail ? Icons.mail_outline : Icons.chat_outlined), size: 20, color: scheme.onSecondaryContainer),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(appAct ? 'App: ${a['app'] ?? ''}' : '${mail ? 'E-Mail' : 'WhatsApp'} an $who',
-                  style: t.titleSmall, overflow: TextOverflow.ellipsis),
+              child: Text(appAct ? 'App: ${a['app'] ?? ''}' : '${mail ? 'E-Mail' : 'WhatsApp'} an $who', style: t.titleSmall, overflow: TextOverflow.ellipsis),
             ),
             if (!pending)
               Chip(
@@ -1763,8 +1752,7 @@ Future<void> showMailAccountDialog(BuildContext context) async {
           FilledButton(
             onPressed: () async {
               if (user.text.trim().isEmpty || host.text.trim().isEmpty) return;
-              await app.saveSmtp(
-                  host: host.text, port: int.tryParse(port.text) ?? 465, user: user.text, password: pw.text, from: user.text);
+              await app.saveSmtp(host: host.text, port: int.tryParse(port.text) ?? 465, user: user.text, password: pw.text, from: user.text);
               await app.saveImap(enabled: imapOn, host: imapHost.text, port: int.tryParse(imapPort.text) ?? 993);
               if (ctx.mounted) Navigator.pop(ctx);
             },

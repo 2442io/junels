@@ -398,7 +398,6 @@ class FlowCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Flexible(child: Text(wf.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.titleSmall)),
-              if (command != null) ...[const SizedBox(width: 6), MonoText('/$command', color: c.muted)],
               const SizedBox(width: 8),
               if (running)
                 StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true)
@@ -411,6 +410,7 @@ class FlowCard extends StatelessWidget {
             ]),
             const SizedBox(height: 3),
             MonoText([
+              if (command != null) '/$command',
               trig?.summary ?? 'ohne Auslöser',
               '${wf.nodes.length} Bausteine',
               if (wf.lastRun != null) 'zuletzt ${wf.lastRun!.day}.${wf.lastRun!.month}. ${_two(wf.lastRun!.hour)}:${_two(wf.lastRun!.minute)}',
