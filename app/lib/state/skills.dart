@@ -1,4 +1,5 @@
-// Skills: Pakete aus Anleitung + erlaubten Werkzeugen (angelehnt an SKILL.md).
+// Skills im offenen Agent-Skills-Standard (agentskills.io): Ordner mit SKILL.md (+ references/, scripts/, assets/).
+// Junels-Eigenes steht unter metadata (junels.*), andere Agents ignorieren das.
 // Ein Skill sagt dem Agenten, wann und wie er Werkzeuge für eine Aufgabe kombiniert, und lädt NUR diese
 // Werkzeuge – das macht kleine Modelle am Gerät deutlich zuverlässiger.
 
@@ -27,7 +28,15 @@ class Skill {
     this.notifyKind = 'auto',
     this.internet = 'ask',
     this.model = '',
-  }) : tools = tools ?? [];
+    Map<String, String>? files,
+    this.license = '',
+    this.compatibility = '',
+    Map<String, String>? meta,
+    List<String>? unmapped,
+  })  : tools = tools ?? [],
+        files = files ?? {},
+        meta = meta ?? {},
+        unmapped = unmapped ?? [];
 
   final String id;
   String name;
@@ -51,6 +60,46 @@ class Skill {
   /// Modell für diesen Skill: '' = wie eingestellt, local, onprem, cloud, hybrid-onprem, hybrid-cloud
   String model;
 
+  /// Weitere Dateien des Skill-Ordners (relativer Pfad → Text), z. B. references/REFERENCE.md, scripts/x.py.
+  /// Werden erst bei Bedarf gelesen (skill-Werkzeug). Skripte werden NIE ausgeführt.
+  final Map<String, String> files;
+  String license;
+  String compatibility;
+
+  /// Fremde metadata-Einträge (author, version …) – bleiben beim Export erhalten
+  final Map<String, String> meta;
+
+  /// Werkzeuge aus allowed-tools, die Junels nicht hat (z. B. Bash) – nur zur Anzeige
+  final List<String> unmapped;
+
+  static const maxFileBytes = 200000;
+  static const _offlineCompat = 'Works offline, no network access needed';
+  static const maxFilesTotal = 1000000;
+
+  /// Name nach Standard: a-z, 0-9, Bindestrich, max. 64, kein -- und nicht am Rand
+  String get specName {
+    final n = slugify(slug.isEmpty ? name : slug);
+    return n.isEmpty ? 'skill' : n;
+  }
+
+  /// Beschreibung nach Standard: 1–1024 Zeichen, eine Zeile
+  String get specDescription {
+    var d = when.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (d.isEmpty) d = name;
+    return d.length > 1024 ? d.substring(0, 1024) : d;
+  }
+
+  /// Datei hinzufügen (mit Größengrenzen); false = zu groß/ungültig
+  bool addFile(String path, String text) {
+    final p = path.replaceAll('\\', '/').replaceAll(RegExp(r'^(\./|/)+'), '');
+    if (p.isEmpty || p.split('/').contains('..') || p.toUpperCase() == 'SKILL.MD') return false;
+    if (text.length > maxFileBytes) return false;
+    final total = files.entries.where((e) => e.key != p).fold<int>(0, (n, e) => n + e.value.length);
+    if (total + text.length > maxFilesTotal) return false;
+    files[p] = text;
+    return true;
+  }
+
   static const internetLabels = {'ask': 'Nachfragen (wie im Chat)', 'allow': 'Erlaubt, ohne Rückfrage', 'block': 'Gesperrt – nur offline'};
   static const modelLabels = {
     '': 'Wie eingestellt',
@@ -68,7 +117,7 @@ class Skill {
     const map = {'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss'};
     map.forEach((k, v) => t = t.replaceAll(k, v));
     t = t.replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
-    return t.length > 24 ? t.substring(0, 24).replaceAll(RegExp(r'-+$'), '') : t;
+    return t.length > 64 ? t.substring(0, 64).replaceAll(RegExp(r'-+$'), '') : t;
   }
 
   Map<String, Object?> toJson() => {
@@ -89,6 +138,11 @@ class Skill {
         if (notifyKind != 'auto') 'notifyKind': notifyKind,
         if (internet != 'ask') 'internet': internet,
         if (model.isNotEmpty) 'model': model,
+        if (files.isNotEmpty) 'files': files,
+        if (license.isNotEmpty) 'license': license,
+        if (compatibility.isNotEmpty) 'compatibility': compatibility,
+        if (meta.isNotEmpty) 'meta': meta,
+        if (unmapped.isNotEmpty) 'unmapped': unmapped,
       };
 
   factory Skill.fromJson(Map<String, dynamic> j) => Skill(
@@ -109,23 +163,72 @@ class Skill {
         notifyKind: '${j['notifyKind'] ?? 'auto'}',
         internet: internetLabels.containsKey(j['internet']) ? '${j['internet']}' : 'ask',
         model: modelLabels.containsKey(j['model']) ? '${j['model']}' : '',
+        files: {for (final e in ((j['files'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
+        license: '${j['license'] ?? ''}',
+        compatibility: '${j['compatibility'] ?? ''}',
+        meta: {for (final e in ((j['meta'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
+        unmapped: [for (final t in (j['unmapped'] as List? ?? const [])) '$t'],
       );
 
   Skill copy({String? id, bool? builtin}) =>
       Skill.fromJson({...toJson(), if (id != null) 'id': id, if (builtin != null) 'builtin': builtin});
 
-  /// Als SKILL.md (Frontmatter + Anleitung) – zum Teilen und für Claude-kompatible Skills.
+  /// Werkzeug-Namen, die andere Agents (Claude, Codex …) kennen – für allowed-tools beim Export
+  static const portableTools = {
+    'web_fetch': 'WebFetch',
+    'web_search': 'WebSearch',
+    'read_file': 'Read',
+    'text_search': 'Grep',
+    'file_search': 'Glob',
+    'edit_file': 'Edit',
+    'create_document': 'Write',
+  };
+
+  /// YAML-Wert sicher schreiben (Anführungszeichen, wenn nötig)
+  static String yamlStr(String v) {
+    final t = v.replaceAll(RegExp(r'\s*\n\s*'), ' ').trim();
+    const special = '-?:,[]{}#&*!|>\'"%@`';
+    final plain = t.isNotEmpty &&
+        !special.contains(t[0]) &&
+        !t.contains(': ') &&
+        !t.contains(' #') &&
+        !t.endsWith(':') &&
+        !RegExp(r'^(true|false|yes|no|null|~|[0-9.+-]+)$', caseSensitive: false).hasMatch(t);
+    return plain ? t : '"${t.replaceAll(r'\', r'\\').replaceAll('"', r'\"')}"';
+  }
+
+  /// Junels-Angaben unter metadata (Standard: Map String → String)
+  Map<String, String> get junelsMeta => {
+        ...meta,
+        if (name != _titleFrom(specName)) 'junels.title': name,
+        if (tools.isNotEmpty) 'junels.tools': tools.join(' '),
+        if (requiredTool.isNotEmpty) 'junels.result': requiredTool,
+        if (inputs.isNotEmpty) 'junels.inputs': inputs,
+        if (internet != 'ask') 'junels.internet': internet,
+        if (model.isNotEmpty) 'junels.model': model,
+        if (icon != 'auto_awesome') 'junels.icon': icon,
+        if (!auto) 'junels.auto': 'false',
+        if (slug.isNotEmpty && slug != specName) 'junels.command': slug,
+      };
+
+  /// Als SKILL.md nach dem Agent-Skills-Standard – läuft auch in Claude, Codex, Cursor & Co.
   String toMarkdown() {
     final b = StringBuffer()
       ..writeln('---')
-      ..writeln('name: $command')
-      ..writeln('description: ${when.replaceAll('\n', ' ')}')
-      ..writeln('junels-title: $name')
-      ..writeln('junels-tools: ${tools.join(', ')}');
-    if (requiredTool.isNotEmpty) b.writeln('junels-result: $requiredTool');
-    if (inputs.isNotEmpty) b.writeln('junels-inputs: $inputs');
-    if (internet != 'ask') b.writeln('junels-internet: $internet');
-    if (model.isNotEmpty) b.writeln('junels-model: $model');
+      ..writeln('name: $specName')
+      ..writeln('description: ${yamlStr(specDescription)}');
+    if (license.isNotEmpty) b.writeln('license: ${yamlStr(license)}');
+    final compat = compatibility.isNotEmpty
+        ? compatibility
+        : (internet == 'block' ? _offlineCompat : '');
+    if (compat.isNotEmpty) b.writeln('compatibility: ${yamlStr(compat.length > 500 ? compat.substring(0, 500) : compat)}');
+    final portable = [for (final t in tools) if (portableTools[t] case final p?) p];
+    if (portable.isNotEmpty) b.writeln('allowed-tools: ${portable.toSet().join(' ')}');
+    final m = junelsMeta;
+    if (m.isNotEmpty) {
+      b.writeln('metadata:');
+      m.forEach((k, v) => b.writeln('  ${yamlStr(k)}: ${yamlStr(v)}'));
+    }
     b
       ..writeln('---')
       ..writeln()
@@ -138,6 +241,15 @@ class Skill {
         ..writeln('## Wissen & Beispiele')
         ..writeln()
         ..writeln(knowledge.trim());
+    }
+    if (files.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln('## Dateien')
+        ..writeln();
+      for (final f in files.keys.toList()..sort()) {
+        b.writeln('- [$f]($f)');
+      }
     }
     return b.toString();
   }
@@ -154,26 +266,46 @@ class Skill {
       knowledge = body.substring(k + '## Wissen & Beispiele'.length).trim();
       body = body.substring(0, k).trim();
     }
+    // Dateiliste aus dem Export nicht als Anleitung übernehmen
+    body = body.replaceFirst(RegExp(r'\n+## Dateien\n+(- \[[^\n]*\n?)+\s*$'), '').trim();
+    final k2 = knowledge.indexOf('\n## Dateien\n');
+    if (k2 >= 0) knowledge = knowledge.substring(0, k2).trim();
     final h1 = RegExp(r'^# (.+)\n+').firstMatch(body);
     body = body.replaceFirst(RegExp(r'^# .*\n+'), '');
     if (body.trim().isEmpty && (meta['description'] ?? '').isEmpty) return null;
     final rawName = meta['name'] ?? '';
-    final name = meta['junels-title'] ?? h1?.group(1)?.trim() ?? (rawName.isEmpty ? 'Skill' : _titleFrom(rawName));
-    String pick(String key, Map<String, String> labels, String dflt) => labels.containsKey(meta[key]) ? meta[key]! : dflt;
+    // Junels-Angaben: metadata.junels.* (Standard) oder junels-* (ältere Exporte)
+    String? j(String key) => meta['metadata.junels.$key'] ?? meta['junels-$key'];
+    final name = j('title') ?? h1?.group(1)?.trim() ?? (rawName.isEmpty ? 'Skill' : _titleFrom(rawName));
+    String pick(String key, Map<String, String> labels, String dflt) => labels.containsKey(j(key)) ? j(key)! : dflt;
+    final toolText = j('tools') ?? meta['allowed-tools'] ?? '';
     return Skill(
       id: id,
       name: name,
-      slug: slugify(rawName.isEmpty ? name : rawName),
+      slug: slugify(j('command') ?? (rawName.isEmpty ? name : rawName)),
       when: meta['description'] ?? '',
       instructions: body.trim().isEmpty ? (meta['description'] ?? '') : body,
-      tools: [for (final t in (meta['junels-tools'] ?? meta['allowed-tools'] ?? '').split(RegExp(r'[,\s]+'))) if (t.trim().isNotEmpty) t.trim()],
-      requiredTool: meta['junels-result'] ?? '',
-      inputs: meta['junels-inputs'] ?? '',
+      tools: [for (final t in splitTools(toolText)) t],
+      requiredTool: j('result') ?? '',
+      inputs: j('inputs') ?? '',
       knowledge: knowledge,
-      internet: pick('junels-internet', internetLabels, 'ask'),
-      model: pick('junels-model', modelLabels, ''),
+      internet: pick('internet', internetLabels, 'ask'),
+      model: pick('model', modelLabels, ''),
+      icon: j('icon') ?? 'auto_awesome',
+      auto: j('auto') != 'false',
+      license: meta['license'] ?? '',
+      compatibility: meta['compatibility'] == _offlineCompat ? '' : (meta['compatibility'] ?? ''),
+      meta: {
+        for (final e in meta.entries)
+          if (e.key.startsWith('metadata.') && !e.key.startsWith('metadata.junels.')) e.key.substring(9): e.value,
+      },
     );
   }
+
+  /// allowed-tools: Leerzeichen-getrennt (Standard), auch mit Komma; Klammern bleiben zusammen: Bash(git:*)
+  static List<String> splitTools(String text) => [
+        for (final m in RegExp(r'[^\s,(]+(\([^)]*\))?').allMatches(text)) m.group(0)!,
+      ];
 
   static String _titleFrom(String slug) {
     final w = slug.replaceAll(RegExp(r'[-_]+'), ' ').trim();
@@ -196,19 +328,37 @@ class Skill {
           i++;
           buf.add(lines[i].trim());
         }
-        v = v.startsWith('|') ? buf.join('\n').trim() : buf.where((x) => x.isNotEmpty).join(' ').trim();
+        final nonEmpty = buf.where((x) => x.isNotEmpty).toList();
+        // verschachtelte Map (metadata:) → key.unterkey
+        if (!v.startsWith('|') && !v.startsWith('>') && nonEmpty.isNotEmpty &&
+            nonEmpty.every((x) => RegExp(r'^("[^"]+"|' "'[^']+'" r'|[^\s:\-][^:]*?)\s*:(\s|$)').hasMatch(x))) {
+          for (final x in nonEmpty) {
+            final kv = RegExp(r'^("[^"]+"|' "'[^']+'" r'|[^:]+?)\s*:\s*(.*)$').firstMatch(x)!;
+            out['$key.${_unquote(kv.group(1)!.trim())}'] = _unquote(kv.group(2)!.trim());
+          }
+          continue;
+        }
+        v = v.startsWith('|') ? buf.join('\n').trim() : nonEmpty.join(' ').trim();
         // Liste (- a / - b) → Komma-getrennt
         if (buf.isNotEmpty && buf.where((x) => x.isNotEmpty).every((x) => x.startsWith('- '))) {
           v = buf.where((x) => x.isNotEmpty).map((x) => x.substring(2).trim()).join(', ');
         }
       } else if (v.startsWith('[') && v.endsWith(']')) {
         v = v.substring(1, v.length - 1).split(',').map((x) => x.trim().replaceAll(RegExp('^["\']|["\']\$'), '')).join(', ');
-      } else if ((v.startsWith('"') && v.endsWith('"') || v.startsWith("'") && v.endsWith("'")) && v.length >= 2) {
-        v = v.substring(1, v.length - 1).replaceAll(r'\"', '"');
+      } else {
+        v = _unquote(v);
       }
       out[key] = v;
     }
     return out;
+  }
+
+  static String _unquote(String v) {
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+      return v.substring(1, v.length - 1).replaceAll(r'\"', '"').replaceAll(r'\\', r'\');
+    }
+    if (v.length >= 2 && v.startsWith("'") && v.endsWith("'")) return v.substring(1, v.length - 1).replaceAll("''", "'");
+    return v;
   }
 
   /// Text für das Modell in dieser Runde.
@@ -220,6 +370,12 @@ class Skill {
     }
     b.writeln('Anleitung:\n${instructions.trim()}');
     if (knowledge.trim().isNotEmpty) b.writeln('Wissen & Beispiele:\n${knowledge.trim()}');
+    if (files.isNotEmpty) {
+      b.writeln('Weitere Dateien dieses Skills – nur bei Bedarf lesen mit dem Werkzeug skill (aktion datei, name $command, pfad):');
+      for (final f in files.keys.toList()..sort()) {
+        b.writeln('- $f (${(files[f]!.length / 1000).ceil()} KB${f.startsWith('scripts/') ? ', Skript – wird nicht ausgeführt, nur lesbar' : ''})');
+      }
+    }
     return b.toString();
   }
 }

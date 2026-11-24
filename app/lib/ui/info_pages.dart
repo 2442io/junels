@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.56.0', [
+    'Skills im offenen Agent-Skills-Standard (agentskills.io, wie Claude, Codex, Cursor, Gemini CLI): SKILL.md mit name/description, Junels-Einstellungen (Werkzeuge, Internet, Modell …) unter metadata – andere Agents ignorieren sie, Junels liest sie wieder ein',
+    'Skill teilen als Standard-Paket (.zip mit Ordner, SKILL.md und Dateien) – einzeln im Editor oder alle eigenen Skills auf einmal; „Standard prüfen“ zeigt, ob ein Skill konform ist',
+    'Skill-Dateien: references/, scripts/ und assets/ aus importierten Paketen bleiben erhalten und lassen sich ansehen, ergänzen und entfernen; Skripte werden nie ausgeführt',
+    'Stufenweises Laden: Junels kennt erst nur Name und Zweck deiner Skills, lädt die Anleitung, wenn eine passt, und Zusatzdateien erst bei Bedarf – spart Platz, gerade bei kleinen Modellen am Gerät',
+    'Werkzeug-Übersetzung für Claude Code, Codex, Gemini CLI und OpenCode erweitert (auch Bash(git:*)-Schreibweise); was Junels nicht kann, steht sichtbar im Editor statt still zu verschwinden',
+  ]),
   ('1.55.0', [
     'Skills importieren: Datei(en) (SKILL.md, .zip, .skill mit mehreren Skills), Link (GitHub-Seite, Ordner, Rohdatei) oder Text einfügen – auch Claude-Skills; Werkzeuge werden übersetzt oder passend vorgeschlagen, ein einzelner Skill öffnet sich zum Prüfen',
     'Skills: Internet je Skill (nachfragen, ohne Rückfrage erlaubt, gesperrt) und Modell je Skill (lokal, eigener Server, Cloud, Hybrid) – gilt im Chat und im Skill-Baustein',

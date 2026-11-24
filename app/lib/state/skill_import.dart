@@ -7,27 +7,46 @@ import 'package:archive/archive.dart';
 
 import 'skills.dart';
 
-/// Skills importieren: SKILL.md (Junels- oder Claude-Format), ZIP/.skill mit einem oder mehreren
-/// Skill-Ordnern, Link (GitHub-Seite, Rohdatei, ZIP) oder eingefügter Text. Es wird nichts ausgeführt –
-/// Skills sind reine Anleitungen; Skripte in einem Paket werden ignoriert.
+/// Skills importieren und exportieren nach dem offenen Agent-Skills-Standard (agentskills.io):
+/// SKILL.md, ZIP/.skill mit einem oder mehreren Skill-Ordnern, Link (GitHub-Seite, Rohdatei, ZIP) oder Text.
+/// Es wird nichts ausgeführt – Skripte werden nur als lesbare Dateien übernommen.
 class SkillImport {
   SkillImport._();
 
   /// Werkzeug-Namen aus Claude-Skills („allowed-tools“) auf Junels übertragen
-  static const _toolMap = {
+  /// (Claude Code, Codex, Gemini CLI, OpenCode, Cursor – der Standard legt keine Werkzeugnamen fest)
+  static const toolMap = {
     'webfetch': 'web_fetch',
+    'web_fetch': 'web_fetch',
+    'fetch': 'web_fetch',
     'websearch': 'web_search',
+    'web_search': 'web_search',
+    'google_web_search': 'web_search',
     'read': 'read_file',
+    'read_file': 'read_file',
+    'view': 'read_file',
     'grep': 'text_search',
+    'search_file_content': 'text_search',
     'glob': 'file_search',
+    'list_directory': 'file_search',
+    'ls': 'file_search',
     'write': 'create_document',
+    'write_file': 'create_document',
+    'edit': 'edit_file',
+    'multiedit': 'edit_file',
+    'replace': 'edit_file',
+    'todowrite': 'send_notification',
   };
+
+  /// Textdateien, die in einen Skill-Ordner gehören (Rest, z. B. Bilder, wird übersprungen)
+  static final _textFile = RegExp(r'\.(md|markdown|txt|csv|tsv|json|ya?ml|xml|html?|py|sh|bash|js|mjs|ts|rb|ps1|sql|toml|ini|cfg|tex|rst)$',
+      caseSensitive: false);
 
   static int _n = 0;
   static String _id() => 'u-${DateTime.now().microsecondsSinceEpoch}-${_n++}';
 
   /// Text einer SKILL.md (oder einer Markdown-Datei mit Frontmatter) → Skill
-  static Skill? fromText(String text, {required List<AgentTool> available, String extraKnowledge = ''}) {
+  static Skill? fromText(String text, {required List<AgentTool> available, Map<String, String> files = const {}}) {
     var t = text.trim();
     if (!t.startsWith('---')) {
       // ohne Frontmatter: erste Überschrift = Name, erster Absatz = Beschreibung
@@ -39,9 +58,8 @@ class SkillImport {
     }
     final s = Skill.fromMarkdown(t, id: _id());
     if (s == null) return null;
-    if (extraKnowledge.trim().isNotEmpty) {
-      final k = '${s.knowledge}\n\n$extraKnowledge'.trim();
-      s.knowledge = k.length > 20000 ? '${k.substring(0, 20000)}\n[… gekürzt]' : k;
+    for (final e in files.entries) {
+      s.addFile(e.key, e.value);
     }
     _fixTools(s, available);
     return s;
@@ -50,10 +68,20 @@ class SkillImport {
   /// Werkzeuge prüfen: Claude-Namen übersetzen, unbekannte streichen, fehlende passend vorschlagen
   static void _fixTools(Skill s, List<AgentTool> available) {
     final names = {for (final t in available) t.name};
-    final mapped = <String>{
-      for (final x in s.tools)
-        if (names.contains(x)) x else if (_toolMap[x.toLowerCase()] case final m? when names.contains(m)) m,
-    };
+    final mapped = <String>{};
+    final unmapped = <String>[];
+    for (final x in s.tools) {
+      final base = x.replaceFirst(RegExp(r'\(.*\)$'), '').trim(); // Bash(git:*) → Bash
+      final m = names.contains(base) ? base : toolMap[base.toLowerCase()];
+      if (m != null && names.contains(m)) {
+        mapped.add(m);
+      } else if (!unmapped.contains(base)) {
+        unmapped.add(base);
+      }
+    }
+    s.unmapped
+      ..clear()
+      ..addAll(unmapped);
     if (mapped.isEmpty) {
       // Aus Beschreibung und Anleitung ableiten (wie die Werkzeug-Auswahl im Chat)
       final text = '${s.name}. ${s.when}\n${s.instructions}';
@@ -68,34 +96,77 @@ class SkillImport {
     if (s.requiredTool.isNotEmpty && !s.tools.contains(s.requiredTool)) s.requiredTool = '';
   }
 
-  /// ZIP/.skill: jede SKILL.md wird ein Skill; weitere .md-Dateien im selben Ordner kommen als Wissen dazu.
+  /// ZIP/.skill: jeder Ordner mit SKILL.md wird ein Skill; seine übrigen Textdateien (references/, scripts/,
+  /// assets/ …) bleiben als Dateien erhalten und werden erst bei Bedarf gelesen.
   static List<Skill> fromZip(Uint8List bytes, {required List<AgentTool> available}) {
     final arc = ZipDecoder().decodeBytes(bytes);
     final files = <String, String>{};
     for (final f in arc.files) {
       if (!f.isFile) continue;
       final name = f.name.replaceAll('\\', '/');
-      if (name.contains('__MACOSX/') || !name.toLowerCase().endsWith('.md')) continue;
-      if (f.size > 400000) continue;
+      if (name.contains('__MACOSX/') || name.split('/').any((p) => p.startsWith('.') && p.length > 1)) continue;
+      if (!_textFile.hasMatch(name) || f.size > Skill.maxFileBytes) continue;
       files[name] = utf8.decode(f.content as List<int>, allowMalformed: true);
     }
+    String dirOf(String k) => k.contains('/') ? k.substring(0, k.lastIndexOf('/') + 1) : '';
+    final skillFiles = files.keys.where((k) => k.split('/').last.toUpperCase() == 'SKILL.MD').toList()
+      ..sort((a, b) => b.length.compareTo(a.length)); // tiefste Ordner zuerst
+    final taken = <String>{};
     final out = <Skill>[];
-    final skillFiles = files.keys.where((k) => k.split('/').last.toUpperCase() == 'SKILL.MD').toList();
     for (final k in skillFiles) {
-      final dir = k.contains('/') ? k.substring(0, k.lastIndexOf('/') + 1) : '';
-      final refs = [
-        for (final e in files.entries)
-          if (e.key != k && e.key.startsWith(dir) && !skillFiles.any((o) => o != k && e.key.startsWith(o.substring(0, o.lastIndexOf('/') + 1)) && o.length > k.length))
-            '### ${e.key.substring(dir.length)}\n${e.value.trim()}'
-      ];
-      final s = fromText(files[k]!, available: available, extraKnowledge: refs.join('\n\n'));
+      final dir = dirOf(k);
+      final own = <String, String>{};
+      for (final e in files.entries) {
+        if (e.key == k || taken.contains(e.key) || !e.key.startsWith(dir)) continue;
+        if (skillFiles.contains(e.key)) continue;
+        own[e.key.substring(dir.length)] = e.value;
+        taken.add(e.key);
+      }
+      final s = fromText(files[k]!, available: available, files: own);
       if (s != null) out.add(s);
     }
     // ZIP ohne SKILL.md, aber mit genau einer Markdown-Datei
-    if (out.isEmpty && files.length == 1) {
-      final s = fromText(files.values.first, available: available);
+    if (out.isEmpty) {
+      final md = files.keys.where((k) => k.toLowerCase().endsWith('.md')).toList();
+      final s = md.length == 1 ? fromText(files[md.first]!, available: available) : null;
       if (s != null) out.add(s);
     }
+    return out.reversed.toList();
+  }
+
+  /// Export als Standard-Paket: <name>/SKILL.md + Dateien – importierbar in Claude, Codex, Cursor & Co.
+  static Uint8List toZip(List<Skill> skills) {
+    final arc = Archive();
+    final used = <String>{};
+    for (final s in skills) {
+      var dir = s.specName;
+      for (var i = 2; used.contains(dir); i++) {
+        dir = Skill.slugify('${s.specName}-$i');
+      }
+      used.add(dir);
+      // name muss dem Ordnernamen entsprechen
+      final md = s.toMarkdown().replaceFirst(RegExp(r'^name: .*$', multiLine: true), 'name: $dir');
+      arc.addFile(ArchiveFile.string('$dir/SKILL.md', md));
+      for (final e in s.files.entries) {
+        arc.addFile(ArchiveFile.string('$dir/${e.key}', e.value));
+      }
+    }
+    return ZipEncoder().encodeBytes(arc);
+  }
+
+  /// Prüft eine SKILL.md gegen den Standard; leere Liste = gültig
+  static List<String> validate(String md, {String? dirName}) {
+    final m = RegExp(r'^---\s*\r?\n([\s\S]*?)\r?\n---').firstMatch(md.trimLeft());
+    if (m == null) return ['Frontmatter (--- … ---) fehlt'];
+    final f = Skill.parseFrontmatter(m.group(1)!);
+    final out = <String>[];
+    final name = f['name'] ?? '';
+    if (name.isEmpty || name.length > 64) out.add('name fehlt oder ist länger als 64 Zeichen');
+    if (!RegExp(r'^[a-z0-9]+(-[a-z0-9]+)*$').hasMatch(name)) out.add('name: nur a-z, 0-9 und einzelne Bindestriche');
+    if (dirName != null && name != dirName) out.add('name passt nicht zum Ordnernamen');
+    final d = f['description'] ?? '';
+    if (d.isEmpty || d.length > 1024) out.add('description fehlt oder ist länger als 1024 Zeichen');
+    if ((f['compatibility'] ?? '').length > 500) out.add('compatibility ist länger als 500 Zeichen');
     return out;
   }
 

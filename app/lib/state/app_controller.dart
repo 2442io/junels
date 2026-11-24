@@ -92,6 +92,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   late final List<AgentTool> tools;
 
+  /// Stufenweises Laden von Skills (Katalog → Anleitung → Dateien), Agent-Skills-Standard
+  late final SkillLoadTool skillLoadTool = SkillLoadTool(skills);
+
   // Gedächtnis & Wissensbasis
   late final MemoryStore memory;
 
@@ -317,7 +320,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         appControlTool,
         guideTool,
         SkillCreateTool(
-          available: () => [for (final t in activeTools) if (t.name != 'skill_erstellen') (t.name, t.title)],
+          available: () => [for (final t in activeTools) if (t.name != 'skill_erstellen' && t.name != 'skill') (t.name, t.title)],
           save: skills.upsert,
         ),
         CreateChartTool(out, renderChart),
@@ -3512,7 +3515,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         network: allowInternet,
         exclude: const {'browser', 'begleiten'},
       );
-      final tools = prep.tools;
+      final tools = [...prep.tools, if (skill != null && skill.files.isNotEmpty) skillLoadTool];
       if (skill != null) prompt = '${skill.brief()}\nAufgabe: ${prompt.trim().isEmpty ? '(siehe Anleitung)' : prompt}';
       if (wantsGuide(prompt)) {
         prompt = '$prompt\n\n[Hinweis: Dieser Prozess läuft ohne den Nutzer – Anmeldung, Formulare absenden und Zahlungen gehen hier nicht. '
@@ -3947,7 +3950,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       var list = [for (final t in activeTools) if (skill.tools.contains(t.name)) t];
       if (conv.internetOff || !deviceOnline || skill.internet == 'block') list = [for (final t in list) if (!t.requiresNetwork) t];
       if (voice || headless) list = [for (final t in list) if (t.name != 'browser') t];
+      // Zusatzdateien des Skills (references/ …) erst bei Bedarf lesen
+      if (skill.files.isNotEmpty) list = [...list, skillLoadTool];
       runTools = list;
+    } else if (quickCalc(input) == null && skillLoadTool.catalog.isNotEmpty && !runTools.any((t) => t.name == 'skill')) {
+      // Katalog der eigenen Skills (nur Name + Zweck); die Anleitung lädt das Modell erst, wenn eine passt
+      runTools = [...runTools, skillLoadTool];
     }
     final user = ChatEntry(
         role: 'user',

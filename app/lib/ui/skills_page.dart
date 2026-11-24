@@ -1,4 +1,4 @@
-// Skills: eigene Fähigkeiten aus Anleitung + Werkzeugen entwerfen, Basis-Skills anpassen, als SKILL.md teilen.
+// Skills: eigene Fähigkeiten entwerfen, Basis-Skills anpassen, im Agent-Skills-Standard (SKILL.md) importieren und teilen.
 
 import 'dart:convert';
 import 'dart:io';
@@ -79,6 +79,18 @@ class SkillsPage extends StatelessWidget {
     return Scaffold(
       appBar: JAppBar(title: const Text('Skills'), actions: [
         IconButton(tooltip: 'Skills importieren', icon: const Icon(Icons.download_outlined), onPressed: () => showSkillImport(context)),
+        IconButton(
+          tooltip: 'Eigene Skills exportieren (ZIP)',
+          icon: const Icon(Icons.ios_share),
+          onPressed: () async {
+            final list = [...lib.own, ...lib.basis.where((b) => b.edited)];
+            if (list.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Noch keine eigenen oder angepassten Skills')));
+              return;
+            }
+            await shareSkillZip(list, 'junels-skills');
+          },
+        ),
         IconButton(tooltip: 'Neuer Skill', icon: const Icon(Icons.add), onPressed: () => openSkillEditor(context, null)),
       ]),
       body: ListenableBuilder(
@@ -86,7 +98,9 @@ class SkillsPage extends StatelessWidget {
         builder: (context, _) => ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 32), children: [
           Text(
               'Ein Skill ist eine Anleitung plus die Werkzeuge, die Junels dafür nutzen darf. Aufrufen mit /befehl im Chat – '
-              'eigene Skills erkennt Junels auch automatisch. Tipp: „Bau mir einen Skill, der …“ oder unter einer guten Antwort „Als Skill speichern“.',
+              'eigene Skills erkennt Junels auch automatisch. Gespeichert im offenen Agent-Skills-Standard (SKILL.md): '
+              'Skills aus Claude, Codex oder Cursor laufen hier, Junels-Skills dort. '
+              'Tipp: „Bau mir einen Skill, der …“ oder unter einer guten Antwort „Als Skill speichern“.',
               style: t.bodySmall?.copyWith(color: c.muted)),
           const SizedBox(height: 12),
           Row(children: [
@@ -130,6 +144,13 @@ String utf8Fix(String s) {
   }
 }
 
+/// Skills als Standard-Paket (ZIP mit <name>/SKILL.md + Dateien) teilen
+Future<void> shareSkillZip(List<Skill> skills, String fileName) async {
+  final f = File('${Directory.systemTemp.path}/$fileName.zip');
+  await f.writeAsBytes(SkillImport.toZip(skills));
+  await NativeFiles.share(f.path);
+}
+
 void openSkillEditor(BuildContext context, Skill? skill, {Skill? draft}) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => SkillEditor(skill: skill, draft: draft)));
 
@@ -171,8 +192,9 @@ Future<void> showSkillImport(BuildContext context) async {
           padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(ctx).bottom),
           child: SingleChildScrollView(
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-              Text('SKILL.md im Junels- oder Claude-Format, auch als ZIP/.skill mit mehreren Skills. '
-                  'Skills sind Anleitungen – Skripte in einem Paket werden nicht übernommen und nie ausgeführt.',
+              Text('SKILL.md nach dem Agent-Skills-Standard (Claude, Codex, Cursor, Gemini CLI …), auch als ZIP/.skill mit '
+                  'mehreren Skills. Werkzeugnamen werden übersetzt; references/ & Co. bleiben als Dateien erhalten. '
+                  'Skripte werden nur als Text übernommen und nie ausgeführt.',
                   style: t.bodySmall),
               const SizedBox(height: 14),
               FilledButton.icon(
@@ -325,7 +347,7 @@ class _SkillEditorState extends State<SkillEditor> {
     final app = AppScope.of(context);
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
-    final tools = [for (final x in app.tools) if (x.name != 'skill_erstellen') x];
+    final tools = [for (final x in app.tools) if (x.name != 'skill_erstellen' && x.name != 'skill') x];
     final known = {for (final x in tools) x.name};
     return Scaffold(
       appBar: JAppBar(
@@ -342,9 +364,14 @@ class _SkillEditorState extends State<SkillEditor> {
                   m.showSnackBar(const SnackBar(content: Text('SKILL.md kopiert')));
                 case 'share':
                   _apply();
-                  final f = File('${Directory.systemTemp.path}/${s.command}.SKILL.md');
-                  await f.writeAsString(s.toMarkdown());
-                  await NativeFiles.share(f.path);
+                  await shareSkillZip([s], s.specName);
+                case 'check':
+                  _apply();
+                  final probs = SkillImport.validate(s.toMarkdown());
+                  m.showSnackBar(SnackBar(
+                      content: Text(probs.isEmpty
+                          ? 'Entspricht dem Agent-Skills-Standard (Name: ${s.specName})'
+                          : 'Nicht standardkonform: ${probs.join('; ')}')));
                 case 'dup':
                   _apply();
                   final d = s.copy(id: 'u-${DateTime.now().microsecondsSinceEpoch}', builtin: false)
@@ -362,7 +389,8 @@ class _SkillEditorState extends State<SkillEditor> {
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy), title: Text('Als SKILL.md kopieren'))),
-              const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Teilen (SKILL.md)'))),
+              const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Teilen (Skill-Paket .zip)'))),
+              const PopupMenuItem(value: 'check', child: ListTile(leading: Icon(Icons.verified_outlined), title: Text('Standard prüfen'))),
               const PopupMenuItem(value: 'dup', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
               if (s.builtin && s.edited)
                 const PopupMenuItem(value: 'reset', child: ListTile(leading: Icon(Icons.restart_alt), title: Text('Zurücksetzen'))),
@@ -403,7 +431,7 @@ class _SkillEditorState extends State<SkillEditor> {
             labelText: 'Befehl im Chat',
             prefixText: '/',
             hintText: Skill.slugify(_name.text),
-            helperText: 'Leer = aus dem Namen',
+            helperText: 'Leer = aus dem Namen · auch der Name im Standard (a-z, 0-9, -)',
           ),
         ),
         const SizedBox(height: 10),
@@ -460,6 +488,12 @@ class _SkillEditorState extends State<SkillEditor> {
           for (final unknown in s.tools.where((n) => !known.contains(n)))
             Chip(label: Text('$unknown (nicht verfügbar)'), backgroundColor: c.redSoft),
         ]),
+        if (s.unmapped.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('Aus dem Original nicht übertragbar: ${s.unmapped.join(', ')} – dafür hat Junels kein Werkzeug.',
+                style: t.bodySmall?.copyWith(color: c.muted)),
+          ),
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
           initialValue: s.tools.contains(s.requiredTool) ? s.requiredTool : '',
@@ -518,6 +552,54 @@ class _SkillEditorState extends State<SkillEditor> {
               decoration: const InputDecoration(
                 hintText: 'Fakten, Formulierungen, ein Beispiel-Ergebnis – wird bei jeder Nutzung mitgegeben',
                 alignLabelWithHint: true,
+              ),
+            ),
+          ],
+        ),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          title: Text('Dateien (${s.files.length})'),
+          subtitle: const Text('references/, scripts/, assets/ – liest Junels nur bei Bedarf'),
+          children: [
+            for (final f in s.files.keys.toList()..sort())
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(f.startsWith('scripts/') ? Icons.code : Icons.article_outlined, size: 20),
+                title: MonoText(f),
+                subtitle: Text('${(s.files[f]!.length / 1000).ceil()} KB${f.startsWith('scripts/') ? ' · wird nie ausgeführt' : ''}'),
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text(f),
+                    content: SizedBox(width: 560, child: SingleChildScrollView(child: SelectableText(s.files[f]!))),
+                    actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Schließen'))],
+                  ),
+                ),
+                trailing: IconButton(
+                  tooltip: 'Entfernen',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => setState(() => s.files.remove(f)),
+                ),
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Datei hinzufügen'),
+                onPressed: () async {
+                  final m = ScaffoldMessenger.of(context);
+                  final pick = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any, withData: true);
+                  if (pick == null) return;
+                  var skipped = 0;
+                  for (final f in pick.files) {
+                    final bytes = f.bytes ?? await File(f.path!).readAsBytes();
+                    final dir = RegExp(r'\.(py|sh|bash|js|mjs|ts|rb|ps1)$').hasMatch(f.name.toLowerCase()) ? 'scripts' : 'references';
+                    if (!s.addFile('$dir/${f.name}', utf8.decode(bytes, allowMalformed: true))) skipped++;
+                  }
+                  setState(() {});
+                  if (skipped > 0) m.showSnackBar(SnackBar(content: Text('$skipped Datei(en) zu groß (max. 200 KB je Datei, 1 MB gesamt)')));
+                },
               ),
             ),
           ],

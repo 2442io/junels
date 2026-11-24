@@ -155,5 +155,62 @@ Wetter am Zielort abfragen und kurz empfehlen.''';
           'https://raw.githubusercontent.com/a/b/main/skills/pdf/SKILL.md');
       expect(SkillImport.fromText('nur Text ohne Überschrift', available: evalToolSpecs), isNull);
     });
+
+    test('Export entspricht dem Agent-Skills-Standard, Junels-Angaben unter metadata', () {
+      final s = Skill(
+        id: 'x',
+        name: 'Rechnungen: Monat sammeln',
+        when: 'Sammelt Rechnungen # aus dem Postfach',
+        instructions: '1. Postfach durchsuchen',
+        tools: ['mail_inbox', 'web_search', 'create_document'],
+        requiredTool: 'create_document',
+        internet: 'block',
+        model: 'hybrid-onprem',
+        meta: {'author': 'christoph'},
+      )..addFile('references/REFERENCE.md', '# Kontenplan');
+      final md = s.toMarkdown();
+      expect(SkillImport.validate(md), isEmpty);
+      expect(md, contains('name: rechnungen-monat-sammeln'));
+      expect(md, contains('allowed-tools: WebSearch Write'));
+      expect(md, contains('  junels.internet: block'));
+      expect(md, contains('[references/REFERENCE.md](references/REFERENCE.md)'));
+      final back = Skill.fromMarkdown(md, id: 'y')!;
+      expect(back.name, 'Rechnungen: Monat sammeln');
+      expect(back.when, 'Sammelt Rechnungen # aus dem Postfach');
+      expect(back.tools, ['mail_inbox', 'web_search', 'create_document']);
+      expect(back.requiredTool, 'create_document');
+      expect(back.internet, 'block');
+      expect(back.model, 'hybrid-onprem');
+      expect(back.meta, {'author': 'christoph'});
+      expect(back.instructions.contains('Dateien'), isFalse);
+      expect(Skill.fromJson(s.toJson()).files['references/REFERENCE.md'], '# Kontenplan');
+      expect(s.brief(), contains('references/REFERENCE.md'));
+    });
+
+    test('Standard-Prüfung und allowed-tools mit Klammern', () {
+      expect(SkillImport.validate('---\nname: PDF--Tool\ndescription: x\n---\n'), isNotEmpty);
+      expect(SkillImport.validate('---\nname: pdf-tool\n---\n'), isNotEmpty);
+      expect(SkillImport.validate('---\nname: pdf-tool\ndescription: Macht PDFs\n---\n', dirName: 'pdf-tool'), isEmpty);
+      expect(Skill.splitTools('Bash(git:*) Bash(jq:*) Read, WebFetch'), ['Bash(git:*)', 'Bash(jq:*)', 'Read', 'WebFetch']);
+      final s = SkillImport.fromText('---\nname: git-check\ndescription: Prüft Repos\nallowed-tools: Bash(git:*) Read WebFetch\n---\nSchritte', available: evalToolSpecs)!;
+      expect(s.tools, containsAll(['read_file', 'web_fetch']));
+      expect(s.unmapped, ['Bash']);
+    });
+
+    test('ZIP: Dateien bleiben erhalten, Export und Re-Import', () {
+      final a = Skill(id: 'a', name: 'Kontenplan', when: 'Bucht nach Kontenplan', instructions: 'Kontenplan lesen')
+        ..addFile('references/konten.md', '4000 Erlöse')
+        ..addFile('scripts/check.py', 'print(1)');
+      final b = Skill(id: 'b', name: 'Kontenplan', when: 'Zweiter mit gleichem Namen', instructions: 'x');
+      final zip = SkillImport.toZip([a, b]);
+      final back = SkillImport.fromZip(zip, available: evalToolSpecs);
+      expect(back.length, 2);
+      final k = back.firstWhere((x) => x.files.isNotEmpty);
+      expect(k.files['references/konten.md'], '4000 Erlöse');
+      expect(k.files['scripts/check.py'], 'print(1)');
+      expect(back.map((x) => x.specName).toSet(), {'kontenplan', 'kontenplan-2'});
+      expect(a.addFile('../etc/passwd', 'x'), isFalse);
+      expect(a.addFile('references/gross.md', 'x' * (Skill.maxFileBytes + 1)), isFalse);
+    });
   });
 }

@@ -63,3 +63,56 @@ class SkillCreateTool extends AgentTool {
         'Sag dem Nutzer kurz, wie er ihn nutzt und dass er ihn unter Skills anpassen kann.';
   }
 }
+
+
+/// Werkzeug „skill“: stufenweises Laden nach dem Agent-Skills-Standard. Die Beschreibung enthält nur Name +
+/// Zweck der Skills (Katalog); die Anleitung kommt erst mit aktion „laden“, Zusatzdateien mit aktion „datei“.
+class SkillLoadTool extends AgentTool {
+  SkillLoadTool(this.library);
+  final SkillLibrary library;
+
+  /// Skills, die im Katalog stehen: eigene, aktiv, „automatisch erkennen“ an
+  List<Skill> get catalog => [for (final s in library.own) if (s.enabled && s.auto) s];
+
+  @override
+  String get name => 'skill';
+  @override
+  String get title => 'Skill laden';
+  @override
+  String get keywords => 'skill anleitung referenz datei';
+  @override
+  String get description {
+    final b = StringBuffer('Lädt die Anleitung eines Skills (aktion laden) oder eine Datei daraus (aktion datei, pfad). '
+        'Nutze einen Skill, wenn die Aufgabe zu seiner Beschreibung passt, und folge dann seiner Anleitung. Skills:');
+    for (final s in catalog.take(12)) {
+      final d = s.specDescription;
+      b.write('\n- ${s.command}: ${d.length > 140 ? '${d.substring(0, 140)}…' : d}');
+    }
+    return b.toString();
+  }
+
+  @override
+  List<ToolParam> get params => const [
+        ToolParam('aktion', ParamType.string, 'laden oder datei'),
+        ToolParam('name', ParamType.string, 'Name des Skills (wie in der Liste)'),
+        ToolParam('pfad', ParamType.string, 'Bei datei: relativer Pfad, z. B. references/REFERENCE.md (sonst "")'),
+      ];
+
+  @override
+  Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
+    final n = '${args['name'] ?? ''}'.trim().replaceFirst(RegExp(r'^/'), '');
+    final s = library.byCommand(n) ?? library.enabled.where((x) => x.name.toLowerCase() == n.toLowerCase()).firstOrNull;
+    if (s == null) throw ToolException('Skill „$n“ gibt es nicht. Vorhanden: ${library.enabled.map((x) => x.command).join(', ')}');
+    final aktion = '${args['aktion'] ?? 'laden'}'.trim().toLowerCase();
+    if (aktion.startsWith('datei') || '${args['pfad'] ?? ''}'.trim().isNotEmpty && aktion != 'laden') {
+      final p = '${args['pfad'] ?? ''}'.trim().replaceFirst(RegExp(r'^(\./|/)+'), '');
+      final text = s.files[p] ?? s.files.entries.where((e) => e.key.endsWith('/$p') || e.key.split('/').last == p).firstOrNull?.value;
+      if (text == null) {
+        throw ToolException('Datei „$p“ nicht im Skill. Vorhanden: ${s.files.keys.join(', ')}');
+      }
+      final cut = text.length > 12000 ? '${text.substring(0, 12000)}\n[… gekürzt, ${text.length} Zeichen]' : text;
+      return p.startsWith('scripts/') ? 'Skript (wird NICHT ausgeführt – nur als Vorlage/Erklärung lesen):\n$cut' : cut;
+    }
+    return s.internet == 'block' ? '${s.brief()}\n[Dieser Skill läuft nur offline – keine Internet-Werkzeuge nutzen.]' : s.brief();
+  }
+}
