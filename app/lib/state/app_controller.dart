@@ -30,6 +30,7 @@ import 'self_test.dart';
 import 'skill_tool.dart';
 import 'skills.dart';
 import 'run_stats.dart';
+import 'agent_eval_service.dart';
 import 'mcp_server.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
@@ -214,6 +215,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? runStarted;
   DateTime? loadStarted;
   AgentRunner? _runner;
+  AgentHarness? _harness;
 
   /// Antwort, an der gerade gearbeitet wird, und Kommentare, die der Nutzer währenddessen schrieb.
   ChatEntry? _runningAnswer;
@@ -269,6 +271,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await notifier.load();
       await skills.load();
       await runStats.load();
+      await agentEval.load();
       unawaited(_selfTestAfterUpdate());
       unawaited(notifier.syncNative());
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
@@ -1390,6 +1393,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Skills: Anleitung + erlaubte Werkzeuge (Basis-Skills und eigene).
   late final SkillLibrary skills = SkillLibrary(File('${storage.root.path}/skills.json'))..addListener(notifyListeners);
   late final RunStats runStats = RunStats(File('${storage.root.path}/runs.jsonl'));
+  late final AgentEvalService agentEval = AgentEvalService(this, File('${storage.root.path}/agent_eval.json'));
+
+  /// Für den Agent-Test-Satz: dasselbe Modell und derselbe System-Prompt wie bei Hintergrund-Aufgaben.
+  Future<AgentBackend?> evalBackend() => _automationBackend();
+  String evalSystemText(List<AgentTool> tools) => _systemText(tools: tools);
+  Future<T> runExclusive<T>(String id, Future<T> Function() body) => _exclusive(id, body);
   late final JunelsMcpServer mcpServe = JunelsMcpServer(this);
 
   /// Benachrichtigungen: Postfach + Zustellung nach Art (Aktion, Warnung, Erinnerung, Ergebnis, Info).
@@ -2155,6 +2164,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   String voiceTurnHint() => '[Gesprächsmodus – deine Antwort wird vorgelesen: antworte wie im persönlichen Gespräch, '
       'kurz (meist 1–3 Sätze), ohne Markdown, Listen, Tabellen, Emojis oder Links. Wiederhole die Frage nicht, '
       'beginne sofort mit der Antwort. Sagt der Nutzer „weiter“, setze deine vorige Antwort fort. Du heißt ${settings.agentName}.]';
+
+  /// Budget je Auftrag aus dem aktiven Agenten-Profil
+  HarnessBudget get harnessBudget =>
+      HarnessBudget(maxTime: Duration(minutes: activeProfile.maxMinutes), maxTokens: activeProfile.maxTokensK * 1000);
 
   AgentRunner _makeRunner(AgentBackend eng, String system, {List<AgentTool>? tools, String? requiredTool}) {
     final profile = activeProfile;
@@ -3452,7 +3465,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       Future<void>? cancel,
       Skill? skill,
       String provider = '',
-      RunMeter? meter}) async {
+      RunMeter? meter,
+      String source = 'flow',
+      HarnessBudget? budget}) async {
     onProgress?.call(skill == null ? 'Modell wird vorbereitet …' : 'Skill „${skill.name}“: Modell wird vorbereitet …');
     final AgentBackend? picked;
     if (provider.isEmpty) {
@@ -3471,18 +3486,26 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     meter?.models.add(eng is RemoteBackend ? eng.config.name : 'Lokal');
     if (running) onProgress?.call('Wartet, bis die laufende Antwort im Chat fertig ist …');
     return _exclusive(conv.id, () async {
-      var tools = skill != null
-          ? [for (final t in activeTools) if (skill.tools.contains(t.name)) t]
-          : toolsFor(prompt, hasImages: false, hasDocs: false);
-      tools = [for (final t in tools) if (t.name != 'browser' && t.name != 'begleiten' && (allowInternet || !t.requiresNetwork)) t];
+      // Einheitliche Harness-Regeln: ohne Internet-Freigabe keine Netz-Werkzeuge, kein Browser ohne Nutzer
+      final prep = AgentHarness.prepare(
+        available: activeTools,
+        input: prompt,
+        only: skill?.tools.toSet(),
+        requiredTool: skill?.requiredTool,
+        network: allowInternet,
+        exclude: const {'browser', 'begleiten'},
+      );
+      final tools = prep.tools;
       if (skill != null) prompt = '${skill.brief()}\nAufgabe: ${prompt.trim().isEmpty ? '(siehe Anleitung)' : prompt}';
       if (wantsGuide(prompt)) {
         prompt = '$prompt\n\n[Hinweis: Dieser Prozess läuft ohne den Nutzer – Anmeldung, Formulare absenden und Zahlungen gehen hier nicht. '
             'Liefere eine kurze Schritt-für-Schritt-Anleitung mit dem Link und schreib am Ende: „Gemeinsam erledigen: im Chat '
             '„Begleite mich: <Link>“ schreiben.“]';
       }
-      final req = skill == null || skill.requiredTool.isEmpty || !tools.any((t) => t.name == skill.requiredTool) ? null : skill.requiredTool;
-      final runner = _makeRunner(be, _systemText(voice: false, tools: tools), tools: tools, requiredTool: req);
+      final req = skill == null ? null : prep.requiredTool;
+      final system = _systemText(voice: false, tools: tools);
+      AgentRunner mk() => _makeRunner(be, system, tools: tools, requiredTool: req);
+      final harness = AgentHarness(backend: be);
       var answer = '';
       String? error;
       final ctx = ToolContext(
@@ -3497,11 +3520,27 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           notifyListeners();
         },
       );
-      unawaited(cancel?.then((_) => runner.stop()));
+      unawaited(cancel?.then((_) => harness.stop()));
       final toolTitles = {for (final t in tools) t.name: t.title};
       try {
-        await for (final ev in runner.run(history: const [], userInput: prompt, context: ctx)) {
+        await for (final ev in harness.run(
+            first: mk(),
+            again: mk,
+            history: const [],
+            input: prompt,
+            context: ctx,
+            options: HarnessOptions(
+                source: source,
+                budget: budget ?? harnessBudget,
+                plan: activeProfile.verify ? CheckMode.auto : CheckMode.off,
+                verify: activeProfile.verify ? CheckMode.auto : CheckMode.off))) {
           switch (ev) {
+            case PlanMade(:final steps):
+              onProgress?.call('🗺 Plan: ${steps.join(' → ')}');
+            case AnswerChecked(:final ok, :final feedback):
+              onProgress?.call(ok ? '✓ geprüft: Auftrag erfüllt' : '↺ Nachbessern: $feedback');
+            case BudgetHit(:final what):
+              onProgress?.call('⏱ Budget erreicht: $what');
             case StepStarted(:final step):
               onProgress?.call('💭 denkt nach (Runde $step) …');
             case ToolCalled(:final tool, :final args):
@@ -3841,7 +3880,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
     // Design-Vorschläge/Links zur vorigen Präsentation („hier sind Design-Vorschläge …“) gehören dazu
     final designFollowUp = (designReferencesIn(input).isNotEmpty || wantsDesign(input)) &&
-        !_deckWord.hasMatch(input) &&
+        !ToolRouter.deckWord.hasMatch(input) &&
         requiredToolFor(prevUser) != null;
     final gateText = looksLikeFollowUp(input) || designFollowUp ? '$prevUser $input' : input;
     var requiredTool = requiredToolFor(gateText,
@@ -4060,9 +4099,39 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       propose: propose,
     );
 
+    // Harness: Budget, bei mehrteiligen Aufträgen Plan und Prüfung (nicht im Gespräch – das soll schnell sein)
+    final firstRunner = runner;
+    final harness = AgentHarness(backend: eng, onRunner: (r) {
+      runner = r;
+      _runner = r;
+    });
+    _harness = harness;
     try {
-      await for (final ev in runner.run(history: history, userInput: turnInput, context: ctx2)) {
+      await for (final ev in harness.run(
+          first: firstRunner,
+          again: () => _makeRunner(eng, firstRunner.systemPrompt, tools: firstRunner.tools, requiredTool: firstRunner.requiredTool),
+          history: history,
+          input: turnInput,
+          context: ctx2,
+          options: HarnessOptions(
+            source: 'chat',
+            budget: harnessBudget,
+            plan: voice || calc != null || !activeProfile.verify ? CheckMode.off : CheckMode.auto,
+            verify: voice || calc != null || !activeProfile.verify ? CheckMode.off : CheckMode.auto,
+          ))) {
         switch (ev) {
+          case PlanMade(:final steps):
+            answer.steps.add(StepLog(step: answer.steps.length + 1)
+              ..thought = 'Mein Plan:\n${[for (var i = 0; i < steps.length; i++) '${i + 1}. ${steps[i]}'].join('\n')}'
+              ..observation = 'Plan erstellt');
+          case AnswerChecked(:final ok, :final feedback):
+            answer.steps.add(StepLog(step: answer.steps.length + 1)
+              ..thought = ok ? 'Ich prüfe, ob alles erledigt ist.' : 'Ich prüfe, ob alles erledigt ist – es fehlt noch: $feedback'
+              ..observation = ok ? 'Geprüft: Auftrag erfüllt' : 'Ich bessere nach.');
+          case BudgetHit(:final what):
+            answer.steps.add(StepLog(step: answer.steps.length + 1)
+              ..thought = 'Zeit- bzw. Rechenbudget erreicht ($what) – ich höre hier auf.'
+              ..isError = true);
           case NoteApplied(:final text):
             answer.steps.add(StepLog(step: answer.steps.length + 1)
               ..thought = 'Dein Kommentar wird berücksichtigt: „$text“'
@@ -4272,6 +4341,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void stop() {
+    _harness?.stop();
     _runner?.stop();
     engine?.stop();
     _imageEngine?.cancel();

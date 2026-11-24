@@ -10,7 +10,7 @@ class ToolRouter {
 
   static final _makeVerb = RegExp(r'erstell|mach|bau|generier|erzeug|schreib|gestalt|überarbeit|entwirf|entwerf|anlegen|leg .* an|exportier|als (pdf|powerpoint|pptx|datei)|brauche|hätte gern|möchte',
       caseSensitive: false);
-  static final _deckWord = RegExp(r'präsentation|powerpoint|folien|pptx|slides|foliensatz|slide ?deck', caseSensitive: false);
+  static final deckWord = RegExp(r'präsentation|powerpoint|folien|pptx|slides|foliensatz|slide ?deck', caseSensitive: false);
   static final _docWord = RegExp(r'\bpdf\b|word-?dokument|dokument|handout|bericht als', caseSensitive: false);
 
   /// Verlangt die Nachricht eine Datei? → Werkzeug, das der Agent dafür nutzen muss.
@@ -23,7 +23,7 @@ class ToolRouter {
       return 'edit_file|create_presentation|create_document';
     }
     if (!_makeVerb.hasMatch(text)) return null;
-    if (_deckWord.hasMatch(text)) return 'create_presentation';
+    if (deckWord.hasMatch(text)) return 'create_presentation';
     if (_docWord.hasMatch(text)) return 'create_document';
     return null;
   }

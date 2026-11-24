@@ -130,7 +130,7 @@ class JunelsMcpServer {
     var err = '';
     try {
       final answer = await app
-          .automationAgent(task, allowInternet: app.settings.mcpServeInternet, conv: conv, entry: entry, skill: skill, meter: meter)
+          .automationAgent(task, allowInternet: app.settings.mcpServeInternet, conv: conv, entry: entry, skill: skill, meter: meter, source: 'mcp')
           .timeout(const Duration(minutes: 10), onTimeout: () => throw Exception('Zeitüberschreitung nach 10 Minuten'));
       entry.text = answer;
       final pending = entry.actions.length;

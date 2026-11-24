@@ -70,6 +70,9 @@ class AgentProfile {
     required this.systemPrompt,
     this.temperature = 0.3,
     this.maxSteps = 6,
+    this.maxMinutes = 8,
+    this.maxTokensK = 120,
+    this.verify = true,
     this.useTools = true,
     this.builtin = false,
   });
@@ -79,6 +82,13 @@ class AgentProfile {
   String systemPrompt;
   double temperature;
   int maxSteps;
+
+  /// Budget je Auftrag: Zeit in Minuten, Tokens in Tausend (alle Modellaufrufe zusammen)
+  int maxMinutes;
+  int maxTokensK;
+
+  /// Mehrteilige Aufträge planen und am Ende prüfen
+  bool verify;
   bool useTools;
   final bool builtin;
 
@@ -88,6 +98,9 @@ class AgentProfile {
         'systemPrompt': systemPrompt,
         'temperature': temperature,
         'maxSteps': maxSteps,
+        'maxMinutes': maxMinutes,
+        'maxTokensK': maxTokensK,
+        'verify': verify,
         'useTools': useTools,
         'builtin': builtin,
       };
@@ -98,6 +111,9 @@ class AgentProfile {
         systemPrompt: j['systemPrompt'] as String,
         temperature: (j['temperature'] as num?)?.toDouble() ?? 0.3,
         maxSteps: (j['maxSteps'] as num?)?.toInt() ?? 6,
+        maxMinutes: (j['maxMinutes'] as num?)?.toInt() ?? 8,
+        maxTokensK: (j['maxTokensK'] as num?)?.toInt() ?? 120,
+        verify: j['verify'] as bool? ?? true,
         useTools: j['useTools'] as bool? ?? true,
         builtin: j['builtin'] as bool? ?? false,
       );

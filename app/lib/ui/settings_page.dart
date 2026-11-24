@@ -652,7 +652,7 @@ class _ProfileSection extends StatelessWidget {
             onPressed: app.running ? null : () => editProfile(context, p),
             icon: const Icon(Icons.tune, size: 18),
             label: Text(
-                '${p.useTools ? 'Agent, max. ${p.maxSteps} Schritte' : 'Nur Chat'} · Temp. ${p.temperature.toStringAsFixed(1)}'),
+                '${p.useTools ? 'Agent, max. ${p.maxSteps} Schritte, ${p.maxMinutes} min${p.verify ? ', plant & prüft' : ''}' : 'Nur Chat'} · Temp. ${p.temperature.toStringAsFixed(1)}'),
           ),
         ),
       ],

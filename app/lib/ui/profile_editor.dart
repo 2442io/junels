@@ -33,6 +33,9 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   late final _prompt = TextEditingController(text: widget.profile.systemPrompt);
   late double _temp = widget.profile.temperature;
   late int _steps = widget.profile.maxSteps;
+  late int _minutes = widget.profile.maxMinutes;
+  late int _tokensK = widget.profile.maxTokensK;
+  late bool _verify = widget.profile.verify;
   late bool _tools = widget.profile.useTools;
 
   @override
@@ -90,6 +93,31 @@ class _ProfileDialogState extends State<_ProfileDialog> {
                   label: '$_steps',
                   onChanged: (v) => setState(() => _steps = v.round()),
                 ),
+                Text('Höchstens $_minutes Minuten je Auftrag', style: t.bodyMedium),
+                Slider(
+                  value: _minutes.toDouble(),
+                  min: 2,
+                  max: 30,
+                  divisions: 14,
+                  label: '$_minutes min',
+                  onChanged: (v) => setState(() => _minutes = v.round()),
+                ),
+                Text('Höchstens ${_tokensK}k Tokens je Auftrag', style: t.bodyMedium),
+                Slider(
+                  value: _tokensK.toDouble(),
+                  min: 20,
+                  max: 400,
+                  divisions: 19,
+                  label: '${_tokensK}k',
+                  onChanged: (v) => setState(() => _tokensK = v.round()),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _verify,
+                  title: const Text('Planen und prüfen'),
+                  subtitle: const Text('Mehrteilige Aufträge erst planen, am Ende prüfen und einmal nachbessern'),
+                  onChanged: (v) => setState(() => _verify = v),
+                ),
               ],
             ],
           ),
@@ -115,6 +143,9 @@ class _ProfileDialogState extends State<_ProfileDialog> {
                 systemPrompt: _prompt.text.trim(),
                 temperature: _temp,
                 maxSteps: _steps,
+                maxMinutes: _minutes,
+                maxTokensK: _tokensK,
+                verify: _verify,
                 useTools: _tools,
                 builtin: p.builtin,
               ),

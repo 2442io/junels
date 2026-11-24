@@ -85,6 +85,84 @@ Future<void> main() async {
     check(r3.skipped, 'fehlendes Werkzeug → übersprungen');
   });
 
+  await group('Agent-Harness', () async {
+    // Einheitliche Werkzeug-Regeln
+    final all = evalToolSpecs;
+    var p = AgentHarness.prepare(available: all, input: 'Wie wird das Wetter morgen in Wien?', network: false);
+    check(p.tools.every((t) => !t.requiresNetwork), 'ohne Internet keine Netz-Werkzeuge');
+    p = AgentHarness.prepare(available: all, input: 'Such mir einen Flug nach Lissabon', exclude: {'browser'});
+    check(!p.tools.any((t) => t.name == 'browser') && p.tools.any((t) => t.name == 'web_search'), 'Browser ausgeschlossen');
+    p = AgentHarness.prepare(available: all, input: 'egal', only: {'calculator', 'datetime'});
+    check(p.tools.map((t) => t.name).toSet().containsAll({'calculator', 'datetime'}) && p.tools.length == 2, 'Skill: feste Auswahl');
+    p = AgentHarness.prepare(available: all, input: 'Erstelle eine Präsentation über Peru');
+    check(p.requiredTool == 'create_presentation', 'Pflicht-Werkzeug');
+    p = AgentHarness.prepare(available: [all.first], input: 'Erstelle eine Präsentation über Peru');
+    check(p.requiredTool == null, 'Pflicht-Werkzeug nur, wenn vorhanden');
+    check(AgentHarness.looksComplex('Such die günstigsten Flüge nach Rom und dann schreib eine Mail an Anna mit dem besten Angebot'),
+        'mehrteiliger Auftrag erkannt');
+    check(!AgentHarness.looksComplex('Wie wird das Wetter?'), 'einfache Frage nicht mehrteilig');
+
+    // Plan → Ausführen → Prüfen → Nachbessern
+    final be = ScriptedBackend([
+      '1. Flüge suchen (web_search)\n2. Mail schreiben (compose_email)',
+      '{"thought": "suchen", "action": "web_search", "args": {"query": "Flug Rom"}}',
+      '{"thought": "mail", "action": "compose_email", "args": {"an": "Anna", "betreff": "Flug", "text": "Bester Flug"}}',
+      '{"thought": "fertig", "final_answer": "Mail an Anna ist vorbereitet."}',
+      'FEHLT: Der Preis des besten Fluges fehlt in der Antwort.',
+      '{"thought": "", "final_answer": "Mail an Anna ist vorbereitet. Bester Flug: 89 €."}',
+    ]);
+    final tools = AgentHarness.prepare(
+            available: all, input: 'Such die günstigsten Flüge nach Rom und dann schreib eine Mail an Anna mit dem besten Angebot')
+        .tools;
+    AgentRunner mk() => AgentRunner(engine: be, systemPrompt: 'Test', tools: tools, maxSteps: 6);
+    final h = AgentHarness(backend: be);
+    final evs = await h
+        .run(first: mk(), again: mk, history: const [], input: 'Such die günstigsten Flüge nach Rom und dann schreib eine Mail an Anna mit dem besten Angebot',
+            context: ToolContext(requestNetwork: (_) async => true))
+        .toList();
+    final plan = evs.whereType<PlanMade>().firstOrNull;
+    check(plan != null && plan.steps.length == 2, 'Plan mit 2 Schritten');
+    final chk = evs.whereType<AnswerChecked>().firstOrNull;
+    check(chk != null && !chk.ok && chk.feedback.contains('Preis'), 'Prüfung findet fehlenden Preis');
+    check(evs.whereType<FinalAnswer>().last.text.contains('89'), 'Nachbesserung liefert den Preis');
+    check(evs.whereType<AgentFinished>().length == 1, 'genau ein Ende-Ereignis');
+    check(be.prompts.any((x) => x.contains('Dein Plan')), 'Plan geht an den Agenten');
+
+    // Prüfung OK → keine Nachbesserung
+    final be2 = ScriptedBackend([
+      '{"thought": "", "action": "create_presentation", "args": {"thema": "Peru", "folien": 5}}',
+      '{"thought": "", "final_answer": "Präsentation Peru.pptx erstellt."}',
+      'OK',
+    ]);
+    final t2 = AgentHarness.prepare(available: all, input: 'Erstelle eine Präsentation über Peru');
+    AgentRunner mk2() => AgentRunner(engine: be2, systemPrompt: 'T', tools: t2.tools, requiredTool: t2.requiredTool);
+    final e2 = await AgentHarness(backend: be2)
+        .run(first: mk2(), again: mk2, history: const [], input: 'Erstelle eine Präsentation über Peru', context: ToolContext())
+        .toList();
+    check(e2.whereType<AnswerChecked>().single.ok && e2.whereType<FinalAnswer>().length == 1, 'OK → keine zweite Runde');
+
+    // Budget
+    final be3 = ScriptedBackend(List.filled(8, '{"thought": "", "action": "calculator", "args": {"ausdruck": "1+1"}}'));
+    AgentRunner mk3() => AgentRunner(engine: be3, systemPrompt: 'T', tools: [all.firstWhere((t) => t.name == 'calculator')], maxSteps: 8);
+    final e3 = await AgentHarness(backend: be3)
+        .run(first: mk3(), again: mk3, history: const [], input: 'Rechne', context: ToolContext(),
+            options: const HarnessOptions(budget: HarnessBudget(maxTokens: 40), verify: CheckMode.off))
+        .toList();
+    check(e3.whereType<BudgetHit>().isNotEmpty, 'Token-Budget greift');
+
+    // Kurzfassung statt Vergessen
+    check(stepDigest('{"thought":"x","action":"weather","args":{"ort":"Wien"}}', 'Beobachtung: Wien 12 °C Regen') == '- weather(Wien) → Wien 12 °C Regen',
+        'Schritt-Kurzfassung');
+    final be4 = ScriptedBackend(['{"thought": "", "final_answer": "ok"}'], contextSize: 1500);
+    final r4 = AgentRunner(engine: be4, systemPrompt: 'T', tools: [all.first]);
+    await r4
+        .run(history: [
+          for (var i = 0; i < 30; i++) ChatMessage(i.isEven ? 'user' : 'assistant', 'Nachricht $i über das Thema Lissabon-Reise ' * 6),
+        ], userInput: 'Und das Hotel?', context: ToolContext())
+        .toList();
+    check(be4.prompts.isNotEmpty && be4.prompts.first.contains('Früher in diesem Chat'), 'alte Nachrichten als Kurzfassung behalten');
+  });
+
   await group('Agent-Plattformen', () async {
     final dify = jsonDecode(platformRequestBody(AgentPlatform.dify, Uri.parse('https://api.dify.ai/v1/workflows/run'), 'Hallo', inputKey: 'text')) as Map;
     check(dify['inputs']['text'] == 'Hallo' && dify['response_mode'] == 'blocking', 'Dify-Workflow: inputs');
@@ -877,7 +955,7 @@ Future<void> main() async {
         .toList();
     final fin = events.whereType<AgentFinished>().single;
     check(fin.reason == AgentStopReason.answered, 'läuft trotz kleinem Context durch (${fin.message ?? ''})');
-    check(backend.prompts.any((p) => p.contains('[Frühere Schritte wurden')), 'alte Schritte zusammengefasst');
+    check(backend.prompts.any((p) => p.contains('[Deine bisherigen Schritte (gekürzt):') && p.contains('read_file(')), 'alte Schritte als Kurzfassung behalten');
   });
 
   await group('Audio: WAV und Resampling', () async {

@@ -328,6 +328,8 @@ class _FlowCard extends StatelessWidget {
               const SizedBox(width: 8),
               if (running)
                 StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true)
+              else if (app.flows.interrupted.containsKey(wf.id))
+                StatusChip('Unterbrochen', color: c.violet, soft: c.violetSoft, dense: true)
               else if (wf.lastStatus == 'Fehler')
                 StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true)
               else if (!wf.enabled)
@@ -339,6 +341,16 @@ class _FlowCard extends StatelessWidget {
               '${wf.nodes.length} Bausteine',
               if (wf.lastRun != null) 'zuletzt ${wf.lastRun!.day}.${wf.lastRun!.month}. ${_two(wf.lastRun!.hour)}:${_two(wf.lastRun!.minute)}',
             ].join(' · ')),
+            if (!running && app.flows.interrupted[wf.id] != null)
+              Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
+                Text('Bei „${app.flows.interrupted[wf.id]!.next}“ unterbrochen', style: t.bodySmall),
+                TextButton.icon(
+                  onPressed: () => app.flows.resume(wf),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Fortsetzen'),
+                ),
+                TextButton(onPressed: () => app.flows.discardInterrupted(wf), child: const Text('Verwerfen')),
+              ]),
           ]),
         ),
         if (running)
@@ -843,6 +855,7 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
           Expanded(
             child: narrow && (_listMode ?? true)
                 ? _StepList(
+                    banner: !running && app.flows.interrupted[wf.id] != null ? _interruptedBanner(app, wf, c) : null,
                     wf: wf,
                     states: states,
                     errors: errs,
@@ -990,6 +1003,8 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
                   right: 12,
                   child: running
                       ? _RunBanner(app: app, wf: wf, anim: _anim)
+                      : app.flows.interrupted[wf.id] != null
+                          ? _interruptedBanner(app, wf, c)
                       : _connectFrom != null
                           ? _Banner(
                               icon: Icons.link,
@@ -2753,6 +2768,7 @@ String flowToJson(Workflow wf) => const JsonEncoder.withIndent('  ').convert(wf.
 /// Handy: Prozess als Schrittliste statt Canvas – lesbar, antippen zum Bearbeiten.
 class _StepList extends StatelessWidget {
   const _StepList({
+    this.banner,
     required this.wf,
     required this.states,
     required this.errors,
@@ -2761,6 +2777,7 @@ class _StepList extends StatelessWidget {
     required this.onAdd,
     required this.onCanvas,
   });
+  final Widget? banner;
   final Workflow wf;
   final Map<String, String> states;
   final Map<String, FlowError> errors;
@@ -2829,6 +2846,7 @@ class _StepList extends StatelessWidget {
     return ColoredBox(
       color: c.canvas,
       child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 120), children: [
+        if (banner != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: banner),
         if (branches)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -2852,3 +2870,12 @@ class _StepList extends StatelessWidget {
     );
   }
 }
+
+Widget _interruptedBanner(AppController app, Workflow wf, AppColors c) => _Banner(
+        icon: Icons.pause_circle_outline,
+        color: c.violet,
+        soft: c.violetSoft,
+        text: 'Unterbrochen bei „${app.flows.interrupted[wf.id]!.next}“ – erledigte Schritte sind gesichert.',
+        action: TextButton(onPressed: () => app.flows.resume(wf), child: const Text('Fortsetzen')),
+      );
+

@@ -2,12 +2,14 @@
 
 import 'dart:io';
 
+import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state/app_scope.dart';
 import '../state/native_files.dart';
 import '../state/self_test.dart';
+import 'agent_eval_page.dart';
 import 'quick_nav.dart';
 import 'theme.dart';
 
@@ -100,6 +102,19 @@ class _SelfTestPageState extends State<SelfTestPage> {
         const SizedBox(height: 6),
         Text('Läuft nach jedem Update automatisch. Bei Problemen: Bericht teilen und mir schicken.',
             style: tt.bodySmall?.copyWith(color: c.muted)),
+        const SizedBox(height: 10),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.fact_check_outlined),
+            title: const Text('Agent-Test-Satz'),
+            subtitle: Text(AppScope.of(context).agentEval.history.isEmpty
+                ? '${agentCases.length} typische Aufträge mit deinem Modell lösen lassen – misst die Qualität'
+                : 'Zuletzt ${AppScope.of(context).agentEval.history.first.passed}/${AppScope.of(context).agentEval.history.first.counted} '
+                    'bestanden (${AppScope.of(context).agentEval.history.first.model})'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AgentEvalPage())),
+          ),
+        ),
         for (final r in results) ...[
           if (r.area != area) ...[
             Builder(builder: (_) {

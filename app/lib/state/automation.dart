@@ -418,6 +418,91 @@ class FlowService {
     } catch (e) {
       appLog('Prozesse', 'Laden fehlgeschlagen: $e', error: true);
     }
+    await _restoreCheckpoints();
+  }
+
+  // ---- Zwischenstände: Wird die App mitten in einem Lauf beendet, kann er später weitermachen.
+  Directory get _cpDir => Directory('${app.storage.root.path}/flow_checkpoints');
+  File _cpFile(String id) => File('${_cpDir.path}/$id.json');
+
+  /// Unterbrochene Läufe: Prozess-ID → (Zeitpunkt, Titel des nächsten Bausteins)
+  final Map<String, ({DateTime at, String next, String input, String event})> interrupted = {};
+
+  Future<void> _checkpoint(Workflow wf, String input, String event) async {
+    try {
+      await _cpDir.create(recursive: true);
+      final tmp = File('${_cpFile(wf.id).path}.tmp');
+      await tmp.writeAsString(jsonEncode({
+        'at': DateTime.now().toIso8601String(),
+        'input': input,
+        'event': event,
+        'state': state[wf.id] ?? const {},
+        'outputs': outputs[wf.id] ?? const {},
+      }));
+      await tmp.rename(_cpFile(wf.id).path);
+    } catch (_) {}
+  }
+
+  Future<void> _clearCheckpoint(String id) async {
+    try {
+      final f = _cpFile(id);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+
+  Future<void> _restoreCheckpoints() async {
+    try {
+      if (!await _cpDir.exists()) return;
+      await for (final f in _cpDir.list()) {
+        if (f is! File || !f.path.endsWith('.json')) continue;
+        final id = f.uri.pathSegments.last.replaceAll('.json', '');
+        final wf = flows.where((x) => x.id == id).firstOrNull;
+        if (wf == null) {
+          await f.delete();
+          continue;
+        }
+        final j = jsonDecode(await f.readAsString()) as Map;
+        final st = ((j['state'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', v == 'running' ? 'pending' : '$v'));
+        state[id] = st;
+        outputs[id] = ((j['outputs'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', '$v'));
+        final next = wf.order().where((n) => st[n.id] != 'done' && st[n.id] != 'skipped').firstOrNull;
+        if (next == null) {
+          await f.delete();
+          continue;
+        }
+        interrupted[id] = (
+          at: DateTime.tryParse('${j['at']}') ?? DateTime.now(),
+          next: next.title,
+          input: '${j['input'] ?? ''}',
+          event: '${j['event'] ?? ''}',
+        );
+        unawaited(app.notifyUser(NotifyKind.aktion, '${wf.name} wurde unterbrochen',
+            'Junels wurde beendet, als „${next.title}“ lief. Die erledigten Schritte sind gesichert – öffnen und „Fortsetzen“ tippen.',
+            target: 'flow:$id', source: 'flow:$id'));
+      }
+    } catch (e) {
+      appLog('Prozesse', 'Zwischenstände: $e', error: true);
+    }
+  }
+
+  /// Unterbrochenen Lauf beim nächsten offenen Baustein fortsetzen.
+  Future<void> resume(Workflow wf) async {
+    final cp = interrupted.remove(wf.id);
+    final st = state[wf.id] ?? const {};
+    final next = wf.order().where((n) => st[n.id] != 'done' && st[n.id] != 'skipped').firstOrNull;
+    if (next == null) {
+      await _clearCheckpoint(wf.id);
+      app.refreshUi();
+      return;
+    }
+    await run(wf, startAt: next.id, input: cp?.input ?? '', event: cp?.event ?? '');
+  }
+
+  /// Unterbrochenen Lauf verwerfen.
+  Future<void> discardInterrupted(Workflow wf) async {
+    interrupted.remove(wf.id);
+    await _clearCheckpoint(wf.id);
+    app.refreshUi();
   }
 
   Future<void> save() async {
@@ -902,10 +987,14 @@ class FlowService {
         } finally {
           step.durationMs = t0.elapsedMilliseconds;
           nodeStats.add(NodeStat(n.title, n.type.name, t0.elapsedMilliseconds, state[wf.id]?[n.id] ?? ''));
+          // Zwischenstand sichern – nach einem Absturz/Beenden geht es hier weiter
+          await _checkpoint(wf, input, event);
         }
       }
     } finally {
       _running.remove(wf.id);
+      interrupted.remove(wf.id);
+      unawaited(_clearCheckpoint(wf.id));
       _cancel.remove(wf.id);
       current.remove(wf.id);
       startedAt.remove(wf.id);
@@ -994,7 +1083,8 @@ class FlowService {
               cancel: _cancel[wf.id]?.future,
               skill: skill,
               provider: '${m['provider'] ?? ''}',
-              meter: _meters[wf.id])
+              meter: _meters[wf.id],
+              source: 'team')
           .timeout(const Duration(minutes: 10), onTimeout: () => throw Exception('Zeitüberschreitung bei „$name“ (über 10 Minuten).'));
       transcript.add('👤 $name\n${out.length > 1200 ? '${out.substring(0, 1200)} …' : out}');
       lines.clear();
@@ -1083,7 +1173,7 @@ class FlowService {
 
         return app
             .automationAgent(task,
-                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill, provider: n.str('provider'), meter: _meters[wf.id])
+                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill, provider: n.str('provider'), meter: _meters[wf.id], source: 'flow')
             .timeout(const Duration(minutes: 10),
                 onTimeout: () => throw Exception('Zeitüberschreitung: Der Skill lief über 10 Minuten.'));
       case FlowNodeType.team:

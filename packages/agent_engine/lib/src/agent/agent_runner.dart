@@ -73,6 +73,25 @@ class AgentFinished extends AgentEvent {
   final String? message;
 }
 
+/// Harness: Plan für einen längeren Auftrag.
+class PlanMade extends AgentEvent {
+  PlanMade(this.steps);
+  final List<String> steps;
+}
+
+/// Harness: Ergebnis der Prüfung „Ist der Auftrag erfüllt?“.
+class AnswerChecked extends AgentEvent {
+  AnswerChecked(this.ok, this.feedback);
+  final bool ok;
+  final String feedback;
+}
+
+/// Harness: Zeit- oder Token-Budget aufgebraucht.
+class BudgetHit extends AgentEvent {
+  BudgetHit(this.what);
+  final String what;
+}
+
 enum AgentStopReason { answered, stopped, stepLimit, error }
 
 // ---------------------------------------------------------------------------
@@ -616,13 +635,27 @@ class AgentRunner {
     final work = List<ChatMessage>.of(scratch);
     var inputText = input;
     var shortenedOnce = false;
-    var summarized = false;
+    // Kurzfassung von allem, was aus Platzgründen herausfällt – statt es spurlos zu verlieren
+    final earlier = <String>[];
+    final steps = <String>[];
+    String digest(List<String> xs, int max) {
+      final b = <String>[];
+      var len = 0;
+      for (final x in xs.reversed) {
+        if (len + x.length > max) break;
+        b.insert(0, x);
+        len += x.length;
+      }
+      return b.join('\n');
+    }
+
     while (true) {
       final msgs = [
         ChatMessage('system', system),
+        if (earlier.isNotEmpty) ChatMessage('user', '[Früher in diesem Chat (gekürzt):\n${digest(earlier, 600)}]'),
         ...hist,
         ChatMessage('user', inputText),
-        if (summarized) const ChatMessage('user', '[Frühere Schritte wurden aus Platzgründen gekürzt.]'),
+        if (steps.isNotEmpty) ChatMessage('user', '[Deine bisherigen Schritte (gekürzt):\n${digest(steps, 700)}]'),
         ...work,
       ];
       final prompt = await engine.formatChat(msgs);
@@ -630,14 +663,15 @@ class AgentRunner {
       if (n <= budget) return prompt;
 
       if (hist.isNotEmpty) {
-        hist.removeAt(0);
+        final m = hist.removeAt(0);
+        earlier.add('${m.role == 'user' ? 'Nutzer' : 'Du'}: ${compactLine(m.content, 140)}');
         continue;
       }
-      // ältesten Schritt (assistant + Beobachtung) entfernen, der letzte bleibt
+      // ältesten Schritt (assistant + Beobachtung) entfernen, der letzte bleibt – als Kurzfassung
       if (work.length > 2) {
-        work.removeAt(0);
-        if (work.length > 2 && work.first.role == 'user') work.removeAt(0);
-        summarized = true;
+        final a = work.removeAt(0);
+        final o = work.length > 2 && work.first.role == 'user' ? work.removeAt(0) : null;
+        steps.add(stepDigest(a.content, o?.content));
         continue;
       }
       if (!shortenedOnce) {
@@ -678,4 +712,29 @@ String cleanModelText(String raw, {bool streaming = false}) {
   // übrig gebliebene Steuer-Marker
   t = t.replaceAll(RegExp(r'<\|?(channel|turn|im_start|im_end|end_of_turn|start_of_turn|eot_id)\|?>'), '');
   return streaming ? t.trimLeft() : t.trim();
+}
+
+
+/// Eine Zeile, höchstens [max] Zeichen (für Kurzfassungen).
+String compactLine(String t, int max) {
+  final one = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return one.length > max ? '${one.substring(0, max)} …' : one;
+}
+
+/// Kurzfassung eines Agenten-Schritts: Werkzeug, Argumente, Kern der Beobachtung.
+String stepDigest(String assistant, String? observation) {
+  String head;
+  try {
+    final j = jsonDecode(assistant);
+    if (j is Map && j['action'] != null) {
+      final args = j['args'] is Map ? (j['args'] as Map).values.map((v) => '$v').join(', ') : '';
+      head = '${j['action']}(${compactLine(args, 60)})';
+    } else {
+      head = compactLine(assistant, 80);
+    }
+  } catch (_) {
+    head = compactLine(assistant, 80);
+  }
+  final obs = observation == null ? '' : ' → ${compactLine(observation.replaceFirst(RegExp(r'^\s*(Beobachtung|Ergebnis)[^:]*:\s*'), ''), 160)}';
+  return '- $head$obs';
 }

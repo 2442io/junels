@@ -9,6 +9,7 @@ import 'dart:async';
 import '../agent/agent_runner.dart';
 import '../agent/tool.dart';
 import '../llama_engine.dart';
+import 'harness.dart';
 import 'routing.dart';
 
 class AgentCase {
@@ -314,7 +315,11 @@ class AgentEvaluator {
     this.maxSteps = 6,
     this.maxTokensPerStep = 512,
     this.timeout = const Duration(minutes: 3),
+    this.useHarness = true,
   });
+
+  /// Über den Harness laufen (Plan, Prüfen, Budget) – false = nackter Agent (zum Vergleich)
+  final bool useHarness;
 
   final AgentBackend backend;
 
@@ -356,14 +361,17 @@ class AgentEvaluator {
     final offered = ToolRouter.select(tools, (t) => (name: t.name, title: t.title, description: t.description), c.prompt, hasDocs: c.hasDocs);
     var req = ToolRouter.requiredToolFor(c.prompt, hasFiles: c.hasFiles);
     if (req != null && !req.split('|').any((x) => offered.any((t) => t.name == x))) req = null;
-    final runner = _runner = AgentRunner(
-      engine: backend,
-      systemPrompt: systemPrompt(offered),
-      tools: offered,
-      maxSteps: maxSteps,
-      maxTokensPerStep: maxTokensPerStep,
-      requiredTool: req,
-    );
+    final sys = systemPrompt(offered);
+    AgentRunner mk() => AgentRunner(
+          engine: backend,
+          systemPrompt: sys,
+          tools: offered,
+          maxSteps: maxSteps,
+          maxTokensPerStep: maxTokensPerStep,
+          requiredTool: req,
+        );
+    final runner = _runner = mk();
+    final harness = AgentHarness(backend: backend, onRunner: (r) => _runner = r);
     final ctx = ToolContext(
       attachments: const [],
       requestNetwork: (_) async => true,
@@ -375,7 +383,16 @@ class AgentEvaluator {
     String? failure;
     final sw = Stopwatch()..start();
     try {
-      await for (final ev in runner.run(history: const [], userInput: c.prompt, context: ctx).timeout(timeout)) {
+      final stream = useHarness
+          ? harness.run(
+              first: runner,
+              again: mk,
+              history: const [],
+              input: c.prompt,
+              context: ctx,
+              options: HarnessOptions(source: 'eval', budget: HarnessBudget(maxTime: timeout)))
+          : runner.run(history: const [], userInput: c.prompt, context: ctx);
+      await for (final ev in stream.timeout(timeout + const Duration(seconds: 30))) {
         switch (ev) {
           case StepStarted():
             steps++;
@@ -393,6 +410,7 @@ class AgentEvaluator {
         }
       }
     } on TimeoutException {
+      harness.stop();
       runner.stop();
       failure = 'Zeitüberschreitung';
     } catch (e) {

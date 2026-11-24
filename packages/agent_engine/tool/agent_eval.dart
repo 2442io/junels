@@ -18,7 +18,9 @@ Future<void> main(List<String> args) async {
     contextSize: int.tryParse(Platform.environment['EVAL_CTX'] ?? '') ?? 8192,
     threads: Platform.numberOfProcessors,
   ));
-  final ev = AgentEvaluator(backend: engine, systemPrompt: evalSystemPrompt, tools: evalToolSpecs, model: model);
+  final harness = Platform.environment['EVAL_HARNESS'] != '0';
+  final ev = AgentEvaluator(
+      backend: engine, systemPrompt: evalSystemPrompt, tools: evalToolSpecs, model: '$model${harness ? '' : ' (ohne Harness)'}', useHarness: harness);
   final rep = await ev.run(cases, onProgress: (done, total, r) {
     if (r == null) return;
     stdout.writeln('[$done/$total] ${r.passed ? 'OK  ' : (r.skipped ? 'SKIP' : 'FAIL')} ${r.c.id} '

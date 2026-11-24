@@ -14,6 +14,15 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.54.0', [
+    'Agent-Test-Satz: 34 typische Aufträge (Wetter, Kalender, Mail, Spotify, Präsentation, Rechnen …). Die Werkzeug-Auswahl wird bei jedem Build geprüft; mit deinem Modell unter Selbsttest → Agent-Test-Satz (Werkzeuge sind Attrappen, es wird nichts gesendet) – mit Vergleich zum letzten Lauf',
+    'Agent-Harness: Chat, Prozesse, Team und externe Aufrufe laufen jetzt durch dieselbe Schicht – gleiche Regeln für Werkzeuge, Internet und Protokoll',
+    'Mehrteilige Aufträge: Junels macht erst einen kurzen Plan, prüft am Ende, ob alles erledigt ist, und bessert einmal nach (im Agenten-Profil abschaltbar)',
+    'Budget je Auftrag: höchstens X Minuten und X Tokens (Agenten-Profil, Standard 8 min / 120k)',
+    'Lange Chats und Läufe: Was aus Platzgründen herausfällt, bleibt als Kurzfassung erhalten statt vergessen zu werden',
+    'Prozesse: Zwischenstand nach jedem Baustein – wird Junels mitten im Lauf beendet, kommt eine Meldung und der Lauf lässt sich mit „Fortsetzen“ beim offenen Schritt weiterführen',
+    'Bild-Wunsch wie „Fuchs im Schnee“ ruft nicht mehr das Wetter auf (vom Test-Satz gefunden)',
+  ]),
   ('1.53.1', [
     'Mac-Update: Die neue Version wird jetzt im Browser geladen statt in der App – in der App geladene Updates hat macOS wegen der Sandbox-Quarantäne nicht gestartet („kann nicht geöffnet werden“)',
     'SSO-Anmeldung: Junels prüft die Server-Adresse und stellt automatisch auf die Agent-API um (z. B. sso.2442.io → agent.2442.io); klare Meldung, wenn dort keine Agent-API läuft',
