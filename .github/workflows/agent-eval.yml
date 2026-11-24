@@ -9,11 +9,16 @@ on:
         description: 'Modell'
         type: choice
         default: qwen2.5-3b
-        options: [qwen2.5-1.5b, qwen2.5-3b, gemma-4-e4b]
+        options: [qwen2.5-1.5b, qwen2.5-3b, qwen2.5-7b, gemma-4-e4b]
       faelle:
         description: 'Nur diese Fälle (Komma-getrennt, leer = alle)'
         required: false
         default: ''
+      stufe:
+        description: 'Stufe (auto = nach Modellgröße)'
+        type: choice
+        default: auto
+        options: [auto, '1', '2', '3']
       harness:
         description: 'Mit Harness (Plan, Prüfen, Budget)'
         type: boolean
@@ -44,6 +49,7 @@ jobs:
         run: |
           case "${{ inputs.modell || 'qwen2.5-3b' }}" in
             qwen2.5-1.5b) echo "url=https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" >> "$GITHUB_OUTPUT";;
+            qwen2.5-7b) echo "url=https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf" >> "$GITHUB_OUTPUT";;
             gemma-4-e4b) echo "url=https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf" >> "$GITHUB_OUTPUT";;
             *) echo "url=https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf" >> "$GITHUB_OUTPUT";;
           esac
@@ -69,4 +75,6 @@ jobs:
           dart pub get
           export AE_LIB_PATH=$GITHUB_WORKSPACE/build-linux/libagent_engine.so
           export EVAL_HARNESS=${{ inputs.harness == false && '0' || '1' }}
+          export EVAL_NAME="${{ inputs.modell || 'qwen2.5-3b' }}"
+          if [ "${{ inputs.stufe || 'auto' }}" != "auto" ]; then export EVAL_LEVEL="${{ inputs.stufe }}"; fi
           dart run tool/agent_eval.dart $GITHUB_WORKSPACE/evalmodel/model.gguf "${{ inputs.faelle }}"
