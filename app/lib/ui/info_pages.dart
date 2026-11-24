@@ -14,6 +14,11 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.54.2', [
+    'Suchergebnisse gehen dem Modellwissen vor: Junels antwortet mit dem, was die Websuche liefert, statt mit einem veralteten Stand',
+    '„Trag … ein“ und „Erinnere mich …“ führen direkt zum Vorschlag (du bestätigst wie gewohnt) statt zu einer Rückfrage',
+    'Keine kaputten Formeln mehr in Antworten (z. B. bei Prozentrechnungen)',
+  ]),
   ('1.54.1', [
     'Fragen zu deinen eigenen Daten (Kalender, Mails, Kontakte) und zu Dingen, die sich ändern („Wer ist der aktuelle …“): Junels sieht jetzt immer nach, statt zu raten – vom Test-Satz gefunden',
     'Spotify-Steuerung nur noch bei Musik-/App-Wünschen – „Such mir einen Flug“ oder „Beispiel“ lösen sie nicht mehr aus',

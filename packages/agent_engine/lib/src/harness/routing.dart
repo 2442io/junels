@@ -42,6 +42,9 @@ class ToolRouter {
     'mail_inbox': RegExp(r'ungelesene? (mails?|e-?mails?)|meine (mails|e-?mails)|posteingang|neue (mails|e-?mails)', caseSensitive: false),
     'contacts_search': RegExp(r'(telefon|handy)?nummer von|e-?mail-?adresse von', caseSensitive: false),
     'remember': RegExp(r'\bmerk(e)? dir\b', caseSensitive: false),
+    // ausdrückliche Aufträge (der Nutzer bestätigt danach selbst)
+    'calendar_add': RegExp(r'\btrag\w* .*\bein\b|termin .*(eintragen|anlegen|ausmachen)|in (den|meinen) kalender', caseSensitive: false),
+    'send_notification': RegExp(r'\berinner\w* mich\b', caseSensitive: false),
     // Fakten, die sich ändern: nachsehen statt aus dem (veralteten) Wissen antworten
     'web_search': RegExp(r'wer ist (der|die|das) (aktuelle|derzeitige|jetzige|neue)|aktuelle[rn]? (preis|kurs|wechselkurs|stand)|wie steht (der|die) (kurs|aktie)',
         caseSensitive: false),

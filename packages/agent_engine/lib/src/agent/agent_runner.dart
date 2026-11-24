@@ -235,7 +235,7 @@ class AgentRunner {
           '- Schlägt ein Tool fehl, nenne dem Nutzer den konkreten Grund (z. B. „Amazon blockiert automatische Abrufe“) '
           'und probiere einen anderen Weg. Behaupte nie pauschal, du hättest keinen Zugriff.');
       b.writeln('- Rechne nie im Kopf, wenn calculator verfügbar ist.');
-      b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt.');
+      b.writeln('- final_answer in der Sprache des Nutzers, Markdown erlaubt, keine LaTeX-Formeln (Zahlen normal schreiben, z. B. 409,50 €).');
       if (activeTools.any((t) => t.name == 'web_fetch' || t.name == 'web_search')) {
         b.writeln(
             '- Du KANNST das Internet nutzen: web_fetch liest eine Webseite (z. B. eine vom Nutzer genannte URL), '
@@ -561,7 +561,11 @@ class AgentRunner {
       }
       if (needs.contains(toolName) && !isError && !observation.startsWith('Fehler') && args['aktion'] != 'anzeigen') delivered = true;
       emit(ToolResult(step, toolName, shown, isError: isError, duration: sw.elapsed));
-      scratch.add(ChatMessage('user', 'Beobachtung ($toolName):\n$observation'));
+      // Aktuelle Daten aus dem Netz gehen dem (veralteten) Wissen des Modells vor – im Test-Satz
+      // antwortete es sonst trotz Suche mit einem früheren Stand
+      final fresh = !isError && (activeTools.where((t) => t.name == toolName).firstOrNull?.requiresNetwork ?? false);
+      scratch.add(ChatMessage('user',
+          'Beobachtung ($toolName):\n$observation${fresh ? '\n[Das sind aktuelle Daten – sie gelten, auch wenn dein Wissen etwas anderes sagt. Antworte damit.]' : ''}'));
     }
     emit(AgentFinished(AgentStopReason.stepLimit,
         message: 'Das Modell hat nach ${maxSteps + 1} Schritten keine gültige Antwort geliefert.'));
@@ -581,6 +585,8 @@ class AgentRunner {
       'calendar_list' || 'mail_inbox' || 'contacts_search' => 'Der Nutzer fragt nach seinen eigenen Daten – nicht raten oder erfinden. '
           'Rufe JETZT $tool auf und antworte dann mit dem Ergebnis.',
       'remember' => 'Der Nutzer will, dass du dir das merkst. Rufe JETZT remember auf.',
+      'calendar_add' || 'send_notification' => 'Der Nutzer hat das ausdrücklich beauftragt. Rufe JETZT $tool auf – '
+          'er bestätigt den Vorschlag danach selbst, du musst nicht vorher nachfragen.',
       'web_search' => 'Das ändert sich laufend – dein Wissen kann veraltet sein. Rufe JETZT web_search auf und antworte mit dem Ergebnis.',
       _ => 'Der Nutzer will ein Ergebnis als Datei. Rufe JETZT $tool auf.',
     };
