@@ -22,6 +22,14 @@ jobs:
           mkdir -p test/ux
           flutter test test/ux_shots_test.dart --update-goldens --reporter expanded 2>&1 | grep -E "Bild|Fertig|init-Fehler|Error|error" | head -120 || true
           ls -la test/ux
+          pip install --quiet pillow
+          python3 -c "
+          import glob,base64,io
+          from PIL import Image
+          for f in sorted(glob.glob('test/ux/*.png')):
+              im=Image.open(f).convert('RGB'); b=io.BytesIO(); im.save(b,'JPEG',quality=72)
+              print('IMG-BEGIN',f.split('/')[-1]); print(base64.b64encode(b.getvalue()).decode()); print('IMG-END')
+          "
       - uses: actions/upload-artifact@v6
         with:
           name: ux-bilder
