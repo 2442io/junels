@@ -25,6 +25,8 @@ class Skill {
     this.builtin = false,
     this.edited = false,
     this.notifyKind = 'auto',
+    this.internet = 'ask',
+    this.model = '',
   }) : tools = tools ?? [];
 
   final String id;
@@ -42,6 +44,22 @@ class Skill {
   final bool builtin; // Basis-Skill aus Junels
   bool edited; // Basis-Skill vom Nutzer angepasst
   String notifyKind;
+
+  /// Internet für diesen Skill: ask = wie im Chat (fragen), allow = ohne Rückfrage erlaubt, block = nie
+  String internet;
+
+  /// Modell für diesen Skill: '' = wie eingestellt, local, onprem, cloud, hybrid-onprem, hybrid-cloud
+  String model;
+
+  static const internetLabels = {'ask': 'Nachfragen (wie im Chat)', 'allow': 'Erlaubt, ohne Rückfrage', 'block': 'Gesperrt – nur offline'};
+  static const modelLabels = {
+    '': 'Wie eingestellt',
+    'local': 'Lokal auf dem Gerät',
+    'onprem': 'Eigener Server (On-Prem)',
+    'cloud': 'Cloud',
+    'hybrid-onprem': 'Hybrid: lokal → eigener Server',
+    'hybrid-cloud': 'Hybrid: lokal → Cloud',
+  };
 
   String get command => slug.isEmpty ? slugify(name) : slug;
 
@@ -69,6 +87,8 @@ class Skill {
         if (builtin) 'builtin': true,
         if (edited) 'edited': true,
         if (notifyKind != 'auto') 'notifyKind': notifyKind,
+        if (internet != 'ask') 'internet': internet,
+        if (model.isNotEmpty) 'model': model,
       };
 
   factory Skill.fromJson(Map<String, dynamic> j) => Skill(
@@ -87,6 +107,8 @@ class Skill {
         builtin: j['builtin'] == true,
         edited: j['edited'] == true,
         notifyKind: '${j['notifyKind'] ?? 'auto'}',
+        internet: internetLabels.containsKey(j['internet']) ? '${j['internet']}' : 'ask',
+        model: modelLabels.containsKey(j['model']) ? '${j['model']}' : '',
       );
 
   Skill copy({String? id, bool? builtin}) =>
@@ -102,6 +124,8 @@ class Skill {
       ..writeln('junels-tools: ${tools.join(', ')}');
     if (requiredTool.isNotEmpty) b.writeln('junels-result: $requiredTool');
     if (inputs.isNotEmpty) b.writeln('junels-inputs: $inputs');
+    if (internet != 'ask') b.writeln('junels-internet: $internet');
+    if (model.isNotEmpty) b.writeln('junels-model: $model');
     b
       ..writeln('---')
       ..writeln()
@@ -120,13 +144,9 @@ class Skill {
 
   /// SKILL.md einlesen (eigene oder Claude-Skills). Nur Text – nichts wird ausgeführt.
   static Skill? fromMarkdown(String md, {required String id}) {
-    final m = RegExp(r'^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$').firstMatch(md.trimLeft());
+    final m = RegExp(r'^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$').firstMatch(md.replaceFirst('﻿', '').trimLeft());
     if (m == null) return null;
-    final meta = <String, String>{};
-    for (final line in m.group(1)!.split('\n')) {
-      final i = line.indexOf(':');
-      if (i > 0) meta[line.substring(0, i).trim()] = line.substring(i + 1).trim();
-    }
+    final meta = parseFrontmatter(m.group(1)!);
     var body = m.group(2)!.trim();
     var knowledge = '';
     final k = body.indexOf('## Wissen & Beispiele');
@@ -134,19 +154,61 @@ class Skill {
       knowledge = body.substring(k + '## Wissen & Beispiele'.length).trim();
       body = body.substring(0, k).trim();
     }
+    final h1 = RegExp(r'^# (.+)\n+').firstMatch(body);
     body = body.replaceFirst(RegExp(r'^# .*\n+'), '');
-    final name = meta['junels-title'] ?? meta['name'] ?? 'Skill';
+    if (body.trim().isEmpty && (meta['description'] ?? '').isEmpty) return null;
+    final rawName = meta['name'] ?? '';
+    final name = meta['junels-title'] ?? h1?.group(1)?.trim() ?? (rawName.isEmpty ? 'Skill' : _titleFrom(rawName));
+    String pick(String key, Map<String, String> labels, String dflt) => labels.containsKey(meta[key]) ? meta[key]! : dflt;
     return Skill(
       id: id,
       name: name,
-      slug: slugify(meta['name'] ?? name),
+      slug: slugify(rawName.isEmpty ? name : rawName),
       when: meta['description'] ?? '',
-      instructions: body,
-      tools: [for (final t in (meta['junels-tools'] ?? '').split(',')) if (t.trim().isNotEmpty) t.trim()],
+      instructions: body.trim().isEmpty ? (meta['description'] ?? '') : body,
+      tools: [for (final t in (meta['junels-tools'] ?? meta['allowed-tools'] ?? '').split(RegExp(r'[,\s]+'))) if (t.trim().isNotEmpty) t.trim()],
       requiredTool: meta['junels-result'] ?? '',
       inputs: meta['junels-inputs'] ?? '',
       knowledge: knowledge,
+      internet: pick('junels-internet', internetLabels, 'ask'),
+      model: pick('junels-model', modelLabels, ''),
     );
+  }
+
+  static String _titleFrom(String slug) {
+    final w = slug.replaceAll(RegExp(r'[-_]+'), ' ').trim();
+    return w.isEmpty ? 'Skill' : '${w[0].toUpperCase()}${w.substring(1)}';
+  }
+
+  /// Einfaches YAML-Frontmatter: key: wert, "Anführungszeichen", Block-Text (| oder >) über mehrere Zeilen.
+  static Map<String, String> parseFrontmatter(String yaml) {
+    final out = <String, String>{};
+    final lines = yaml.split(RegExp(r'\r?\n'));
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final mm = RegExp(r'^([A-Za-z0-9_-]+)\s*:\s*(.*)$').firstMatch(line);
+      if (mm == null) continue;
+      final key = mm.group(1)!;
+      var v = mm.group(2)!.trim();
+      if (v == '|' || v == '>' || v == '|-' || v == '>-' || (v.isEmpty && i + 1 < lines.length && lines[i + 1].startsWith(RegExp(r'\s')))) {
+        final buf = <String>[];
+        while (i + 1 < lines.length && (lines[i + 1].startsWith(RegExp(r'\s')) || lines[i + 1].trim().isEmpty)) {
+          i++;
+          buf.add(lines[i].trim());
+        }
+        v = v.startsWith('|') ? buf.join('\n').trim() : buf.where((x) => x.isNotEmpty).join(' ').trim();
+        // Liste (- a / - b) → Komma-getrennt
+        if (buf.isNotEmpty && buf.where((x) => x.isNotEmpty).every((x) => x.startsWith('- '))) {
+          v = buf.where((x) => x.isNotEmpty).map((x) => x.substring(2).trim()).join(', ');
+        }
+      } else if (v.startsWith('[') && v.endsWith(']')) {
+        v = v.substring(1, v.length - 1).split(',').map((x) => x.trim().replaceAll(RegExp('^["\']|["\']\$'), '')).join(', ');
+      } else if ((v.startsWith('"') && v.endsWith('"') || v.startsWith("'") && v.endsWith("'")) && v.length >= 2) {
+        v = v.substring(1, v.length - 1).replaceAll(r'\"', '"');
+      }
+      out[key] = v;
+    }
+    return out;
   }
 
   /// Text für das Modell in dieser Runde.

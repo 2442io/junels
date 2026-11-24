@@ -53,6 +53,12 @@ Future<void> main() async {
     }
     print('  Auswahl: ${agentCases.length - fails}/${agentCases.length} Fälle richtig');
     check(agentCases.map((c) => c.id).toSet().length == agentCases.length, 'Fall-IDs eindeutig');
+    check(modelTier('Qwen 2.5 3B Instruct') == 1 && modelTier('qwen2.5-1.5b-instruct-q4_k_m.gguf') == 1, 'kleine Modelle: Basis');
+    check(modelTier('Qwen 2.5 7B Instruct') == 2 && modelTier('gemma-4-E4B-it') == 1, 'mittlere/effektive Größe');
+    check(modelTier('Gemma 4 12B') == 3 && modelTier('Claude', remote: true) == 3, 'große Modelle und Cloud: Profi');
+    check(modelTier('unbekannt.gguf', bytes: 2000000000) == 1 && modelTier('x', bytes: 8000000000) == 3, 'nach Dateigröße');
+    check(casesForLevel(1).every((c) => c.level == 1) && casesForLevel(3).length == agentCases.length, 'Stufen-Auswahl');
+    check(casesForLevel(2).length > casesForLevel(1).length && casesForLevel(3).length > casesForLevel(2).length, 'jede Stufe bringt Fälle dazu');
     for (final c in agentCases) {
       for (final t in c.call) {
         check(evalToolSpecs.any((s) => s.name == t), '${c.id}: Test-Werkzeug „$t“ vorhanden');

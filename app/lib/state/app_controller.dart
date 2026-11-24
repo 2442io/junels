@@ -2925,11 +2925,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Wählt das Modell für eine Antwort: (Backend, Anzeige, ist Cloud).
   Future<(AgentBackend?, String?, bool)> _backendFor(Conversation conv,
-      {bool forceCloud = false, String input = '', int docChars = 0, bool forceStrong = false, bool voice = false, bool guideCloud = false}) async {
-    final r = routingOf(conv);
+      {bool forceCloud = false,
+      String input = '',
+      int docChars = 0,
+      bool forceStrong = false,
+      bool voice = false,
+      bool guideCloud = false,
+      String? routing}) async {
+    // routing: Vorgabe eines Skills (local | onprem | cloud | hybrid-onprem | hybrid-cloud)
+    final r = routing == null ? routingOf(conv) : (routing.startsWith('hybrid') ? 'hybrid' : routing);
     Future<(AgentBackend?, String?, bool)> remote(ProviderConfig? p, bool cloud) async =>
         p == null ? (null, null, cloud) : (await remoteBackend(p), '${cloud ? 'Cloud' : 'On-Prem'} · ${p.name} · ${p.model}', cloud);
-    final toCloud = escalatesToCloud(conv) && deviceOnline;
+    final toCloud = (routing != null && routing.startsWith('hybrid') ? routing == 'hybrid-cloud' : escalatesToCloud(conv)) && deviceOnline;
     if (!deviceOnline && (r == 'cloud' || forceCloud)) {
       // Offline: Cloud nicht erreichbar → am Gerät antworten
       statusMessage = 'Offline – Antwort kommt vom Modell auf dem Gerät.';
@@ -2940,7 +2947,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // forceCloud = Rückfall/Knopf „Mit … beantworten“
     if (forceCloud) return toCloud || r == 'cloud' ? remote(cloudProvider, true) : remote(onPremProvider, false);
     if (r == 'cloud' || (r == 'hybrid' && toCloud && conv.cloudAllowed)) return remote(cloudProvider, true);
-    if (r == 'onprem' || (r == 'hybrid' && hybridFirstOf(conv) == 'onprem')) return remote(onPremProvider, false);
+    if (r == 'onprem' || (r == 'hybrid' && routing == null && hybridFirstOf(conv) == 'onprem')) return remote(onPremProvider, false);
     final (e, v) = await _localFor(conv, input, docChars: docChars, forceStrong: forceStrong, voice: voice);
     return (e, v, false);
   }
@@ -3469,6 +3476,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       String source = 'flow',
       HarnessBudget? budget}) async {
     onProgress?.call(skill == null ? 'Modell wird vorbereitet …' : 'Skill „${skill.name}“: Modell wird vorbereitet …');
+    // Skill-Vorgaben: Modell (wenn der Baustein keins festlegt) und Internet
+    if (skill != null && provider.isEmpty && skill.model.isNotEmpty) {
+      provider = switch (skill.model) {
+        'local' || 'hybrid-onprem' || 'hybrid-cloud' => 'local',
+        'onprem' => onPremProvider?.id ?? 'local',
+        'cloud' => cloudProvider?.id ?? '',
+        _ => '',
+      };
+    }
+    if (skill?.internet == 'block') allowInternet = false;
     final AgentBackend? picked;
     if (provider.isEmpty) {
       picked = await _automationBackend();
@@ -3853,6 +3870,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final guideCloud = guideNow && !forceCloud && await _guideWantsCloud(conv);
     runningConvId = conv.id;
     final (eng0, via, usedCloud) = await _backendFor(conv,
+        routing: (skill?.model ?? '').isEmpty ? null : skill!.model,
         guideCloud: guideCloud,
         forceCloud: forceCloud,
         input: input,
@@ -3927,7 +3945,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // Skill: nur seine Werkzeuge (weniger Auswahl = verlässlicher, gerade für kleine Modelle am Gerät)
     if (skill != null) {
       var list = [for (final t in activeTools) if (skill.tools.contains(t.name)) t];
-      if (conv.internetOff || !deviceOnline) list = [for (final t in list) if (!t.requiresNetwork) t];
+      if (conv.internetOff || !deviceOnline || skill.internet == 'block') list = [for (final t in list) if (!t.requiresNetwork) t];
       if (voice || headless) list = [for (final t in list) if (t.name != 'browser') t];
       runTools = list;
     }
@@ -3997,7 +4015,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await WakelockPlus.enable();
     } catch (_) {}
 
-    _turnInternetAllowed = false;
+    // Skill mit „Internet erlaubt“: in dieser Runde ohne Rückfrage (ein im Chat ausgeschaltetes Internet bleibt aus)
+    _turnInternetAllowed = skill?.internet == 'allow';
     void propose(Map<String, String> a) {
       answer.actions.add(a);
       notifyListeners();

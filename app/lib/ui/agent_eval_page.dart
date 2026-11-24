@@ -10,8 +10,19 @@ import 'quick_nav.dart';
 import 'theme.dart';
 
 /// Agent-Test-Satz mit dem eigenen Modell: 34 typische Aufträge, Werkzeuge ohne Wirkung.
-class AgentEvalPage extends StatelessWidget {
+class AgentEvalPage extends StatefulWidget {
   const AgentEvalPage({super.key});
+
+  @override
+  State<AgentEvalPage> createState() => _AgentEvalPageState();
+}
+
+class _AgentEvalPageState extends State<AgentEvalPage> {
+  @override
+  void initState() {
+    super.initState();
+    AppScope.read(context).agentEval.detectLevel();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +33,10 @@ class AgentEvalPage extends StatelessWidget {
     return ListenableBuilder(
       listenable: ev,
       builder: (context, _) {
-        final prev = ev.history.length > (ev.report != null ? 1 : 0) ? ev.history[ev.report != null ? 1 : 0] : null;
         final rep = ev.report;
+        final level = ev.levelChoice == 0 ? (ev.autoLevel == 0 ? 2 : ev.autoLevel) : ev.levelChoice;
+        // fair vergleichen: nur gleiches Modell und gleiche Stufe
+        final prev = rep == null ? null : ev.previousFor(rep.model, rep.level, except: rep.started);
         final passedNow = ev.results.where((r) => r.passed).length;
         final countedNow = ev.results.where((r) => !r.skipped).length;
         return Scaffold(
@@ -50,9 +63,33 @@ class AgentEvalPage extends StatelessWidget {
           ]),
           body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 40), children: [
             Text(
-                '${agentCases.length} typische Aufträge – Wetter, Kalender, Mail, Spotify, Präsentation, Rechnen … '
+                '${casesForLevel(level).length} typische Aufträge – Wetter, Kalender, Mail, Spotify, Präsentation, Rechnen … '
                 'Junels löst sie mit deinem eingestellten Modell. Die Werkzeuge sind Attrappen: Es wird nichts gesendet, '
                 'gebucht oder gespeichert. Geprüft wird, ob das richtige Werkzeug benutzt wird und das Ergebnis in der Antwort steht.',
+                style: t.bodySmall?.copyWith(color: c.muted)),
+            const SizedBox(height: 12),
+            Text('Stufe', style: t.labelLarge),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              ChoiceChip(
+                label: Text(ev.autoLevel == 0 ? 'Automatisch' : 'Automatisch: ${evalLevels[ev.autoLevel]}'),
+                selected: ev.levelChoice == 0,
+                onSelected: ev.running ? null : (_) => setState(() => ev.levelChoice = 0),
+              ),
+              for (final e in evalLevels.entries)
+                ChoiceChip(
+                  label: Text('${e.value} (${casesForLevel(e.key).length})'),
+                  selected: ev.levelChoice == e.key,
+                  onSelected: ev.running ? null : (_) => setState(() => ev.levelChoice = e.key),
+                ),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+                '${switch (level) {
+                  1 => 'Basis: einfache Aufträge mit einem Werkzeug – passend für kleine Modelle bis ca. 4B.',
+                  2 => 'Fortgeschritten: zusätzlich Folgefragen, mehrere Aufrufe, leere Ergebnisse – ab ca. 7B.',
+                  _ => 'Profi: zusätzlich Aufträge über mehrere Werkzeuge, Bezug auf den Verlauf, unklare Aufträge – ab ca. 10B und Cloud.',
+                }}${ev.autoModel.isEmpty ? '' : '\nModell: ${ev.autoModel}'}',
                 style: t.bodySmall?.copyWith(color: c.muted)),
             const SizedBox(height: 12),
             Panel(
@@ -69,10 +106,12 @@ class AgentEvalPage extends StatelessWidget {
                         style: t.titleMedium,
                       ),
                       if (ev.running && countedNow > 0) Text('bisher $passedNow/$countedNow bestanden', style: t.bodySmall),
-                      if (rep != null) Text('${rep.model} · Ø ${(rep.avgMs / 1000).toStringAsFixed(1)} s je Auftrag', style: t.bodySmall),
+                      if (rep != null)
+                        Text('${rep.model} · Stufe ${evalLevels[rep.level]} · Ø ${(rep.avgMs / 1000).toStringAsFixed(1)} s je Auftrag',
+                            style: t.bodySmall),
                       if (prev != null && rep != null)
                         Text(
-                            'Vorher: ${prev.passed}/${prev.counted} (${prev.model}) – '
+                            'Vorher (gleiches Modell, gleiche Stufe): ${prev.passed}/${prev.counted} – '
                             '${rep.passed - prev.passed >= 0 ? '+' : ''}${rep.passed - prev.passed}',
                             style: t.bodySmall?.copyWith(color: rep.passed >= prev.passed ? c.mint : c.red)),
                     ]),
@@ -90,7 +129,7 @@ class AgentEvalPage extends StatelessWidget {
                   const SizedBox(height: 10),
                   LinearProgressIndicator(value: ev.total == 0 ? null : ev.done / ev.total),
                   const SizedBox(height: 6),
-                  Text('Dauert mit einem lokalen Modell ca. ${(agentCases.length * 15 / 60).round()}–${(agentCases.length * 40 / 60).round()} Minuten. '
+                  Text('Dauert mit einem lokalen Modell ca. ${(ev.total * 10 / 60).round()}–${(ev.total * 30 / 60).round()} Minuten. '
                       'Junels kann währenddessen nicht chatten.',
                       style: t.bodySmall),
                 ],
@@ -139,7 +178,7 @@ class AgentEvalPage extends StatelessWidget {
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text('${h.passed}/${h.counted} · ${h.model}'),
+                  title: Text('${h.passed}/${h.counted} · ${h.model} · ${evalLevels[h.level]}'),
                   subtitle: Text('${h.at.day}.${h.at.month}. ${h.at.hour}:${h.at.minute.toString().padLeft(2, '0')} · Ø ${(h.avgMs / 1000).toStringAsFixed(1)} s'
                       '${h.failed.isEmpty ? '' : ' · nicht bestanden: ${h.failed.keys.join(', ')}'}'),
                 ),

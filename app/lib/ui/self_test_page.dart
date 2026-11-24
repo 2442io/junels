@@ -108,9 +108,9 @@ class _SelfTestPageState extends State<SelfTestPage> {
             leading: const Icon(Icons.fact_check_outlined),
             title: const Text('Agent-Test-Satz'),
             subtitle: Text(AppScope.of(context).agentEval.history.isEmpty
-                ? '${agentCases.length} typische Aufträge mit deinem Modell lösen lassen – misst die Qualität'
+                ? 'Typische Aufträge mit deinem Modell lösen lassen – Stufe passend zur Modellgröße'
                 : 'Zuletzt ${AppScope.of(context).agentEval.history.first.passed}/${AppScope.of(context).agentEval.history.first.counted} '
-                    'bestanden (${AppScope.of(context).agentEval.history.first.model})'),
+                    'bestanden (${AppScope.of(context).agentEval.history.first.model}, ${evalLevels[AppScope.of(context).agentEval.history.first.level]})'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AgentEvalPage())),
           ),

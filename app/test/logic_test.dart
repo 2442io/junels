@@ -8,6 +8,8 @@ import 'package:offline_agent/state/automation.dart';
 import 'package:offline_agent/state/guide.dart';
 import 'package:offline_agent/state/notifications.dart';
 import 'package:offline_agent/state/skills.dart';
+import 'package:offline_agent/state/skill_import.dart';
+import 'package:agent_engine/agent_engine.dart';
 import 'package:offline_agent/state/run_stats.dart';
 import 'dart:io';
 
@@ -98,6 +100,60 @@ void main() {
       expect(again.records.length, 3);
       expect(again.records.first.nodes.length, 2);
       await dir.delete(recursive: true);
+    });
+  });
+
+  group('Skills importieren', () {
+    test('Claude-SKILL.md mit mehrzeiliger Beschreibung und allowed-tools', () {
+      const md = '''---
+name: pdf-handout
+description: >
+  Erstellt ein Handout als PDF
+  aus einem Thema.
+allowed-tools: [WebSearch, Read, Bash]
+---
+
+# PDF-Handout
+
+1. Thema recherchieren
+2. Gliedern und als PDF ausgeben
+''';
+      final s = SkillImport.fromText(md, available: evalToolSpecs)!;
+      expect(s.name, 'PDF-Handout');
+      expect(s.command, 'pdf-handout');
+      expect(s.when, 'Erstellt ein Handout als PDF aus einem Thema.');
+      expect(s.tools, containsAll(['web_search', 'read_file']));
+      expect(s.tools.contains('Bash'), isFalse);
+      expect(s.instructions.contains('Thema recherchieren'), isTrue);
+    });
+
+    test('ohne Werkzeuge: passende werden vorgeschlagen; Internet/Modell bleiben erhalten', () {
+      const md = '''---
+name: wetter-check
+description: "Prüft das Wetter für den Ausflug und sagt, ob man eine Jacke braucht"
+junels-internet: allow
+junels-model: cloud
+---
+Wetter am Zielort abfragen und kurz empfehlen.''';
+      final s = SkillImport.fromText(md, available: evalToolSpecs)!;
+      expect(s.tools, contains('weather'));
+      expect(s.internet, 'allow');
+      expect(s.model, 'cloud');
+      final back = Skill.fromMarkdown(s.toMarkdown(), id: 'x')!;
+      expect(back.internet, 'allow');
+      expect(back.model, 'cloud');
+      expect(Skill.fromJson(s.toJson()).model, 'cloud');
+    });
+
+    test('Markdown ohne Frontmatter und GitHub-Links', () {
+      final s = SkillImport.fromText('# Wochenrückblick\nFasst die Woche zusammen.\n\n- Termine ansehen\n- Kurz zusammenfassen', available: evalToolSpecs)!;
+      expect(s.name, 'Wochenrückblick');
+      expect(s.when, 'Fasst die Woche zusammen.');
+      expect(SkillImport.candidates('https://github.com/a/b/blob/main/skills/pdf/SKILL.md').first.toString(),
+          'https://raw.githubusercontent.com/a/b/main/skills/pdf/SKILL.md');
+      expect(SkillImport.candidates('github.com/a/b/tree/main/skills/pdf').first.toString(),
+          'https://raw.githubusercontent.com/a/b/main/skills/pdf/SKILL.md');
+      expect(SkillImport.fromText('nur Text ohne Überschrift', available: evalToolSpecs), isNull);
     });
   });
 }

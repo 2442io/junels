@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../state/app_scope.dart';
 import '../state/native_files.dart';
+import '../state/skill_import.dart';
 import '../state/skills.dart';
 import 'quick_nav.dart';
 import 'theme.dart';
@@ -61,7 +62,15 @@ class SkillsPage extends StatelessWidget {
               MonoText('/${s.command}', color: c.muted),
               if (s.edited) ...[const SizedBox(width: 6), StatusChip('angepasst', color: c.amber, dense: true)],
             ]),
-            subtitle: Text(s.when.isEmpty ? '${s.tools.length} Werkzeuge' : s.when, maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+                [
+                  s.when.isEmpty ? '${s.tools.length} Werkzeuge' : s.when,
+                  if (s.internet == 'allow') '🌐 Internet erlaubt',
+                  if (s.internet == 'block') 'offline',
+                  if (s.model.isNotEmpty) Skill.modelLabels[s.model]!,
+                ].join(' · '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
             trailing: Switch(value: s.enabled, onChanged: (v) => lib.setEnabled(s, v)),
             onTap: () => openSkillEditor(context, s),
           ),
@@ -69,7 +78,7 @@ class SkillsPage extends StatelessWidget {
 
     return Scaffold(
       appBar: JAppBar(title: const Text('Skills'), actions: [
-        IconButton(tooltip: 'SKILL.md importieren', icon: const Icon(Icons.file_download_outlined), onPressed: () => _import(context)),
+        IconButton(tooltip: 'Skills importieren', icon: const Icon(Icons.download_outlined), onPressed: () => showSkillImport(context)),
         IconButton(tooltip: 'Neuer Skill', icon: const Icon(Icons.add), onPressed: () => openSkillEditor(context, null)),
       ]),
       body: ListenableBuilder(
@@ -80,11 +89,23 @@ class SkillsPage extends StatelessWidget {
               'eigene Skills erkennt Junels auch automatisch. Tipp: „Bau mir einen Skill, der …“ oder unter einer guten Antwort „Als Skill speichern“.',
               style: t.bodySmall?.copyWith(color: c.muted)),
           const SizedBox(height: 12),
-          FilledButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Eigenen Skill entwerfen'),
-            onPressed: () => openSkillEditor(context, null),
-          ),
+          Row(children: [
+            Expanded(
+              child: FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Skill entwerfen'),
+                onPressed: () => openSkillEditor(context, null),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('Importieren'),
+                onPressed: () => showSkillImport(context),
+              ),
+            ),
+          ]),
           SectionLabel('Eigene Skills (${lib.own.length})', padding: const EdgeInsets.fromLTRB(4, 18, 4, 6)),
           if (lib.own.isEmpty)
             Padding(
@@ -98,24 +119,6 @@ class SkillsPage extends StatelessWidget {
       ),
     );
   }
-
-  Future<void> _import(BuildContext context) async {
-    final app = AppScope.read(context);
-    final m = ScaffoldMessenger.of(context);
-    final pick = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any, withData: true);
-    if (pick == null || pick.files.isEmpty) return;
-    var n = 0;
-    for (final f in pick.files) {
-      try {
-        final text = f.bytes != null ? String.fromCharCodes(f.bytes!) : await File(f.path!).readAsString();
-        final s = Skill.fromMarkdown(utf8Fix(text), id: 'u-${DateTime.now().microsecondsSinceEpoch}-$n');
-        if (s == null) continue;
-        app.skills.upsert(s);
-        n++;
-      } catch (_) {}
-    }
-    m.showSnackBar(SnackBar(content: Text(n == 0 ? 'Keine gültige SKILL.md gefunden' : '$n Skill(s) importiert – bitte Werkzeuge prüfen')));
-  }
 }
 
 /// Bytes als UTF-8 lesen (String.fromCharCodes liefert Latin-1).
@@ -127,8 +130,143 @@ String utf8Fix(String s) {
   }
 }
 
-void openSkillEditor(BuildContext context, Skill? skill) =>
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SkillEditor(skill: skill)));
+void openSkillEditor(BuildContext context, Skill? skill, {Skill? draft}) =>
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SkillEditor(skill: skill, draft: draft)));
+
+/// Skills importieren: Datei(en), Link oder Text. Ein Skill → Editor zum Prüfen; mehrere → Auswahl.
+Future<void> showSkillImport(BuildContext context) async {
+  final app = AppScope.read(context);
+  final m = ScaffoldMessenger.of(context);
+  final nav = Navigator.of(context);
+  final linkCtrl = TextEditingController();
+  final textCtrl = TextEditingController();
+  final tools = app.activeTools;
+  final result = await showSheet<List<Skill>>(
+    context: context,
+    isScrollControlled: true,
+    title: 'Skills importieren',
+    builder: (ctx) {
+      var busy = false;
+      String? err;
+      return StatefulBuilder(builder: (ctx, set) {
+        final t = Theme.of(ctx).textTheme;
+        Future<void> run(Future<List<Skill>> Function() f) async {
+          set(() {
+            busy = true;
+            err = null;
+          });
+          try {
+            final list = await f();
+            if (list.isEmpty) throw Exception('Keine gültige SKILL.md gefunden');
+            if (ctx.mounted) Navigator.pop(ctx, list);
+          } catch (e) {
+            set(() {
+              busy = false;
+              err = '$e'.replaceFirst('Exception: ', '');
+            });
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(ctx).bottom),
+          child: SingleChildScrollView(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+              Text('SKILL.md im Junels- oder Claude-Format, auch als ZIP/.skill mit mehreren Skills. '
+                  'Skills sind Anleitungen – Skripte in einem Paket werden nicht übernommen und nie ausgeführt.',
+                  style: t.bodySmall),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Datei(en) wählen – .md, .zip, .skill'),
+                onPressed: busy
+                    ? null
+                    : () => run(() async {
+                          final pick = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any, withData: true);
+                          if (pick == null) return const <Skill>[];
+                          final out = <Skill>[];
+                          for (final f in pick.files) {
+                            final bytes = f.bytes ?? await File(f.path!).readAsBytes();
+                            out.addAll(SkillImport.fromFile(f.name, bytes, available: tools));
+                          }
+                          return out;
+                        }),
+              ),
+              const SizedBox(height: 18),
+              Text('Von einem Link', style: t.titleSmall),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: linkCtrl,
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    decoration: const InputDecoration(isDense: true, hintText: 'github.com/…/SKILL.md, Ordner oder .zip'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: busy ? null : () => run(() => SkillImport.fromLink(linkCtrl.text, available: tools)),
+                  child: const Text('Laden'),
+                ),
+              ]),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Lädt nur diese eine Adresse aus dem Internet.', style: t.bodySmall),
+              ),
+              const SizedBox(height: 18),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('Text einfügen'),
+                children: [
+                  TextField(
+                    controller: textCtrl,
+                    minLines: 4,
+                    maxLines: 10,
+                    decoration: const InputDecoration(hintText: '---\nname: …\ndescription: …\n---\nAnleitung …', alignLabelWithHint: true),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.tonal(
+                      onPressed: busy
+                          ? null
+                          : () => run(() async => [
+                                if (SkillImport.fromText(textCtrl.text, available: tools) case final s?) s,
+                              ]),
+                      child: const Text('Übernehmen'),
+                    ),
+                  ),
+                ],
+              ),
+              if (busy) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()),
+              if (err != null)
+                Padding(padding: const EdgeInsets.only(top: 12), child: Text(err!, style: t.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.error))),
+            ]),
+          ),
+        );
+      });
+    },
+  );
+  linkCtrl.dispose();
+  textCtrl.dispose();
+  if (result == null || result.isEmpty) return;
+  // Befehle eindeutig machen
+  for (final s in result) {
+    final base = s.command;
+    for (var i = 2; app.skills.all.any((o) => o.command == s.command) || result.any((o) => o != s && o.command == s.command && result.indexOf(o) < result.indexOf(s)); i++) {
+      s.slug = '$base-$i';
+    }
+  }
+  if (result.length == 1) {
+    // einzeln: im Editor prüfen (Werkzeuge, Internet, Modell) und dann speichern
+    await nav.push(MaterialPageRoute(builder: (_) => SkillEditor(draft: result.first)));
+    return;
+  }
+  for (final s in result) {
+    app.skills.upsert(s);
+  }
+  m.showSnackBar(SnackBar(content: Text('${result.length} Skills importiert – Werkzeuge bitte kurz prüfen')));
+}
 
 class SkillEditor extends StatefulWidget {
   const SkillEditor({super.key, this.skill, this.draft});
@@ -332,6 +470,41 @@ class _SkillEditorState extends State<SkillEditor> {
               DropdownMenuItem(value: n, child: Text(tools.firstWhere((x) => x.name == n).title)),
           ],
           onChanged: (v) => setState(() => s.requiredTool = v ?? ''),
+        ),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          initialValue: s.internet,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Internet', helperText: 'Gilt nur, wenn dieser Skill läuft'),
+          items: [
+            for (final e in Skill.internetLabels.entries)
+              DropdownMenuItem(
+                value: e.key,
+                child: Row(children: [
+                  Icon(e.key == 'allow' ? Icons.public : (e.key == 'block' ? Icons.public_off : Icons.help_outline), size: 18),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(e.value, overflow: TextOverflow.ellipsis)),
+                ]),
+              ),
+          ],
+          onChanged: (v) => setState(() => s.internet = v ?? 'ask'),
+        ),
+        const SizedBox(height: 14),
+        DropdownButtonFormField<String>(
+          initialValue: s.model,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: 'Modell (KI-Weiche)',
+            helperText: s.model == 'cloud' || s.model == 'hybrid-cloud'
+                ? 'Cloud: Inhalte gehen an ${AppScope.read(context).cloudProvider?.name ?? 'den Cloud-Anbieter (noch nicht eingerichtet)'}'
+                : (s.model == 'onprem' || s.model == 'hybrid-onprem')
+                    ? 'Eigener Server: ${AppScope.read(context).onPremProvider?.name ?? 'noch nicht eingerichtet'}'
+                    : 'Wie im Chat eingestellt oder fest für diesen Skill',
+          ),
+          items: [
+            for (final e in Skill.modelLabels.entries) DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => setState(() => s.model = v ?? ''),
         ),
         const SizedBox(height: 14),
         ExpansionTile(

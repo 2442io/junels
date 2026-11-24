@@ -35,6 +35,9 @@ class ToolRouter {
 
   /// Eigene Daten des Nutzers – ohne Werkzeug kann das Modell nur raten (erfundene Termine o. Ä.)
   static final _ownData = <String, RegExp>{
+    // ausdrückliche Aufträge (der Nutzer bestätigt danach selbst)
+    'calendar_add': RegExp(r'\btrag\w* .*\bein\b|termin .*(eintragen|anlegen|ausmachen)|in (den|meinen) kalender', caseSensitive: false),
+    'send_notification': RegExp(r'\berinner\w* mich\b', caseSensitive: false),
     'calendar_list': RegExp(
         r'(was steht|was hab ich|was habe ich|hab ich|habe ich)\b.*\b(heute|morgen|übermorgen|termin|kalender)|'
         r'mein(em|en)? (kalender|terminen?)\b|meine termine|wann ist mein(e|en)? |bin ich .*(frei|verfügbar)',
@@ -42,9 +45,6 @@ class ToolRouter {
     'mail_inbox': RegExp(r'ungelesene? (mails?|e-?mails?)|meine (mails|e-?mails)|posteingang|neue (mails|e-?mails)', caseSensitive: false),
     'contacts_search': RegExp(r'(telefon|handy)?nummer von|e-?mail-?adresse von', caseSensitive: false),
     'remember': RegExp(r'\bmerk(e)? dir\b', caseSensitive: false),
-    // ausdrückliche Aufträge (der Nutzer bestätigt danach selbst)
-    'calendar_add': RegExp(r'\btrag\w* .*\bein\b|termin .*(eintragen|anlegen|ausmachen)|in (den|meinen) kalender', caseSensitive: false),
-    'send_notification': RegExp(r'\berinner\w* mich\b', caseSensitive: false),
     // Fakten, die sich ändern: nachsehen statt aus dem (veralteten) Wissen antworten
     'web_search': RegExp(r'wer ist (der|die|das) (aktuelle|derzeitige|jetzige|neue)|aktuelle[rn]? (preis|kurs|wechselkurs|stand)|wie steht (der|die) (kurs|aktie)',
         caseSensitive: false),
@@ -67,7 +67,7 @@ class ToolRouter {
         r'angebot|kaufen|empfehl\w* .*(produkt|marke)|vergleich|test(sieger|bericht)|'
         r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
     // Wortgrenzen: „Regenbogen“, „Windows“, „Jackett“ sind keine Wetterfragen
-    'weather': RegExp(r'wetter|\bregen\b|regnet|regenschirm|temperatur|\d+\s*grad\b|\bgrad (wird|hat|haben)|\bschnee\b|schneit|sonnig|'
+    'weather': RegExp(r'wetter|weather|forecast|temperature|\brain(ing|y)?\b|\bregen\b|regnet|regenschirm|temperatur|\d+\s*grad\b|\bgrad (wird|hat|haben)|\bschnee\b|schneit|sonnig|'
         r'\bwind(ig)?\b|gewitter|\bschirm\b|\bjacke\b|vorhersage'),
     'news': RegExp(r'news|nachrichten|schlagzeilen|neuigkeiten|neues (zu|von|aus|über|bei|in)|was gibt.s neues|was gibt es neues|meldungen|presse|morgen-übersicht'),
     'contacts_search': RegExp(r'nummer von|telefonnummer|handynummer|e-?mail-?adresse von|adresse von|kontakt'),

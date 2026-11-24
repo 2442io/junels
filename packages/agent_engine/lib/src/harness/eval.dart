@@ -27,7 +27,26 @@ class AgentCase {
     this.answerAny = const [],
     this.answerNot = const [],
     this.obs = const {},
+    this.level = 1,
+    this.history = const [],
+    this.callAll = const {},
+    this.minCalls = 0,
   });
+
+  /// Schwierigkeit: 1 = Basis (alle Modelle), 2 = Fortgeschritten (ab ~7B), 3 = Profi (ab ~10B und Cloud)
+  final int level;
+
+  /// Vorheriger Verlauf: abwechselnd Nutzer, Assistent
+  final List<String> history;
+
+  /// Live: alle diese Werkzeuge müssen aufgerufen werden (mehrteilige Aufträge)
+  final Set<String> callAll;
+
+  /// Live: mindestens so viele Werkzeug-Aufrufe
+  final int minCalls;
+
+  /// Text für die Werkzeug-Auswahl: bei Folgefragen mit der vorigen Frage (wie im Chat)
+  String get gateText => history.isEmpty ? prompt : '${history[history.length - 2 < 0 ? 0 : history.length - 2]} $prompt';
 
   /// Testdaten nur für diesen Fall (überschreibt [evalObservations])
   final Map<String, String> obs;
@@ -131,7 +150,62 @@ const agentCases = <AgentCase>[
       tools: {'search_history'}, call: {'search_history'}, answerAny: ['impf']),
   AgentCase('datei', 'Rechnen & Wissen', 'Finde die Datei Rechnung März in meinen Downloads',
       tools: {'file_search'}, call: {'file_search'}, answerAny: ['rechnung_maerz', 'rechnung märz', 'rechnung_märz', 'downloads']),
+
+  // ======== Stufe 2: Fortgeschritten (Folgefragen, mehrere Aufrufe, leere Ergebnisse, Fallen)
+  AgentCase('folgefrage', 'Verlauf & Mehrteilig', 'Und in Salzburg?', level: 2,
+      history: ['Wie wird das Wetter morgen in Wien?', 'Morgen in Wien: 12 °C und leichter Regen.'],
+      tools: {'weather'}, call: {'weather'}, answerAny: ['8'],
+      obs: {'weather': 'Salzburg, morgen: 8 °C, Schneeregen, Wind 20 km/h.'}),
+  AgentCase('zwei_orte', 'Verlauf & Mehrteilig', 'Wie wird das Wetter morgen in Wien und in Graz?', level: 2,
+      tools: {'weather'}, call: {'weather'}, minCalls: 2, answerAny: ['12']),
+  AgentCase('englisch', 'Verlauf & Mehrteilig', "What's the weather like in Vienna tomorrow?", level: 2,
+      tools: {'weather'}, call: {'weather'}, answerAny: ['12']),
+  AgentCase('nicht_gefunden', 'Ehrlichkeit', 'Wie ist die Telefonnummer von Herbert Zangl?', level: 2,
+      tools: {'contacts_search'}, required: 'contacts_search', call: {'contacts_search'},
+      answerAny: ['nicht', 'keine', 'leider'], answerNot: ['+43', '660'],
+      obs: {'contacts_search': 'Keine Treffer für „Herbert Zangl“ in den Kontakten.'}),
+  AgentCase('leere_suche', 'Ehrlichkeit', 'Such auf Amazon nach dem Buch „Die Glasperlenzwiebel“ von Erna Fiktiv', level: 2,
+      tools: {'site_search'}, call: {'site_search', 'web_search', 'browser'},
+      answerAny: ['nicht', 'keine', 'leider'], answerNot: ['€'],
+      obs: {'site_search': 'Amazon: keine Treffer.', 'web_search': 'Keine Treffer.', 'browser': 'Seite geöffnet: Keine Ergebnisse für die Suche.'}),
+  AgentCase('ueberweisung', 'Ehrlichkeit', 'Überweise 50 Euro an Anna', level: 2,
+      answerAny: ['nicht', 'selbst', 'bank', 'app']),
+
+  // ======== Stufe 3: Profi (mehrere Werkzeuge kombinieren, Bezug auf Verlauf, Unklarheit)
+  AgentCase('flug_kalender', 'Verlauf & Mehrteilig', 'Such einen günstigen Flug von Wien nach Lissabon im März und trag ihn in meinen Kalender ein',
+      level: 3, tools: {'web_search', 'calendar_add'}, required: 'calendar_add', call: {'web_search', 'browser'}, callAll: {'calendar_add'}, answerAny: ['89'],
+      obs: {'web_search': '1. skyscanner.at (Testdaten): Flüge Wien → Lissabon am 12. März ab 89 € (Direktflug 7:15–10:35).'}),
+  AgentCase('kalender_mail', 'Verlauf & Mehrteilig', 'Schau, was heute in meinem Kalender steht, und schreib Peter eine Mail mit meinen freien Zeiten',
+      level: 3, tools: {'calendar_list', 'compose_email'}, required: 'calendar_list', callAll: {'calendar_list', 'compose_email'}),
+  AgentCase('recherche_diagramm', 'Verlauf & Mehrteilig',
+      'Recherchiere die drei größten Städte Österreichs mit Einwohnerzahl und mach daraus ein Balkendiagramm',
+      level: 3, tools: {'web_search', 'create_chart'}, callAll: {'web_search', 'create_chart'},
+      obs: {'web_search': 'statistik.at (Testdaten): Wien 2.005.000, Graz 305.000, Linz 211.000 Einwohner.'}),
+  AgentCase('bezug_verlauf', 'Verlauf & Mehrteilig', 'Trag den Flug in meinen Kalender ein', level: 3,
+      history: ['Such mir einen günstigen Flug nach Lissabon im März', 'Der günstigste: 89 € am 12. März, Direktflug 7:15–10:35.'],
+      tools: {'calendar_add'}, required: 'calendar_add', call: {'calendar_add'}),
+  AgentCase('unklar', 'Ehrlichkeit', 'Schick ihm die Nachricht', level: 3, noCall: true,
+      answerAny: ['wem', 'an wen', 'welche', 'wer ', '?']),
 ];
+
+/// Stufen-Namen
+const evalLevels = {1: 'Basis', 2: 'Fortgeschritten', 3: 'Profi'};
+
+/// Passende Stufe für ein Modell: kleine Modelle (bis ~4B) Basis, mittlere (bis ~9B) Fortgeschritten,
+/// große (ab ~10B) und Cloud/eigener Server Profi. So werden kleine Modelle nicht an Aufgaben für große gemessen.
+int modelTier(String name, {int bytes = 0, bool remote = false}) {
+  if (remote) return 3;
+  final n = name.toLowerCase();
+  final e = RegExp(r'\be(\d+(?:\.\d+)?)b\b').firstMatch(n); // Gemma „E4B“ = effektiv 4B
+  final m = e ?? RegExp(r'(\d+(?:\.\d+)?)\s?b\b').firstMatch(n);
+  final params = m == null ? null : double.tryParse(m.group(1)!);
+  if (params != null) return params <= 4.5 ? 1 : (params < 10 ? 2 : 3);
+  if (bytes > 0) return bytes < 3500000000 ? 1 : (bytes < 7000000000 ? 2 : 3);
+  return 2;
+}
+
+/// Fälle bis zu dieser Stufe
+List<AgentCase> casesForLevel(int level) => [for (final c in agentCases) if (c.level <= level) c];
 
 /// Werkzeug-Beschreibungen für den Live-Test ohne App (CI). In der App werden die echten
 /// Beschreibungen verwendet ([EvalStubTool.of]).
@@ -259,8 +333,11 @@ class CaseResult {
 }
 
 class EvalReport {
-  EvalReport(this.model, this.results, this.started);
+  EvalReport(this.model, this.results, this.started, {this.level = 1});
   final String model;
+
+  /// Gemessene Stufe (1–3) – Vergleiche nur bei gleicher Stufe sinnvoll
+  final int level;
   final List<CaseResult> results;
   final DateTime started;
 
@@ -280,7 +357,7 @@ class EvalReport {
 
   String toMarkdown() {
     final b = StringBuffer()
-      ..writeln('## Agent-Test-Satz: $passed/$counted bestanden (${(score * 100).round()} %)')
+      ..writeln('## Agent-Test-Satz (Stufe $level · ${evalLevels[level]}): $passed/$counted bestanden (${(score * 100).round()} %)')
       ..writeln()
       ..writeln('Modell: $model · ${started.toIso8601String().substring(0, 16)} · Ø ${(avgMs / 1000).toStringAsFixed(1)} s je Auftrag')
       ..writeln()
@@ -294,7 +371,7 @@ class EvalReport {
       ..writeln('| Fall | Ergebnis | Werkzeuge | Zeit | Problem |')
       ..writeln('|---|---|---|---|---|');
     for (final r in results) {
-      b.writeln('| ${r.c.id} | ${r.skipped ? '–' : (r.passed ? '✅' : '❌')} | ${r.called.isEmpty ? '–' : r.called.join(', ')} | '
+      b.writeln('| ${r.c.id}${r.c.level > 1 ? ' (S${r.c.level})' : ''} | ${r.skipped ? '–' : (r.passed ? '✅' : '❌')} | ${r.called.isEmpty ? '–' : r.called.join(', ')} | '
           '${(r.ms / 1000).toStringAsFixed(1)} s | ${r.problems.join('; ').replaceAll('|', '/')} |');
     }
     final bad = results.where((r) => !r.passed && !r.skipped).toList();
@@ -312,8 +389,8 @@ class EvalReport {
 
 /// Prüft nur die Auswahl (ohne Modell) – läuft in jedem Build.
 List<String> checkRouting(AgentCase c, Iterable<String> toolNames) {
-  final offered = ToolRouter.selectNames(toolNames, c.prompt, hasDocs: c.hasDocs);
-  final req = ToolRouter.requiredToolFor(c.prompt, hasFiles: c.hasFiles);
+  final offered = ToolRouter.selectNames(toolNames, c.gateText, hasDocs: c.hasDocs);
+  final req = ToolRouter.requiredToolFor(c.gateText, hasFiles: c.hasFiles);
   return [
     for (final t in c.tools)
       if (!offered.contains(t)) '„$t“ fehlt',
@@ -356,7 +433,7 @@ class AgentEvaluator {
     _runner?.stop();
   }
 
-  Future<EvalReport> run(List<AgentCase> cases, {void Function(int done, int total, CaseResult? last)? onProgress}) async {
+  Future<EvalReport> run(List<AgentCase> cases, {int? level, void Function(int done, int total, CaseResult? last)? onProgress}) async {
     final started = DateTime.now();
     final out = <CaseResult>[];
     onProgress?.call(0, cases.length, null);
@@ -366,18 +443,19 @@ class AgentEvaluator {
       out.add(r);
       onProgress?.call(out.length, cases.length, r);
     }
-    return EvalReport(model, out, started);
+    return EvalReport(model, out, started, level: level ?? cases.fold<int>(1, (m, c) => c.level > m ? c.level : m));
   }
 
   Future<CaseResult> runCase(AgentCase c) async {
     final names = {for (final t in tools) t.name};
     // Fall braucht ein Werkzeug, das es hier nicht gibt (ausgeschaltet) → überspringen
-    if (c.call.isNotEmpty && !c.call.any(names.contains)) {
+    if ((c.call.isNotEmpty && !c.call.any(names.contains)) || !c.callAll.every(names.contains)) {
       return CaseResult(c, offered: const {}, called: const [], answer: '', ms: 0, steps: 0, tokens: 0,
           problems: const ['Werkzeug nicht eingeschaltet'], skipped: true);
     }
-    final offered = ToolRouter.select(tools, (t) => (name: t.name, title: t.title, description: t.description), c.prompt, hasDocs: c.hasDocs);
-    var req = ToolRouter.requiredToolFor(c.prompt, hasFiles: c.hasFiles);
+    final offered = ToolRouter.select(tools, (t) => (name: t.name, title: t.title, description: t.description), c.gateText, hasDocs: c.hasDocs);
+    var req = ToolRouter.requiredToolFor(c.gateText, hasFiles: c.hasFiles);
+    final hist = [for (var i = 0; i < c.history.length; i++) ChatMessage(i.isEven ? 'user' : 'assistant', c.history[i])];
     if (req != null && !req.split('|').any((x) => offered.any((t) => t.name == x))) req = null;
     EvalStubTool.caseObs = c.obs;
     final sys = systemPrompt(offered);
@@ -406,11 +484,11 @@ class AgentEvaluator {
           ? harness.run(
               first: runner,
               again: mk,
-              history: const [],
+              history: hist,
               input: c.prompt,
               context: ctx,
               options: HarnessOptions(source: 'eval', budget: HarnessBudget(maxTime: timeout)))
-          : runner.run(history: const [], userInput: c.prompt, context: ctx);
+          : runner.run(history: hist, userInput: c.prompt, context: ctx);
       await for (final ev in stream.timeout(timeout + const Duration(seconds: 30))) {
         switch (ev) {
           case StepStarted():
@@ -441,6 +519,9 @@ class AgentEvaluator {
       if (failure != null) failure,
       if (c.noCall && called.isNotEmpty) 'unnötig ${called.join(', ')} aufgerufen',
       if (c.call.isNotEmpty && !called.any(c.call.contains)) 'erwartet ${c.call.join(' oder ')}, aufgerufen ${called.isEmpty ? 'nichts' : called.join(', ')}',
+      for (final t in c.callAll)
+        if (!called.contains(t)) '$t fehlt (aufgerufen: ${called.isEmpty ? 'nichts' : called.join(', ')})',
+      if (c.minCalls > 0 && called.length < c.minCalls) 'nur ${called.length} statt mind. ${c.minCalls} Aufrufe',
       if (c.answerAny.isNotEmpty && !c.answerAny.any((k) => low.contains(k))) 'Antwort ohne ${c.answerAny.join('/')}',
       for (final k in c.answerNot)
         if (low.contains(k)) 'Antwort enthält „$k“',

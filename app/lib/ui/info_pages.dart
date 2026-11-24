@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.55.0', [
+    'Skills importieren: Datei(en) (SKILL.md, .zip, .skill mit mehreren Skills), Link (GitHub-Seite, Ordner, Rohdatei) oder Text einfügen – auch Claude-Skills; Werkzeuge werden übersetzt oder passend vorgeschlagen, ein einzelner Skill öffnet sich zum Prüfen',
+    'Skills: Internet je Skill (nachfragen, ohne Rückfrage erlaubt, gesperrt) und Modell je Skill (lokal, eigener Server, Cloud, Hybrid) – gilt im Chat und im Skill-Baustein',
+    'Agent-Test-Satz in Stufen passend zur Modellgröße: Basis (bis ~4B), Fortgeschritten (~7B), Profi (ab ~10B und Cloud) – kleine Modelle werden nicht an Aufgaben für große gemessen; Vergleich nur bei gleichem Modell und gleicher Stufe',
+    'Neue Test-Fälle: Folgefragen, mehrere Orte, Englisch, nichts gefunden, Überweisungs-Falle, Flug suchen + eintragen, Kalender + Mail, Recherche + Diagramm, unklarer Auftrag',
+    'Englische Wetterfragen werden erkannt; „trag … in meinen Kalender ein“ trägt ein statt nur zu lesen (vom Test-Satz gefunden)',
+  ]),
   ('1.54.2', [
     'Suchergebnisse gehen dem Modellwissen vor: Junels antwortet mit dem, was die Websuche liefert, statt mit einem veralteten Stand',
     '„Trag … ein“ und „Erinnere mich …“ führen direkt zum Vorschlag (du bestätigst wie gewohnt) statt zu einer Rückfrage',
