@@ -27,8 +27,13 @@ jobs:
           import glob,base64,io
           from PIL import Image
           for f in sorted(glob.glob('test/ux/*.png')):
-              im=Image.open(f).convert('RGB'); b=io.BytesIO(); im.save(b,'JPEG',quality=72)
-              print('IMG-BEGIN',f.split('/')[-1]); print(base64.b64encode(b.getvalue()).decode()); print('IMG-END')
+              im=Image.open(f).convert('RGB')
+              if im.width > 900: im=im.resize((im.width*2//3, im.height*2//3))
+              b=io.BytesIO(); im.save(b,'JPEG',quality=68)
+              d=base64.b64encode(b.getvalue()).decode()
+              print('IMG-BEGIN',f.split('/')[-1])
+              for i in range(0,len(d),3000): print(d[i:i+3000])
+              print('IMG-END')
           "
       - uses: actions/upload-artifact@v6
         with:
