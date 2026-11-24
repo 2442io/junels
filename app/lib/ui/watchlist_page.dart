@@ -12,6 +12,7 @@ import 'markdown_lite.dart';
 import 'notify_style.dart';
 import 'theme.dart';
 import 'quick_nav.dart';
+import 'answer_views.dart' show OutputViewField;
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -43,7 +44,9 @@ class WatchDraft {
     this.alertValue,
     this.valueLabel = '',
     this.digest = '',
+    this.output = '',
   });
+  String output; // Darstellung der Zusammenfassung (OutputView)
   String alertOp;
   double? alertValue;
   String valueLabel;
@@ -489,7 +492,8 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
     draft.notifyKind = srcFlow.nodes.where((n) => n.type == FlowNodeType.notify).firstOrNull?.str('kind', 'auto') ?? 'auto';
     draft
       ..summarize = srcFlow.nodes.any((n) => n.type == FlowNodeType.agent)
-      ..notify = srcFlow.nodes.any((n) => n.type == FlowNodeType.notify);
+      ..notify = srcFlow.nodes.any((n) => n.type == FlowNodeType.notify)
+      ..output = srcFlow.nodes.where((n) => n.type == FlowNodeType.agent).firstOrNull?.str('output') ?? '';
   }
   if (prefill != null) draft.name = copyName(prefill.title, {for (final i in app.watchlist.items) i.title});
   final name = TextEditingController(text: existing?.title ?? (prefill != null ? draft.name : ''));
@@ -527,6 +531,16 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
                   value: draft.notify,
                   onChanged: (v) => set(() => draft.notify = v),
                 ),
+                ],
+                if (draft.summarize || flow != null) ...[
+                  const SizedBox(height: 8),
+                  OutputViewField(
+                    value: draft.output,
+                    label: 'Darstellung',
+                    helper: 'Wie Neues angezeigt wird, z. B. als Karussell oder Tabelle',
+                    onChanged: (v) => set(() => draft.output = v),
+                  ),
+                  const SizedBox(height: 8),
                 ],
                 if (draft.notify || flow != null)
                   NotifyKindField(
@@ -570,6 +584,7 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
       valueLabel: draft.valueLabel.trim(),
       digest: draft.alertOp.isEmpty ? draft.digest : '',
       notifyKind: draft.notifyKind,
+      output: draft.output,
     );
     await app.flows.upsert(wf);
     if (openCanvas) nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
@@ -594,6 +609,9 @@ Future<void> showWatchDialog(BuildContext context, {WatchItem? existing, WatchIt
     }
     for (final n in flow.nodes.where((n) => n.type == FlowNodeType.notify)) {
       n.config['kind'] = draft.notifyKind;
+    }
+    for (final n in flow.nodes.where((n) => n.type == FlowNodeType.agent)) {
+      n.config['output'] = draft.output;
     }
     flow.name = draft.defaultName;
     await app.flows.upsert(flow);

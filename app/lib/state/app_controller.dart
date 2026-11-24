@@ -2898,6 +2898,66 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Ausgabeformat für den aktuellen Chat (null/'' = automatisch). Datei-Formate gelten für die nächste Antwort.
+  Future<void> setChatView(String? view) async {
+    final c = _ensureConversation();
+    c.view = (view ?? '').isEmpty ? null : view;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  /// Eine fertige Antwort anders darstellen. Geht es ohne Modell (Karten ↔ Tabelle, Liste ↔ Ablauf), sofort;
+  /// sonst wird die Antwort im gewünschten Format neu angefragt. true = sofort umgestellt.
+  Future<bool> reshapeAnswer(int index, String view) async {
+    final conv = current;
+    if (conv == null || index < 0 || index >= conv.entries.length) return false;
+    final e = conv.entries[index];
+    bool can() => switch (view) {
+          OutputView.text || OutputView.auto => true,
+          OutputView.cards => e.cards.isNotEmpty || cardsFromText(e.text).isNotEmpty,
+          OutputView.table => tableFrom(e.text) != null || e.cards.isNotEmpty,
+          OutputView.list => checklistItems(e.text).length >= 2,
+          OutputView.steps => stepsFrom(e.text).length >= 2,
+          _ => false,
+        };
+    if (can()) {
+      if (view == OutputView.cards && e.cards.isEmpty) e.cards = cardsFromText(e.text);
+      e.view = view == OutputView.auto ? null : view;
+      await storage.saveConversation(conv);
+      notifyListeners();
+      return true;
+    }
+    if (running) return false;
+    final label = OutputView.labels[view] ?? view;
+    await send(OutputView.isFile(view) ? 'Mach aus deiner letzten Antwort eine $label-Datei.' : 'Zeig deine letzte Antwort als $label.');
+    return false;
+  }
+
+  /// Checkliste: Punkt abhaken
+  Future<void> toggleChecked(ChatEntry e, int i) async {
+    if (!e.checked.remove(i)) e.checked.add(i);
+    final c = current;
+    if (c != null) await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  /// Tabelle einer Antwort als Excel-Datei speichern → Pfad
+  Future<String?> tableToExcel(ChatEntry e) async {
+    final rows = tableFrom(e.text) ?? (e.cards.isNotEmpty ? cardsToTable(e.cards) : null);
+    if (rows == null) return null;
+    final title = (current?.title ?? 'Tabelle').replaceAll('…', '').trim();
+    final f = OutputSpace(outputsDir).fileFor(title, 'xlsx');
+    await f.writeAsBytes(buildXlsx([SheetSpec(sheetName(title), rows)], title: title));
+    if (!e.files.contains(f.path)) e.files.add(f.path);
+    final c = current;
+    if (c != null) {
+      c.artifacts.add({'title': f.uri.pathSegments.last, 'kind': 'xlsx', 'content': f.path});
+      await storage.saveConversation(c);
+    }
+    notifyListeners();
+    return f.path;
+  }
+
   /// Bezeichnung eines Modus für Menüs.
   static String routingName(String mode) => switch (mode) {
         'local' => 'Am Gerät',
@@ -3484,7 +3544,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       String provider = '',
       RunMeter? meter,
       String source = 'flow',
+      String output = '',
       HarnessBudget? budget}) async {
+    // Ausgabeformat: Baustein > Skill
+    final view = output.isNotEmpty ? output : (skill?.output ?? '');
     onProgress?.call(skill == null ? 'Modell wird vorbereitet …' : 'Skill „${skill.name}“: Modell wird vorbereitet …');
     // Skill-Vorgaben: Modell (wenn der Baustein keins festlegt) und Internet
     if (skill != null && provider.isEmpty && skill.model.isNotEmpty) {
@@ -3514,11 +3577,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (running) onProgress?.call('Wartet, bis die laufende Antwort im Chat fertig ist …');
     return _exclusive(conv.id, () async {
       // Einheitliche Harness-Regeln: ohne Internet-Freigabe keine Netz-Werkzeuge, kein Browser ohne Nutzer
+      final viewTool = OutputView.requiredTool(view);
       final prep = AgentHarness.prepare(
         available: activeTools,
         input: prompt,
-        only: skill?.tools.toSet(),
-        requiredTool: skill?.requiredTool,
+        only: skill == null ? null : {...skill.tools, if (viewTool != null) viewTool},
+        requiredTool: viewTool ?? skill?.requiredTool,
         network: allowInternet,
         exclude: const {'browser', 'begleiten'},
       );
@@ -3529,7 +3593,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             'Liefere eine kurze Schritt-für-Schritt-Anleitung mit dem Link und schreib am Ende: „Gemeinsam erledigen: im Chat '
             '„Begleite mich: <Link>“ schreiben.“]';
       }
-      final req = skill == null ? null : prep.requiredTool;
+      final req = skill == null && viewTool == null ? null : prep.requiredTool;
+      if (view.isNotEmpty) {
+        prompt = '$prompt\n\n${OutputView.instruction(view)}';
+        if (!OutputView.isFile(view) && view != OutputView.chart) entry.view = view;
+      }
       final system = _systemText(voice: false, tools: tools);
       AgentRunner mk() => _makeRunner(be, system, tools: tools, requiredTool: req);
       final harness = AgentHarness(backend: be);
@@ -3596,7 +3664,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         if (be is RemoteBackend) be.close();
       }
       if (answer.trim().isEmpty && error != null) throw Exception(error);
-      return stripAnswerPreamble(cleanModelText(answer), prompt) ?? cleanModelText(answer);
+      final result = stripAnswerPreamble(cleanModelText(answer), prompt) ?? cleanModelText(answer);
+      if (view == OutputView.cards && entry.cards.isEmpty) entry.cards = cardsFromText(result);
+      return result;
     });
   }
 
@@ -3915,6 +3985,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf', 'docx', 'xlsx'}.contains(a['kind'])) ||
             attachments.any((a) => RegExp(r'\.(docx|xlsx|pptx)$', caseSensitive: false).hasMatch(a.name)));
     if (skill != null) requiredTool = skill.requiredTool.isEmpty ? null : skill.requiredTool;
+    // Ausgabeformat: in der Nachricht verlangt („als Tabelle“) > Skill > Einstellung des Chats
+    final view = voice
+        ? ''
+        : (OutputView.detect(input) ?? ((skill?.output ?? '').isNotEmpty ? skill!.output : null) ?? conv.view ?? '');
+    if (OutputView.isFile(view) && conv.view == view) conv.view = null; // Datei-Format gilt nur für die nächste Antwort
+    final viewTool = OutputView.requiredTool(view);
+    if (viewTool != null) requiredTool = viewTool;
     // Gesprächsmodus: gleicher Verlauf und gleicher System-Prompt wie im Chat – so bleibt der
     // vorgerechnete Teil (Cache) gültig und die erste Antwort kommt ohne langes Vorrechnen.
     // Routinen: jede Ausführung für sich (kein Verlauf).
@@ -3965,13 +4042,18 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       // Katalog der eigenen Skills (nur Name + Zweck); die Anleitung lädt das Modell erst, wenn eine passt
       runTools = [...runTools, skillLoadTool];
     }
+    // Format verlangt eine Datei/ein Diagramm: das Werkzeug muss dabei sein (auch bei Skills)
+    if (viewTool != null && !runTools.any((t) => t.name == viewTool)) {
+      final t = activeTools.where((t) => t.name == viewTool).firstOrNull;
+      if (t != null) runTools = [...runTools, t];
+    }
     final user = ChatEntry(
         role: 'user',
         text: input.trim(),
         attachments: docs.map((d) => d.name).toList(),
         viaVoice: voice,
         files: [for (final d in docs) if (d.path != null && isImageFile(d.name)) d.path!]);
-    final answer = ChatEntry(role: 'assistant', via: via, skill: skill?.name);
+    final answer = ChatEntry(role: 'assistant', via: via, skill: skill?.name, view: view.isEmpty || OutputView.isFile(view) ? null : view);
     conv.entries..add(user)..add(answer);
     _runningAnswer = answer;
     _noteEntries.clear();
@@ -4005,6 +4087,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       turnInput = '${skill.brief()}\nAufgabe des Nutzers: '
           '${rest.isEmpty || skillTask.isEmpty ? '(keine weiteren Angaben – frag nach dem Nötigen oder leg mit der Anleitung los)\n$rest' : rest}';
     }
+    if (view.isNotEmpty && calc == null) turnInput = '$turnInput\n\n${OutputView.instruction(view)}';
     final system = _systemText(tools: runTools);
     final rag = knowledge.isEmpty ? '' : knowledge.contextFor(turnInput, maxChars: ctxSize >= 8192 ? 4000 : 2000);
     final ragHits = rag.isEmpty
@@ -4285,6 +4368,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         if (!acc.any((x) => x['link'] != null && cleanLink(x['link']!) == l)) acc.add(c);
         return acc;
       }).take(60).toList();
+      // Karussell gewünscht, aber keine Treffer-Karten: Karten aus der Aufzählung der Antwort
+      if (answer.view == OutputView.cards && answer.cards.isEmpty) answer.cards = cardsFromText(answer.text);
       // Hat das Modell lange Adressen geschrieben, die schon als Karte da sind: aus dem Text nehmen
       if (answer.cards.isNotEmpty) answer.text = _stripCardLinks(answer.text);
       if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));

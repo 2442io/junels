@@ -19,6 +19,7 @@ export 'src/agent/answer_cleanup.dart';
 export 'src/agent/device_tools.dart';
 export 'src/agent/ics.dart';
 export 'src/agent/tool.dart';
+export 'src/agent/output_view.dart';
 export 'src/catalog.dart';
 export 'src/device_profile.dart';
 export 'src/documents/md_blocks.dart';

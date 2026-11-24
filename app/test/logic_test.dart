@@ -197,6 +197,19 @@ Wetter am Zielort abfragen und kurz empfehlen.''';
       expect(s.unmapped, ['Bash']);
     });
 
+    test('Ausgabeformat im Skill, Antwort und Chat', () {
+      final sk = Skill(id: 'o', name: 'Shop', when: 'Produkte suchen', instructions: 'suchen', output: 'cards');
+      expect(Skill.fromMarkdown(sk.toMarkdown(), id: 'p')!.output, 'cards');
+      expect(Skill.fromJson(sk.toJson()).output, 'cards');
+      expect(Skill.fromJson({...sk.toJson(), 'output': 'quatsch'}).output, '');
+      final e = ChatEntry(role: 'assistant', text: '- [ ] a\n- [ ] b', view: 'list', checked: [1]);
+      final back = ChatEntry.fromJson(e.toJson().cast<String, dynamic>());
+      expect(back.view, 'list');
+      expect(back.checked, [1]);
+      final c = Conversation(id: 'c', view: 'table');
+      expect(Conversation.fromJson(c.toJson().cast<String, dynamic>()).view, 'table');
+    });
+
     test('ZIP: Dateien bleiben erhalten, Export und Re-Import', () {
       final a = Skill(id: 'a', name: 'Kontenplan', when: 'Bucht nach Kontenplan', instructions: 'Kontenplan lesen')
         ..addFile('references/konten.md', '4000 Erlöse')

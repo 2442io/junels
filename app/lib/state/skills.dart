@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:agent_engine/agent_engine.dart' show OutputView;
 import 'package:flutter/foundation.dart';
 
 class Skill {
@@ -28,6 +29,7 @@ class Skill {
     this.notifyKind = 'auto',
     this.internet = 'ask',
     this.model = '',
+    this.output = '',
     Map<String, String>? files,
     this.license = '',
     this.compatibility = '',
@@ -59,6 +61,9 @@ class Skill {
 
   /// Modell für diesen Skill: '' = wie eingestellt, local, onprem, cloud, hybrid-onprem, hybrid-cloud
   String model;
+
+  /// Ausgabeformat (OutputView): '' = automatisch, cards, table, list, steps, chart, pdf, word, excel, pptx
+  String output;
 
   /// Weitere Dateien des Skill-Ordners (relativer Pfad → Text), z. B. references/REFERENCE.md, scripts/x.py.
   /// Werden erst bei Bedarf gelesen (skill-Werkzeug). Skripte werden NIE ausgeführt.
@@ -138,6 +143,7 @@ class Skill {
         if (notifyKind != 'auto') 'notifyKind': notifyKind,
         if (internet != 'ask') 'internet': internet,
         if (model.isNotEmpty) 'model': model,
+        if (output.isNotEmpty) 'output': output,
         if (files.isNotEmpty) 'files': files,
         if (license.isNotEmpty) 'license': license,
         if (compatibility.isNotEmpty) 'compatibility': compatibility,
@@ -163,6 +169,7 @@ class Skill {
         notifyKind: '${j['notifyKind'] ?? 'auto'}',
         internet: internetLabels.containsKey(j['internet']) ? '${j['internet']}' : 'ask',
         model: modelLabels.containsKey(j['model']) ? '${j['model']}' : '',
+        output: OutputView.valid('${j['output'] ?? ''}') ? '${j['output'] ?? ''}' : '',
         files: {for (final e in ((j['files'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
         license: '${j['license'] ?? ''}',
         compatibility: '${j['compatibility'] ?? ''}',
@@ -208,6 +215,7 @@ class Skill {
         if (inputs.isNotEmpty) 'junels.inputs': inputs,
         if (internet != 'ask') 'junels.internet': internet,
         if (model.isNotEmpty) 'junels.model': model,
+        if (output.isNotEmpty) 'junels.output': output,
         if (icon != 'auto_awesome') 'junels.icon': icon,
         if (!auto) 'junels.auto': 'false',
         if (slug.isNotEmpty && slug != specName) 'junels.command': slug,
@@ -293,6 +301,7 @@ class Skill {
       knowledge: knowledge,
       internet: pick('internet', internetLabels, 'ask'),
       model: pick('model', modelLabels, ''),
+      output: OutputView.valid(j('output') ?? '') ? j('output')! : '',
       icon: j('icon') ?? 'auto_awesome',
       auto: j('auto') != 'false',
       license: meta['license'] ?? '',

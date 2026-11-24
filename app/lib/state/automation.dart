@@ -597,6 +597,7 @@ class FlowService {
     String valueLabel = '',
     String digest = '',
     String notifyKind = 'auto',
+    String output = '',
   }) {
     final wf = Workflow(id: newId(), name: name, description: 'Beobachtet ${kind == WatchKind.page ? 'die Seite' : 'das Thema'} „$target“.');
     wf.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Beobachten', config: {
@@ -617,6 +618,7 @@ class FlowService {
     if (summarize) {
       wf.nodes.add(FlowNode(id: 'n2', type: FlowNodeType.agent, title: 'Zusammenfassen', config: {
         'prompt': 'Fasse in 2–3 Sätzen auf Deutsch zusammen, was neu ist und warum es relevant sein könnte. Keine Einleitung.\n\n{{vorher}}',
+        if (output.isNotEmpty) 'output': output,
       }));
       wf.connect(last, 'n2');
       last = 'n2';
@@ -1154,6 +1156,7 @@ class FlowService {
                 onProgress: progress,
                 cancel: _cancel[wf.id]?.future,
                 provider: n.str('provider'),
+                output: n.str('output'),
                 meter: _meters[wf.id])
             .timeout(const Duration(minutes: 10),
                 onTimeout: () => throw Exception('Zeitüberschreitung: Der Agent-Schritt lief über 10 Minuten.'));
@@ -1173,7 +1176,7 @@ class FlowService {
 
         return app
             .automationAgent(task,
-                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill, provider: n.str('provider'), meter: _meters[wf.id], source: 'flow')
+                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill, provider: n.str('provider'), output: n.str('output'), meter: _meters[wf.id], source: 'flow')
             .timeout(const Duration(minutes: 10),
                 onTimeout: () => throw Exception('Zeitüberschreitung: Der Skill lief über 10 Minuten.'));
       case FlowNodeType.team:

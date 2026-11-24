@@ -21,6 +21,7 @@ import 'theme.dart';
 import 'watchlist_page.dart';
 import 'monitor_page.dart';
 import 'quick_nav.dart';
+import 'answer_views.dart' show OutputViewField;
 
 String _two(int v) => v.toString().padLeft(2, '0');
 
@@ -2423,12 +2424,20 @@ class _NodeInspectorState extends State<_NodeInspector> {
             lines: 4,
             hint: 'z. B. {{vorher}} oder „November“',
             helper: 'Der Skill nutzt nur seine Werkzeuge. {{vorher}} = Ergebnis des vorigen Bausteins, {{datum}}, {{uhrzeit}}.'));
+        children.add(const SizedBox(height: 12));
+        children.add(OutputViewField(
+            value: n.str('output'),
+            label: 'Ausgabe',
+            helper: 'Leer = wie im Skill eingestellt',
+            onChanged: (v) => setState(() => _set('output', v))));
       case FlowNodeType.agent:
         children.add(_field('prompt', 'Auftrag an den Agenten',
             lines: 5,
             hint: 'z. B. Fasse {{vorher}} in 5 Punkten zusammen.',
             helper: 'Der Agent darf alle aktiven Werkzeuge benutzen. {{vorher}} = Ergebnis des vorigen Bausteins, {{datum}}, {{uhrzeit}}.'));
         children.add(_modelPicker(n.config, 'provider', null));
+        children.add(const SizedBox(height: 12));
+        children.add(OutputViewField(value: n.str('output'), label: 'Ausgabe', onChanged: (v) => setState(() => _set('output', v))));
       case FlowNodeType.tool:
         final tool = tools.where((x) => x.name == n.str('tool')).firstOrNull;
         children.add(DropdownButtonFormField<String>(

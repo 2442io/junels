@@ -307,6 +307,30 @@ Gespeichert wird auf **deinem eigenen Server** – immer auf dem Gerät mit dein
 Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt. Tipp: Als geplante Aufgabe jeden Freitag laufen lassen.''',
   ),
   HelpArticle(
+    id: 'ausgabe',
+    category: 'Chat',
+    icon: Icons.auto_awesome_mosaic_outlined,
+    title: 'Ausgabeformat: Karussell, Tabelle, Checkliste …',
+    summary: 'Antworten als Karten, Tabelle, Checkliste, Ablauf, Diagramm oder Datei – im Chat, in Skills, Abläufen und Beobachtungen.',
+    keywords: 'format ausgabe darstellung karussell karten tabelle checkliste abhaken ablauf zeitleiste workflow diagramm datei word excel pdf ansicht',
+    body: '''**Im Chat**
+- Knopf **Format** über der Eingabe: gilt für den ganzen Chat. Datei-Formate (PDF, Word, Excel, PowerPoint) gelten nur für die nächste Antwort.
+- Oder einfach dazuschreiben: „… **als Tabelle**“, „… **als Checkliste**“, „… **Schritt für Schritt**“, „… **als Karussell**“.
+- Eine fertige Antwort umstellen: ⋯ unter der Antwort → „Als Tabelle zeigen“ usw. Geht es ohne Modell (z. B. Karten → Tabelle), passiert es sofort; sonst fragt Junels die Antwort im neuen Format an.
+
+**Formate**
+- **Karussell**: wischbare Karten mit Bild, Preis und Link – ideal für Produkte, Hotels, Nachrichten.
+- **Tabelle**: zum Vergleichen; mit „Als Excel speichern“.
+- **Checkliste**: Punkte zum Abhaken, der Fortschritt bleibt gespeichert.
+- **Ablauf**: Schritte als Zeitleiste.
+- **Diagramm** und **Dateien**: Junels erstellt das Diagramm bzw. die Datei direkt.
+
+**In Skills, Abläufen und Beobachtungen**
+Im Skill-Editor, in den Bausteinen Agent und Skill sowie beim Beobachten gibt es das Feld **Ausgabe** bzw. **Darstellung**. Ein Skill wie „Amazon Suche“ liefert dann immer ein Karussell.
+
+Karten und Tabellen baut Junels aus den Suchergebnissen bzw. der Aufzählung in der Antwort – das klappt auch mit kleinen Modellen am Gerät.''',
+  ),
+  HelpArticle(
     id: 'word-excel',
     category: 'Chat',
     icon: Icons.table_chart_outlined,

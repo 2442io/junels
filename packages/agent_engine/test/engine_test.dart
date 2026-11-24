@@ -590,6 +590,32 @@ Future<void> main() async {
     check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
   });
 
+  await group('Ausgabeformate', () async {
+    check(OutputView.detect('Vergleich die drei Handys als Tabelle') == OutputView.table, 'als Tabelle');
+    check(OutputView.detect('mach mir eine Excel-Tabelle') == null, 'Excel ist Datei, nicht Ansicht');
+    check(OutputView.detect('Was muss ich packen? Als Checkliste bitte') == OutputView.list, 'Checkliste');
+    check(OutputView.detect('Erklär mir das Schritt für Schritt') == OutputView.steps, 'Ablauf');
+    check(OutputView.detect('zeig die Hotels als Karussell') == OutputView.cards, 'Karussell');
+    check(OutputView.detect('Wie wird das Wetter?') == null, 'ohne Wunsch: nichts');
+    check(OutputView.requiredTool(OutputView.word) == 'create_word' && OutputView.instruction(OutputView.excel).contains('create_excel'), 'Datei-Format → Werkzeug');
+    const ans = 'Hier meine Auswahl:\n\n'
+        '- **Merino-tech Set** – 49,99 € – warm und weich – https://www.amazon.de/dp/B01\n'
+        '- **DANISH ENDURANCE Thermo** – 39,95 € – mit Reißverschluss – [Amazon](https://www.amazon.de/dp/B02)\n'
+        '- **Icebreaker 200** – sehr teuer\n\nViel Spaß beim Skifahren!';
+    final cards = cardsFromText(ans);
+    check(cards.length == 3 && cards[0]['title'] == 'Merino-tech Set' && cards[0]['price'] == '49,99 €' && cards[0]['link'] == 'https://www.amazon.de/dp/B01',
+        'Karten aus Aufzählung: $cards');
+    check(cards[1]['link'] == 'https://www.amazon.de/dp/B02' && cards[1]['note'] == 'mit Reißverschluss', 'Markdown-Link und Text: ${cards[1]}');
+    check(introOf(ans) == 'Hier meine Auswahl:' && outroOf(ans) == 'Viel Spaß beim Skifahren!', 'Einleitung und Schluss');
+    check(cardsFromText('Nur ein Satz ohne Liste.').isEmpty, 'kein Karussell aus Fließtext');
+    check(checklistItems('Packliste:\n- [ ] Pass\n- [x] Ladekabel\n- Sonnencreme').length == 3, 'Checkliste');
+    final st = stepsFrom('1. **Teig** – Mehl und Wasser mischen\n2. Gehen lassen: 1 Stunde\n3. Backen');
+    check(st.length == 3 && st[0] == ('Teig', 'Mehl und Wasser mischen') && st[1] == ('Gehen lassen', '1 Stunde') && st[2].$1 == 'Backen', 'Schritte: $st');
+    final tb = tableFrom('Vergleich:\n\n| Modell | Preis |\n|---|---|\n| A | 100 € |\n| B | 120 € |');
+    check(tb != null && tb.length == 3 && tb[2][1] == '120 €', 'Tabelle erkannt');
+    check(cardsToTable(cards).first.join(',') == 'Name,Preis,Info,Link', 'Karten → Tabelle');
+  });
+
   await group('Word & Excel', () async {
     // Zellwerte
     check(parseCell('1.234,56').kind == CellKind.number && parseCell('1.234,56').number == 1234.56, 'deutsche Zahl');

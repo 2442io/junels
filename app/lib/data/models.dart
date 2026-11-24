@@ -229,7 +229,10 @@ class ChatEntry {
     this.via,
     this.cloudOffer = false,
     this.skill,
+    this.view,
+    List<int>? checked,
   })  : steps = steps ?? [],
+        checked = checked ?? [],
         actions = actions ?? [],
         sources = sources ?? [],
         files = files ?? [],
@@ -264,11 +267,19 @@ class ChatEntry {
   /// Mit welchem Skill geantwortet wurde (Name).
   String? skill;
 
+  /// Darstellung der Antwort (OutputView: cards, table, list, steps …); null = Text
+  String? view;
+
+  /// Checkliste: abgehakte Punkte (Index)
+  final List<int> checked;
+
   Map<String, Object?> toJson() => {
         'role': role,
         if (via != null) 'via': via,
         if (cloudOffer) 'cloudOffer': true,
         if (skill != null) 'skill': skill,
+        if (view != null) 'view': view,
+        if (checked.isNotEmpty) 'checked': checked,
         'text': text,
         'steps': steps.map((s) => s.toJson()).toList(),
         'attachments': attachments,
@@ -302,6 +313,8 @@ class ChatEntry {
         via: j['via'] as String?,
         skill: j['skill'] as String?,
         cloudOffer: j['cloudOffer'] as bool? ?? false,
+        view: j['view'] as String?,
+        checked: [for (final x in (j['checked'] as List? ?? const [])) (x as num).toInt()],
       );
 }
 
@@ -320,6 +333,7 @@ class Conversation {
     this.pinned = false,
     this.folder,
     this.guide,
+    this.view,
   })  : entries = entries ?? [],
         artifacts = artifacts ?? [],
         updated = updated ?? DateTime.now();
@@ -339,6 +353,7 @@ class Conversation {
   bool pinned; // oben angeheftet
   String? folder; // Ordner/Projekt in der Seitenleiste
   Map<String, dynamic>? guide; // Begleitung durch eine Webseite (Ziel, Plan, aktueller Schritt)
+  String? view; // Ausgabeformat für diesen Chat (OutputView), null = automatisch
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -354,6 +369,7 @@ class Conversation {
         if (pinned) 'pinned': true,
         if (folder != null) 'folder': folder,
         if (guide != null) 'guide': guide,
+        if (view != null) 'view': view,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -370,6 +386,7 @@ class Conversation {
         pinned: j['pinned'] as bool? ?? false,
         folder: j['folder'] as String?,
         guide: (j['guide'] as Map?)?.cast<String, dynamic>(),
+        view: j['view'] as String?,
       );
 }
 

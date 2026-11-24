@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.58.0', [
+    'Ausgabeformat wählbar: Karussell, Tabelle, Checkliste, Ablauf (Zeitleiste), Diagramm, Text oder Datei (PDF, Word, Excel, PowerPoint)',
+    'Im Chat über den Knopf „Format“ über der Eingabe – oder „… als Tabelle“, „… als Checkliste“, „… Schritt für Schritt“ in der Nachricht',
+    'Fertige Antworten umstellen: ⋯ → „Als Tabelle zeigen“ usw.; Tabellen mit „Als Excel speichern“, Checklisten zum Abhaken mit Fortschritt',
+    'Ausgabe fest einstellen in Skills, in den Ablauf-Bausteinen Agent/Skill und bei Beobachtungen (z. B. Amazon-Suche immer als Karussell)',
+    'Karten und Tabellen entstehen aus Suchergebnissen bzw. der Aufzählung der Antwort – verlässlich auch mit kleinen Modellen am Gerät',
+  ]),
   ('1.57.0', [
     'Word-Dokumente erstellen: echte Formatvorlagen (Überschriften, Listen, Tabellen, Zitate, Bilder) – weiter bearbeitbar in Word, Pages und Google Docs',
     'Excel-Tabellen erstellen: mehrere Blätter, Zahlen/Datum/Prozent/Euro als echte Werte, Formeln (auch deutsch, z. B. =SUMME(B2:B9)), fixierte Kopfzeile und Filter; einfache Formeln werden vorgerechnet',

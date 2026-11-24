@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:agent_engine/agent_engine.dart' show modelCatalog, cleanModelText, ImapAccount;
+import 'package:agent_engine/agent_engine.dart' show modelCatalog, cleanModelText, ImapAccount, OutputView;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
@@ -20,6 +20,7 @@ import '../state/voice_service.dart';
 import 'conversation_page.dart';
 import 'file_views.dart';
 import 'markdown_lite.dart';
+import 'answer_views.dart';
 import 'skills_page.dart';
 import 'internet_menu.dart';
 import 'quick_nav.dart';
@@ -617,6 +618,8 @@ class _AssistantMessage extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final waiting = live && entry.text.isEmpty && entry.steps.isEmpty;
+    final cleaned = entry.text.contains("channel|>") || entry.text.contains("<think>") ? cleanModelText(entry.text) : entry.text;
+    final shaped = !live && entry.view != null && entry.view != OutputView.text;
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 8, right: 24),
       child: Column(
@@ -632,14 +635,20 @@ class _AssistantMessage extends StatelessWidget {
                 Text('Verarbeite Prompt …'),
               ]),
             ),
-          if (entry.text.isNotEmpty)
+          if (entry.text.isNotEmpty && shaped)
+            AnswerBody(
+              entry: entry,
+              text: cleaned,
+              networkImages: AppScope.of(context).current?.internetAllowed ?? false,
+              loadImages: !(AppScope.of(context).current?.internetOff ?? false),
+            )
+          else if (entry.text.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: MarkdownLite(entry.text.contains("channel|>") || entry.text.contains("<think>") ? cleanModelText(entry.text) : entry.text,
-                  selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
+              child: MarkdownLite(cleaned, selectable: false, networkImages: AppScope.of(context).current?.internetAllowed ?? false),
             ),
           for (var i = 0; i < entry.actions.length; i++) ActionCard(entry: entry, index: i),
-          if (entry.cards.isNotEmpty)
+          if (entry.cards.isNotEmpty && !(shaped && (entry.view == OutputView.cards || entry.view == OutputView.table)))
             ResultCarousel(
               cards: entry.cards,
               loadImages: !(AppScope.of(context).current?.internetOff ?? false),
@@ -729,13 +738,25 @@ class _AssistantMessage extends StatelessWidget {
                               .showSnackBar(const SnackBar(content: Text('Kopiert'), duration: Duration(seconds: 1)));
                         } else if (v == 'skill') {
                           _saveAsSkill(context, index);
+                        } else if (v.startsWith('view:')) {
+                          AppScope.read(context).reshapeAnswer(index, v.substring(5));
                         }
                       },
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'copy', child: ListTile(dense: true, leading: Icon(Icons.copy, size: 20), title: Text('Antwort kopieren'))),
-                        PopupMenuItem(
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'copy', child: ListTile(dense: true, leading: Icon(Icons.copy, size: 20), title: Text('Antwort kopieren'))),
+                        const PopupMenuItem(
                             value: 'skill',
                             child: ListTile(dense: true, leading: Icon(Icons.auto_awesome, size: 20), title: Text('Als Skill speichern'))),
+                        const PopupMenuDivider(),
+                        for (final v in const [OutputView.text, OutputView.cards, OutputView.table, OutputView.list, OutputView.steps, OutputView.excel, OutputView.word])
+                          PopupMenuItem(
+                            value: 'view:$v',
+                            enabled: !(entry.view == v || (v == OutputView.text && entry.view == null)),
+                            child: ListTile(
+                                dense: true,
+                                leading: Icon(outputViewIcon(v), size: 20),
+                                title: Text(OutputView.isFile(v) ? 'Als ${OutputView.labels[v]}-Datei' : 'Als ${OutputView.labels[v]} zeigen')),
+                          ),
                       ],
                     ),
                 ],
@@ -1297,6 +1318,8 @@ class _InputBarState extends State<_InputBar> {
                             AiModeMenu(),
                             SizedBox(width: 6),
                             InternetMenu(),
+                            SizedBox(width: 6),
+                            OutputViewMenu(),
                           ]),
                         ),
                       ),

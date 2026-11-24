@@ -13,6 +13,8 @@ import '../state/skill_import.dart';
 import '../state/skills.dart';
 import 'quick_nav.dart';
 import 'theme.dart';
+import 'answer_views.dart' show OutputViewField;
+import 'package:agent_engine/agent_engine.dart' show OutputView;
 
 const skillIcons = <String, IconData>{
   'auto_awesome': Icons.auto_awesome,
@@ -68,6 +70,7 @@ class SkillsPage extends StatelessWidget {
                   if (s.internet == 'allow') '🌐 Internet erlaubt',
                   if (s.internet == 'block') 'offline',
                   if (s.model.isNotEmpty) Skill.modelLabels[s.model]!,
+                  if (s.output.isNotEmpty) 'Ausgabe: ${OutputView.labels[s.output]}',
                 ].join(' · '),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis),
@@ -539,6 +542,17 @@ class _SkillEditorState extends State<SkillEditor> {
             for (final e in Skill.modelLabels.entries) DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis)),
           ],
           onChanged: (v) => setState(() => s.model = v ?? ''),
+        ),
+        const SizedBox(height: 14),
+        OutputViewField(
+          value: s.output,
+          label: 'Ausgabe',
+          onChanged: (v) => setState(() {
+            s.output = v;
+            // Datei-Format: passendes Werkzeug gleich mit auswählen
+            final tool = OutputView.requiredTool(v);
+            if (tool != null && !s.tools.contains(tool)) s.tools.add(tool);
+          }),
         ),
         const SizedBox(height: 14),
         ExpansionTile(
