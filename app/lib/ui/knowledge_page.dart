@@ -62,7 +62,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
     String date(DateTime d) => '${d.day}.${d.month}.${d.year}';
 
     return Scaffold(
-      appBar: JAppBar(title: const Text('Wissensbasis & Gedächtnis')),
+      appBar: JAppBar(title: const Text('Wissen & Gedächtnis')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),

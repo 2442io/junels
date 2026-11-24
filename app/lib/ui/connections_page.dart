@@ -17,7 +17,7 @@ class ConnectionsPage extends StatelessWidget {
     final c = AppColors.of(context);
     final items = app.connections.items;
     return Scaffold(
-      appBar: JAppBar(title: const Text('Zugänge'), actions: [
+      appBar: JAppBar(title: const Text('Web-Zugänge'), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(

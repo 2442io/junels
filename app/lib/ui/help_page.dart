@@ -463,7 +463,7 @@ Neue Treffer sind in der Seitenleiste mit einem Punkt markiert. Beim Anlegen erl
     id: 'prompts',
     category: 'Automatik',
     icon: Icons.bolt_outlined,
-    title: 'Prompt-Vorlagen',
+    title: 'Vorlagen',
     summary: 'Häufige Aufträge speichern und mit einem Tipp starten.',
     shot: 'prompts',
     open: 'prompts',
@@ -817,7 +817,7 @@ class _ArticleList extends StatelessWidget {
           autofocus: false,
           decoration: InputDecoration(
             prefixIcon: const Icon(Icons.search, size: 20),
-            hintText: 'Hilfe durchsuchen – z. B. „Watchlist“, „Stimme“, „API“',
+            hintText: 'Hilfe durchsuchen – z. B. „Beobachtung“, „Stimme“, „API“',
             suffixIcon: searching
                 ? IconButton(
                     icon: const Icon(Icons.close, size: 18),

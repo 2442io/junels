@@ -122,6 +122,45 @@ class _FlowsPageState extends State<FlowsPage> {
     }
   }
 
+  /// Ablauf in eigenen Worten beschreiben – Junels baut daraus den Prozess.
+  Future<void> _describe() async {
+    final ctrl = TextEditingController();
+    final text = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Was soll passieren?', style: Theme.of(ctx).textTheme.titleMedium),
+          const SizedBox(height: 10),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(hintText: 'z. B. Jeden Morgen um 7 die Tech-News zusammenfassen und schicken'),
+          ),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final e in _examples)
+              ActionChip(label: Text(e.length > 48 ? '${e.substring(0, 48)}…' : e), onPressed: () => ctrl.text = e),
+          ]),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            icon: const Icon(Icons.auto_awesome, size: 18),
+            label: const Text('Prozess bauen'),
+          ),
+        ]),
+      ),
+    );
+    ctrl.dispose();
+    if (text == null || text.isEmpty || !mounted) return;
+    _prompt.text = text;
+    await _generate();
+  }
+
   Future<void> _empty() async {
     final app = AppScope.read(context);
     final nav = Navigator.of(context);
@@ -140,21 +179,35 @@ class _FlowsPageState extends State<FlowsPage> {
     final flows = app.flows.flows.where((f) => !watchFlows.contains(f.id)).toList();
     final narrow = MediaQuery.sizeOf(context).width < 560;
     return Scaffold(
-      appBar: JAppBar(title: const Text('Prozesse'), actions: [
+      appBar: JAppBar(title: const Text('Prozesse & Beobachtungen'), actions: [
         IconButton(
             tooltip: 'Überwachung',
             icon: const Icon(Icons.insights_outlined),
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage(source: 'flow')))),
-        if (narrow)
-          IconButton(tooltip: 'Beobachten', icon: const Icon(Icons.radar), onPressed: () => showWatchDialog(context))
-        else
-          OutlinedButton.icon(onPressed: () => showWatchDialog(context), icon: const Icon(Icons.radar, size: 18), label: const Text('Beobachten')),
-        const SizedBox(width: 8),
-        if (narrow)
-          IconButton(tooltip: 'Leerer Prozess', icon: const Icon(Icons.add), onPressed: _empty)
-        else
-          OutlinedButton.icon(onPressed: _empty, icon: const Icon(Icons.add, size: 18), label: const Text('Leerer Prozess')),
-        const SizedBox(width: 12),
+        PopupMenuButton<String>(
+          tooltip: 'Neu',
+          onSelected: (v) {
+            if (v == 'describe') _describe();
+            if (v == 'watch') showWatchDialog(context);
+            if (v == 'empty') _empty();
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+                value: 'describe',
+                child: ListTile(leading: Icon(Icons.auto_awesome), title: Text('Ablauf beschreiben'), subtitle: Text('Junels baut den Prozess'))),
+            PopupMenuItem(
+                value: 'watch',
+                child: ListTile(leading: Icon(Icons.radar), title: Text('Webseite oder Thema beobachten'), subtitle: Text('Melden, wenn sich etwas ändert'))),
+            PopupMenuItem(value: 'empty', child: ListTile(leading: Icon(Icons.add_box_outlined), title: Text('Leerer Prozess'), subtitle: Text('Selbst aus Bausteinen bauen'))),
+          ],
+          child: narrow
+              ? const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.add))
+              : Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Chip(avatar: const Icon(Icons.add, size: 18), label: const Text('Neu')),
+                ),
+        ),
+        const SizedBox(width: 4),
       ]),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
@@ -165,12 +218,11 @@ class _FlowsPageState extends State<FlowsPage> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const PageHeader(
                   icon: Icons.account_tree_outlined,
-                  title: 'Prozesse',
-                  subtitle: 'Abläufe aus Bausteinen, die der Agent selbständig ausführt – nach Zeitplan, beim Beobachten einer Seite '
-                      'oder eines Themas (auch minütlich) oder per Klick.',
+                  title: 'Prozesse & Beobachtungen',
+                  subtitle: 'Abläufe, die Junels selbständig ausführt – nach Zeitplan, wenn sich etwas ändert oder per Klick.',
                 ),
-                // ---- Erzeugen per Prompt
-                Panel(
+                // ---- Erzeugen per Prompt (nur solange es noch nichts gibt – sonst über „+“)
+                if (flows.isEmpty && app.watchlist.items.isEmpty) Panel(
                   padding: const EdgeInsets.all(16),
                   borderColor: c.mint.withValues(alpha: 0.35),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -216,10 +268,19 @@ class _FlowsPageState extends State<FlowsPage> {
                     child: EmptyHint(
                       icon: Icons.account_tree_outlined,
                       title: 'Noch keine Prozesse',
-                      text: 'Beschreibe oben einen Ablauf oder starte mit einem leeren Prozess.',
+                      text: 'Über „+“ einen Ablauf beschreiben, eine Seite beobachten oder leer starten.',
                     ),
                   ),
                 for (final wf in flows) Padding(padding: const EdgeInsets.only(bottom: 8), child: _FlowCard(app: app, wf: wf)),
+                if (flows.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: OutlinedButton.icon(
+                      onPressed: _describe,
+                      icon: const Icon(Icons.auto_awesome, size: 18),
+                      label: const Text('Neuen Ablauf beschreiben'),
+                    ),
+                  ),
               ]),
             ),
           ),
@@ -270,9 +331,7 @@ class _FlowCard extends StatelessWidget {
               else if (wf.lastStatus == 'Fehler')
                 StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true)
               else if (!wf.enabled)
-                StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true)
-              else
-                StatusChip('Aktiv', color: c.mint, soft: c.mintSoft, dense: true),
+                StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
             ]),
             const SizedBox(height: 3),
             MonoText([
@@ -282,11 +341,12 @@ class _FlowCard extends StatelessWidget {
             ].join(' · ')),
           ]),
         ),
-        IconButton(
-          tooltip: running ? 'Stoppen' : 'Jetzt ausführen',
-          icon: Icon(running ? Icons.stop_circle_outlined : Icons.play_arrow_rounded, color: running ? c.red : null),
-          onPressed: () => running ? app.flows.stop(wf) : startFlow(context, wf),
-        ),
+        if (running)
+          IconButton(
+            tooltip: 'Stoppen',
+            icon: Icon(Icons.stop_circle_outlined, color: c.red),
+            onPressed: () => app.flows.stop(wf),
+          ),
         Switch(
           value: wf.enabled,
           onChanged: (v) {
@@ -297,14 +357,16 @@ class _FlowCard extends StatelessWidget {
         PopupMenuButton<String>(
           tooltip: 'Mehr',
           onSelected: (v) async {
-            if (v == 'copy') await duplicateFlow(context, wf);
+            if (v == 'run' && context.mounted) await startFlow(context, wf);
+            if (v == 'copy' && context.mounted) await duplicateFlow(context, wf);
             if (v == 'edit' && context.mounted) {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
             }
           },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
-            PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+          itemBuilder: (_) => [
+            if (!running) const PopupMenuItem(value: 'run', child: ListTile(leading: Icon(Icons.play_arrow_rounded), title: Text('Jetzt ausführen'))),
+            const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
+            const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
           ],
         ),
       ]),
@@ -504,6 +566,7 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
   String? _connectFrom; // Verbinden per Tippen: Quelle gewählt, Ziel antippen
   String? _fixing; // Agent repariert diesen Baustein
   bool _fitted = false;
+  bool? _listMode; // Handy: Schrittliste statt Canvas
   Size _view = const Size(800, 600);
   final _viewKey = GlobalKey();
 
@@ -742,6 +805,17 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
             },
           ),
           actions: [
+            if (narrow) ...[
+              PillIconButton(
+                icon: (_listMode ?? true) ? Icons.account_tree_outlined : Icons.view_agenda_outlined,
+                tooltip: (_listMode ?? true) ? 'Als Canvas zeigen' : 'Als Liste zeigen',
+                onPressed: () => setState(() {
+                  _listMode = !(_listMode ?? true);
+                  _fitted = false;
+                }),
+              ),
+              const SizedBox(width: 6),
+            ],
             PillIconButton(
               icon: Icons.tune,
               tooltip: 'Prozess-Einstellungen',
@@ -767,7 +841,38 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
         ),
         body: Row(children: [
           Expanded(
-            child: LayoutBuilder(builder: (context, view) {
+            child: narrow && (_listMode ?? true)
+                ? _StepList(
+                    wf: wf,
+                    states: states,
+                    errors: errs,
+                    selected: _selected,
+                    onSelect: (id) => setState(() => _selected = id),
+                    onCanvas: () => setState(() {
+                      _listMode = false;
+                      _fitted = false;
+                    }),
+                    onAdd: () async {
+                      final type = await showModalBottomSheet<FlowNodeType>(
+                        context: context,
+                        showDragHandle: true,
+                        builder: (ctx) => SafeArea(
+                          child: ListView(shrinkWrap: true, children: [
+                            for (final ty in FlowNodeType.values)
+                              if (ty != FlowNodeType.trigger || wf.trigger == null)
+                                ListTile(
+                                  leading: Icon(flowIcon(ty), color: flowColor(ctx, ty)),
+                                  title: Text(ty.label),
+                                  subtitle: Text(_nodeHint(ty)),
+                                  onTap: () => Navigator.pop(ctx, ty),
+                                ),
+                          ]),
+                        ),
+                      );
+                      if (type != null) _addNode(app, wf, type);
+                    },
+                  )
+                : LayoutBuilder(builder: (context, view) {
               _view = view.biggest;
               if (!_fitted) {
                 _fitted = true;
@@ -2644,3 +2749,106 @@ class _ConnRow extends StatelessWidget {
 
 // Hilfsfunktion für Tests/Debug: Prozess als JSON (z. B. zum Teilen).
 String flowToJson(Workflow wf) => const JsonEncoder.withIndent('  ').convert(wf.toJson());
+
+/// Handy: Prozess als Schrittliste statt Canvas – lesbar, antippen zum Bearbeiten.
+class _StepList extends StatelessWidget {
+  const _StepList({
+    required this.wf,
+    required this.states,
+    required this.errors,
+    required this.selected,
+    required this.onSelect,
+    required this.onAdd,
+    required this.onCanvas,
+  });
+  final Workflow wf;
+  final Map<String, String> states;
+  final Map<String, FlowError> errors;
+  final String? selected;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onAdd;
+  final VoidCallback onCanvas;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final order = wf.order();
+    final loose = [for (final n in wf.nodes) if (!order.contains(n)) n];
+    final branches = wf.nodes.any((n) => wf.next(n.id).length > 1);
+    Widget card(FlowNode n, {bool looseNode = false}) {
+      final col = flowColor(context, n.type);
+      final st = states[n.id];
+      final err = errors[n.id];
+      return Panel(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        borderColor: err != null ? c.red : (selected == n.id ? col : null),
+        onTap: () => onSelect(n.id),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: col.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(10)),
+            child: Icon(flowIcon(n.type), size: 19, color: col),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(n.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.titleSmall)),
+                const SizedBox(width: 6),
+                Text(n.type.label, style: t.labelSmall?.copyWith(color: c.faint)),
+              ]),
+              const SizedBox(height: 2),
+              Text(n.summary.isEmpty ? _nodeHint(n.type) : n.summary,
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodySmall?.copyWith(color: c.muted)),
+              if (err != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('${err.message} · ${err.hint}', maxLines: 3, style: t.bodySmall?.copyWith(color: c.red)),
+                ),
+              if (looseNode)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('Nicht verbunden – im Baustein „Verbinden“ wählen', style: t.bodySmall?.copyWith(color: c.amber)),
+                ),
+            ]),
+          ),
+          if (st == 'running')
+            const Padding(padding: EdgeInsets.all(6), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+          else if (st == 'done')
+            Icon(Icons.check_circle, size: 18, color: c.mint)
+          else if (st == 'skipped')
+            Icon(Icons.redo, size: 18, color: c.faint)
+          else
+            Icon(Icons.chevron_right, color: c.faint),
+        ]),
+      );
+    }
+
+    return ColoredBox(
+      color: c.canvas,
+      child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 120), children: [
+        if (branches)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: Text('Dieser Prozess verzweigt sich – den genauen Verlauf zeigt der Canvas.', style: t.bodySmall)),
+              TextButton(onPressed: onCanvas, child: const Text('Canvas')),
+            ]),
+          ),
+        for (var i = 0; i < order.length; i++) ...[
+          card(order[i]),
+          if (i < order.length - 1)
+            Padding(
+              padding: const EdgeInsets.only(left: 28),
+              child: Align(alignment: Alignment.centerLeft, child: Icon(Icons.arrow_downward, size: 16, color: c.faint)),
+            ),
+        ],
+        for (final n in loose) Padding(padding: const EdgeInsets.only(top: 10), child: card(n, looseNode: true)),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(onPressed: onAdd, icon: const Icon(Icons.add), label: const Text('Schritt hinzufügen')),
+      ]),
+    );
+  }
+}

@@ -61,34 +61,25 @@ class TasksPage extends StatelessWidget {
                 PageHeader(
                   icon: Icons.schedule,
                   title: 'Geplante Aufgaben',
-                  subtitle: 'Der Agent erledigt diese Aufträge selbständig zur eingestellten Zeit und meldet sich per Push-Nachricht. '
-                      'Sie laufen auf jedem Gerät, auf dem sie aktiv sind – soll etwas nur am Mac laufen, am Handy auf „Nur per Klick“ stellen.',
+                  subtitle: 'Junels erledigt diese Aufträge zur eingestellten Zeit und meldet sich. '
+                      'Sie laufen auf jedem Gerät, auf dem sie eingeschaltet sind.',
                 ),
-                Row(children: [
-                  _Stat(label: 'Aktiv', value: '$active', color: c.mint),
-                  const SizedBox(width: 10),
-                  _Stat(label: 'Pausiert', value: '${tasks.length - active}', color: c.faint),
-                  const SizedBox(width: 10),
-                  _Stat(
-                    label: 'Nächster Lauf',
-                    value: () {
+                SectionLabel('Aufgaben',
+                    padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+                    trailing: Builder(builder: (_) {
                       final next = tasks
                           .where((p) => p.enabled)
                           .map((p) => p.nextAfter(now))
                           .whereType<DateTime>()
                           .fold<DateTime?>(null, (m, d) => m == null || d.isBefore(m) ? d : m);
-                      return next == null ? '–' : _when(next);
-                    }(),
-                    color: c.blue,
-                  ),
-                ]),
-                const SectionLabel('Aufgaben', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+                      return MonoText('$active aktiv${next == null ? '' : ' · nächste ${_when(next)}'}', color: c.faint);
+                    })),
                 if (tasks.isEmpty)
                   Panel(
                     child: EmptyHint(
                       icon: Icons.alarm_add_outlined,
                       title: 'Noch keine geplanten Aufgaben',
-                      text: 'Leg eine eigene Aufgabe an oder starte mit einer Vorlage unten.',
+                      text: 'Leg eine eigene Aufgabe an oder richte unten eine mit einem Tipp ein.',
                     ),
                   ),
                 for (final p in tasks)
@@ -117,10 +108,10 @@ class TasksPage extends StatelessWidget {
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
                               ),
-                              const SizedBox(width: 8),
-                              p.enabled
-                                  ? StatusChip('Aktiv', color: c.mint, soft: c.mintSoft, dense: true)
-                                  : StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
+                              if (!p.enabled) ...[
+                                const SizedBox(width: 8),
+                                StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
+                              ],
                             ]),
                             const SizedBox(height: 4),
                             MonoText([
@@ -145,7 +136,7 @@ class TasksPage extends StatelessWidget {
                       ]),
                     ),
                   ),
-                const SectionLabel('Vorlagen', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+                const SectionLabel('Schnell einrichten', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
                 LayoutBuilder(builder: (context, box) {
                   final cols = box.maxWidth >= 640 ? 2 : 1;
                   final w = (box.maxWidth - (cols - 1) * 10) / cols;
@@ -217,30 +208,6 @@ class TasksPage extends StatelessWidget {
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.color});
-  final String label;
-  final String value;
-  final Color color;
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Expanded(
-      child: Panel(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label.toUpperCase(), style: TextStyle(fontSize: 10.5, letterSpacing: 1.1, color: c.faint, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text(value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontFamily: Ui.mono, fontSize: 18, fontWeight: FontWeight.w500, color: color)),
-        ]),
-      ),
-    );
-  }
-}
-
 class _TemplateCard extends StatelessWidget {
   const _TemplateCard({required this.icon, required this.title, required this.text, required this.onTap, this.done = false});
   final IconData icon;
@@ -286,7 +253,7 @@ class PromptsPage extends StatelessWidget {
     // Alle Vorlagen – auch die mit Zeitplan (die stehen zusätzlich unter „Geplant“)
     final list = app.prompts.toList();
     return Scaffold(
-      appBar: JAppBar(title: const Text('Prompt-Vorlagen'), actions: [
+      appBar: JAppBar(title: const Text('Vorlagen'), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(
@@ -305,7 +272,7 @@ class PromptsPage extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 const PageHeader(
                   icon: Icons.bolt_outlined,
-                  title: 'Prompt-Vorlagen',
+                  title: 'Vorlagen',
                   subtitle: 'Häufige Aufträge mit einem Tipp starten. Mit Zeitplan werden sie zu geplanten Aufgaben.',
                 ),
                 if (list.isEmpty)
@@ -426,15 +393,12 @@ class ActivityPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
         children: [
-          Card(
-            color: scheme.primaryContainer.withValues(alpha: 0.5),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text(
-                '${app.settings.routing == 'local' ? 'Alles läuft auf diesem Gerät – keine Cloud-KI, keine Kosten. ' : 'Antworten kommen ${app.routingLabel ?? 'lokal'}; alle Aktionen bleiben hier protokolliert. '}'
-                '${items.length} Aktion${items.length == 1 ? '' : 'en'} im Verlauf.',
-                style: t.bodyMedium,
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
+            child: Text(
+              'Alles, was Junels für dich getan hat – und wie zuverlässig deine Abläufe laufen. '
+              '${app.settings.routing == 'local' ? 'Es läuft alles auf diesem Gerät.' : 'KI: ${app.routingLabel ?? 'lokal'}.'}',
+              style: t.bodySmall,
             ),
           ),
           Builder(builder: (context) {
@@ -504,7 +468,7 @@ class _VaultPageState extends State<VaultPage> {
     }
 
     return Scaffold(
-      appBar: JAppBar(title: const Text('Tresor & Konten')),
+      appBar: JAppBar(title: const Text('Tresor & Mail-Konto')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

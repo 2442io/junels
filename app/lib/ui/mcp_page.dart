@@ -21,7 +21,7 @@ class McpPage extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: JAppBar(title: const Text('MCP-Server')),
+      appBar: JAppBar(title: const Text('MCP-Store & Server')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _editServer(context, app, null),
         icon: const Icon(Icons.add),
@@ -55,7 +55,7 @@ class McpPage extends StatelessWidget {
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.cable_outlined),
-                  title: const Text('Junels als MCP-Server'),
+                  title: const Text('Junels für andere Programme'),
                   subtitle: Text(app.mcpServe.running
                       ? 'An · ${app.mcpServe.url} – andere Programme nutzen deine Skills'
                       : 'Aus · Claude Desktop, n8n, Dify … deine Skills und Prozesse nutzen lassen'),

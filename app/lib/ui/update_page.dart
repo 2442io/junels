@@ -65,7 +65,7 @@ class _UpdatePageState extends State<UpdatePage> {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: JAppBar(title: const Text('Updates & Versionsverlauf')),
+      appBar: JAppBar(title: const Text('Updates & Neuigkeiten')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

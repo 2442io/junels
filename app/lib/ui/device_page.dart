@@ -156,25 +156,6 @@ class _DevicePageState extends State<DevicePage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          card('Kalender-Abo (Google & Co.)', Icons.event_repeat_outlined, [
-            Text('Kommen deine Google-Termine nicht am Gerät an, trag hier die geheime iCal-Adresse ein. '
-                'Google: calendar.google.com am Computer → ⚙ Einstellungen → links deinen Kalender → '
-                '„Privatadresse im iCal-Format“ kopieren. Junels lädt sie alle 10 Minuten (nur lesen).',
-                style: t.bodySmall),
-            const SizedBox(height: 8),
-            const _IcsEditor(),
-          ]),
-          card('Kalender prüfen', Icons.event_available_outlined, [
-            Text('Zeigt, welche Kalender Junels auf diesem Gerät lesen kann und welche Termine heute gefunden werden. '
-                'Die Datenschutz-Stufe hat darauf keinen Einfluss – sie regelt nur, was auf deinen Server synchronisiert wird.',
-                style: t.bodySmall),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.search),
-              label: const Text('Kalender prüfen'),
-              onPressed: () => _checkCalendar(context),
-            ),
-          ]),
           card('Über dich', Icons.place_outlined, [
             TextField(
               controller: _city,
@@ -200,40 +181,28 @@ class _DevicePageState extends State<DevicePage> {
               ),
             ),
           ]),
-          if (DeviceBridge.supported)
-            card('Schnellstart', Icons.touch_app_outlined, [
-              Text(Platform.isAndroid
-                  ? 'Lange auf das Junels-Symbol drücken zeigt: Gespräch starten, Neuer Chat und deine ersten 3 Prompts. '
-                      'Oder einen Knopf direkt auf den Startbildschirm legen:'
-                  : 'Rechtsklick auf das Junels-Symbol im Dock: Gespräch starten, Neuer Chat und deine ersten 3 Prompts. '
-                      'PDFs, Bilder und Texte kannst du aufs Dock-Symbol ziehen – sie landen als Anhang im Chat.'),
-              if (Platform.isAndroid) ...[
+          card('Kalender', Icons.event_outlined, [
+            Text('Junels liest die Kalender dieses Geräts (nur nach Freigabe). Fehlen Termine, zuerst hier prüfen.', style: t.bodySmall),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.search),
+              label: const Text('Kalender prüfen'),
+              onPressed: () => _checkCalendar(context),
+            ),
+            const SizedBox(height: 4),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('Termine fehlen? Kalender-Abo (iCal) hinzufügen'),
+              children: [
+                Text('Google: calendar.google.com am Computer → Einstellungen → links deinen Kalender → '
+                    '„Privatadresse im iCal-Format“ kopieren und hier einfügen. Junels lädt sie alle 10 Minuten (nur lesen).',
+                    style: t.bodySmall),
                 const SizedBox(height: 8),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.record_voice_over_outlined),
-                    label: const Text('Gespräch-Knopf'),
-                    onPressed: () => _pin(app, 'conversation', 'Gespräch'),
-                  ),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.add_comment_outlined),
-                    label: const Text('Neuer-Chat-Knopf'),
-                    onPressed: () => _pin(app, 'newchat', 'Neuer Chat'),
-                  ),
-                  for (final p in app.prompts.take(5))
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.bolt_outlined),
-                      label: Text(p.title),
-                      onPressed: () => _pin(app, 'prompt:${p.id}', p.title),
-                    ),
-                ]),
+                const _IcsEditor(),
+                const SizedBox(height: 8),
               ],
-            ]),
-          if (Platform.isAndroid)
-            card('Teilen an Junels', Icons.share_outlined, [
-              const Text('In jeder App „Teilen“ → Junels: Text und Links landen im Eingabefeld, Fotos und PDFs als Anhang. '
-                  'Dann einfach fragen, z. B. „Fass das zusammen“.'),
-            ]),
+            ),
+          ]),
           card('Ordner überwachen', Icons.folder_special_outlined, [
             const Text('Neue PDFs, TXT- und MD-Dateien in diesen Ordnern kommen automatisch in die Wissensbasis '
                 '(beim Start und alle 30 Minuten).'),
@@ -283,14 +252,40 @@ class _DevicePageState extends State<DevicePage> {
                 onPressed: () => _guard(app.addGrantedFolder),
               ),
             ]),
-          card('Was der Agent jetzt kann', Icons.info_outline, [
-            const Text('• „Schreib Anna eine Mail, dass …“ → Mail-App mit Entwurf\n'
-                '• „Schick Max auf WhatsApp, dass ich später komme“ → WhatsApp mit Text\n'
-                '• „Ruf Mama an“ → Telefon-App mit Nummer\n'
-                '• „Was habe ich heute für Termine?“ / „Trag morgen 9:30 Zahnarzt ein“\n'
-                '• „Wie wird das Wetter?“ / „Was gibt’s Neues zu KI?“\n'
-                'Senden, Anrufen und Speichern bestätigst immer du in der jeweiligen App.'),
-          ]),
+          if (DeviceBridge.supported)
+            card('Schnellstart', Icons.touch_app_outlined, [
+              Text(Platform.isAndroid
+                  ? 'Lange auf das Junels-Symbol drücken zeigt: Gespräch starten, Neuer Chat und deine ersten 3 Prompts. '
+                      'Oder einen Knopf direkt auf den Startbildschirm legen:'
+                  : 'Rechtsklick auf das Junels-Symbol im Dock: Gespräch starten, Neuer Chat und deine ersten 3 Prompts. '
+                      'PDFs, Bilder und Texte kannst du aufs Dock-Symbol ziehen – sie landen als Anhang im Chat.'),
+              if (Platform.isAndroid) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.record_voice_over_outlined),
+                    label: const Text('Gespräch-Knopf'),
+                    onPressed: () => _pin(app, 'conversation', 'Gespräch'),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.add_comment_outlined),
+                    label: const Text('Neuer-Chat-Knopf'),
+                    onPressed: () => _pin(app, 'newchat', 'Neuer Chat'),
+                  ),
+                  for (final p in app.prompts.take(5))
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.bolt_outlined),
+                      label: Text(p.title),
+                      onPressed: () => _pin(app, 'prompt:${p.id}', p.title),
+                    ),
+                ]),
+              ],
+            ]),
+          if (Platform.isAndroid)
+            card('Teilen an Junels', Icons.share_outlined, [
+              const Text('In jeder App „Teilen“ → Junels: Text und Links landen im Eingabefeld, Fotos und PDFs als Anhang. '
+                  'Dann einfach fragen, z. B. „Fass das zusammen“.'),
+            ]),
         ],
       ),
     );

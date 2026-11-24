@@ -58,7 +58,7 @@ class _ArtifactList extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Hier erscheinen Code, Tabellen und Berichte, die der Agent mit „write_artifact“ anlegt.',
+            'Hier erscheinen Dokumente, Tabellen, Code und Diagramme, die Junels in diesem Chat für dich erstellt.',
             textAlign: TextAlign.center,
             style: TextStyle(color: scheme.onSurfaceVariant),
           ),

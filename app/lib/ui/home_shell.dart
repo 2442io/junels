@@ -103,7 +103,9 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final _scaffold = GlobalKey<ScaffoldState>();
-  bool _inspectorVisible = true;
+  /// null = automatisch: nur zeigen, wenn der Chat Artefakte hat
+  bool? _inspectorChoice;
+  bool get _inspectorVisible => _inspectorChoice ?? (AppScope.read(context).current?.artifacts.isNotEmpty ?? false);
   bool _focus = false; // Fokus-Modus: nur der Chat
   bool _firstRunHandled = false;
 
@@ -260,7 +262,7 @@ class _HomeShellState extends State<HomeShell> {
               badge: app.inspectorAttention && !_inspectorVisible,
               onPressed: () {
                 app.clearInspectorAttention();
-                setState(() => _inspectorVisible = !_inspectorVisible);
+                setState(() => _inspectorChoice = !_inspectorVisible);
               },
             ),
           const SizedBox(width: 6),

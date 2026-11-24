@@ -761,9 +761,7 @@ class _WatchCard extends StatelessWidget {
         ? StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true)
         : item.unseen > 0
         ? StatusChip('${item.unseen} neu', color: c.amber, soft: c.amberSoft, dense: true)
-        : (!item.enabled
-              ? StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true)
-              : StatusChip('Aktuell', color: c.mint, soft: c.mintSoft, dense: true));
+        : (!item.enabled ? StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true) : null);
     final what = page
         ? (Uri.tryParse(item.target)?.host.isNotEmpty == true ? Uri.parse(item.target).host : item.target)
         : (item.promptMode ? '„${item.searchQuery}“ (geprüft vom Agenten)' : '„${item.target}“');
@@ -788,8 +786,7 @@ class _WatchCard extends StatelessWidget {
                     Flexible(
                       child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.titleSmall),
                     ),
-                    const SizedBox(width: 8),
-                    chip,
+                    if (chip != null) ...[const SizedBox(width: 8), chip],
                   ],
                 ),
                 const SizedBox(height: 3),
@@ -801,18 +798,11 @@ class _WatchCard extends StatelessWidget {
               ],
             ),
           ),
-          if (flow != null)
-            IconButton(
-              tooltip: 'Im Canvas öffnen',
-              icon: const Icon(Icons.account_tree_outlined),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: flow.id))),
+          if (checking)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-          checking
-              ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              : IconButton(tooltip: 'Jetzt prüfen', icon: const Icon(Icons.refresh), onPressed: () => app.watchlist.check(item)),
           Switch(
             value: flow?.enabled ?? item.enabled,
             onChanged: (v) {
@@ -828,12 +818,19 @@ class _WatchCard extends StatelessWidget {
           PopupMenuButton<String>(
             tooltip: 'Mehr',
             onSelected: (v) {
+              if (v == 'check') app.watchlist.check(item);
               if (v == 'edit') showWatchDialog(context, existing: item);
               if (v == 'copy') showWatchDialog(context, prefill: item, openCanvas: false);
+              if (v == 'canvas' && flow != null) {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => FlowEditor(id: flow.id)));
+              }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
-              PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'check', child: ListTile(leading: Icon(Icons.refresh), title: Text('Jetzt prüfen'))),
+              const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('Bearbeiten'))),
+              const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+              if (flow != null)
+                const PopupMenuItem(value: 'canvas', child: ListTile(leading: Icon(Icons.account_tree_outlined), title: Text('Weitere Schritte anhängen'))),
             ],
           ),
         ],
@@ -1037,9 +1034,8 @@ class WatchDetailPageState extends State<WatchDetailPage> {
                               ),
                             ],
                           )
-                        // wie im Chat: neuester Beitrag unten im Blick, ältere nach oben scrollen
+                        // neueste Meldung oben (wie bei Benachrichtigungen)
                         : ListView.builder(
-                            reverse: true,
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                             itemCount: shown.length,
                             itemBuilder: (context, i) {

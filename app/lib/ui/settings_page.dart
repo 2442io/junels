@@ -626,10 +626,9 @@ class _ProfileSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _SectionTitle('Agent-Profil',
-            trailing: IconButton(
-              tooltip: 'Neues Profil',
-              visualDensity: VisualDensity.compact,
-              icon: const Icon(Icons.add, size: 20),
+            trailing: TextButton.icon(
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Neues Profil'),
               onPressed: app.running
                   ? null
                   : () => editProfile(context,
@@ -707,6 +706,21 @@ class _ToolSection extends StatelessWidget {
     'knowledge_search': Icons.local_library_outlined,
   };
 
+  static const _groups = [
+    ('Internet', ['web_search', 'web_fetch', 'news', 'weather', 'site_search', 'browser', 'begleiten', 'mail_inbox']),
+    ('Erstellen', ['create_document', 'create_presentation', 'create_chart', 'write_artifact', 'edit_file', 'generate_image', 'skill_erstellen', 'save_prompt']),
+    ('Wissen & Dateien', ['text_search', 'read_file', 'knowledge_search', 'search_history', 'remember', 'look_at_image', 'json_query', 'file_search', 'file_rename', 'file_move']),
+    ('Gerät & Apps', ['calendar_list', 'calendar_add', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'control_app', 'send_notification']),
+    ('Rechnen & Ordnen', ['calculator', 'datetime', 'find_loose_ends']),
+  ];
+
+  static String _groupOf(String name) {
+    for (final (g, names) in _groups) {
+      if (names.contains(name)) return g;
+    }
+    return 'Weitere';
+  }
+
   @override
   Widget build(BuildContext context) {
     final enabled = app.activeProfile.useTools;
@@ -714,22 +728,47 @@ class _ToolSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionTitle('Lokale Tools'),
         if (!enabled)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
-            child: Text('Im Profil „${app.activeProfile.name}“ sind Tools ausgeschaltet.', style: t.bodySmall),
+            child: Text('Im Profil „${app.activeProfile.name}“ sind Werkzeuge ausgeschaltet.', style: t.bodySmall),
           ),
-        for (final tool in app.tools)
-          SwitchListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.only(left: 8, right: 0),
-            secondary: Icon(_icons[tool.name] ?? Icons.extension_outlined, size: 20),
-            title: Text(tool.requiresNetwork ? '${tool.title} (Internet, fragt vorher)' : tool.title),
-            subtitle: Text(tool.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-            value: app.settings.enabledTools.contains(tool.name),
-            onChanged: !enabled || app.running ? null : (v) => app.setToolEnabled(tool.name, v),
-          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+          child: Text(
+              '${app.tools.where((x) => app.settings.enabledTools.contains(x.name)).length} von ${app.tools.length} Werkzeugen an. '
+              'Werkzeuge mit 🌐 gehen ins Internet und fragen vorher.',
+              style: t.bodySmall),
+        ),
+        for (final (group, _) in [..._groups, ('Weitere', const <String>[])])
+          if (app.tools.any((x) => _groupOf(x.name) == group))
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+              title: Text(group),
+              subtitle: Text(
+                () {
+                  final ts = [for (final x in app.tools) if (_groupOf(x.name) == group) x];
+                  final on = ts.where((x) => app.settings.enabledTools.contains(x.name)).length;
+                  return '$on von ${ts.length} an · ${ts.map((x) => x.title).take(3).join(', ')}${ts.length > 3 ? ' …' : ''}';
+                }(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.bodySmall,
+              ),
+              children: [
+                for (final tool in app.tools)
+                  if (_groupOf(tool.name) == group)
+                    SwitchListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.only(left: 8, right: 0),
+                      secondary: Icon(_icons[tool.name] ?? Icons.extension_outlined, size: 20),
+                      title: Text(tool.requiresNetwork ? '${tool.title} 🌐' : tool.title),
+                      subtitle: Text(tool.description.split(RegExp(r'(?<=[.!?])\s')).first, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      value: app.settings.enabledTools.contains(tool.name),
+                      onChanged: !enabled || app.running ? null : (v) => app.setToolEnabled(tool.name, v),
+                    ),
+              ],
+            ),
       ],
     );
   }

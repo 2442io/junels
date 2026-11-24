@@ -587,6 +587,17 @@ class PageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final t = Theme.of(context).textTheme;
+    // Handy: der Titel steht schon oben in der Leiste – nur die Erklärung zeigen, kurz und dezent
+    if (MediaQuery.sizeOf(context).width < 700) {
+      if ((subtitle ?? '').isEmpty && actions.isEmpty) return const SizedBox(height: 4);
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if ((subtitle ?? '').isNotEmpty) Expanded(child: Text(subtitle!, style: t.bodySmall?.copyWith(color: c.muted))) else const Spacer(),
+          ...actions,
+        ]),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 16),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

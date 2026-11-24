@@ -58,7 +58,7 @@ class _McpServePageState extends State<McpServePage> {
     final scheme = Theme.of(context).colorScheme;
     final tools = srv.core.tools();
     return Scaffold(
-      appBar: JAppBar(title: const Text('Junels als MCP-Server')),
+      appBar: JAppBar(title: const Text('Junels für andere Programme')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),

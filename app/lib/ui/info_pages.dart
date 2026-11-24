@@ -14,6 +14,17 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.52.0', [
+    'Alle Seiten durchgesehen und aufgeräumt – am Handy kein doppelter Seitentitel mehr, Erklärtexte kurz und dezent',
+    'Prozesse am Handy als Schrittliste statt winzigem Canvas: Schritte antippen zum Bearbeiten, „Schritt hinzufügen“ unten; Canvas per Symbol oben umschaltbar',
+    'Prozesse & Beobachtungen: deine Abläufe stehen oben, „Neu“ (+) fasst Ablauf beschreiben, Beobachten und Leeren Prozess zusammen; Listen ohne Knopf-Gedränge – Titel wieder lesbar („Jetzt ausführen“, „Jetzt prüfen“ im ⋮-Menü)',
+    'Beobachtung im Detail: neueste Meldung oben statt ganz unten',
+    'Geplante Aufgaben ohne Statistik-Kacheln; „Schnell einrichten“ statt „Vorlagen“ (Vorlagen heißen nur noch die Prompt-Vorlagen)',
+    'Agent & Werkzeuge: Werkzeuge nach Themen gruppiert (Internet, Erstellen, Wissen & Dateien, Gerät & Apps …) mit Zähler',
+    'Kalender, Gerät & Ordner: „Über dich“ zuerst, Kalender prüfen und Kalender-Abo in einer Karte',
+    'Seitentitel = Namen im Menü und in den Einstellungen (Web-Zugänge, Tresor & Mail-Konto, Updates & Neuigkeiten …)',
+    'Mac: Artefakt-Spalte erscheint nur, wenn der Chat Artefakte hat',
+  ]),
   ('1.51.1', [
     'Konto, Datenschutz & Abgleich neu aufgebaut: Status ganz oben („Abgleich aktiv · zuletzt …“ mit „Jetzt“-Knopf), dann 3 klare Schritte – Was soll mit? → Sync-Passwort → Verbinden',
     'Verbinden: „Über Server“ oder „Nur im WLAN“ wählen – es wird nur angezeigt, was dazu gehört. Server-Adresse und SSO-Anmeldung stehen jetzt zusammen (vorher brauchte SSO eine Adresse, die erst weiter unten kam)',
