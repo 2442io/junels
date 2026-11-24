@@ -178,13 +178,15 @@ class _UpdatePageState extends State<UpdatePage> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Update installieren'),
-          content: const Text('Junels lädt die neue Version, öffnet das Installationsfenster und beendet sich dann selbst – '
-              'eine geöffnete App kann macOS nicht ersetzen.\n\n'
-              'Danach im Fenster Junels auf „Programme“ ziehen und „Ersetzen“ wählen, dann Junels starten. '
-              'Löschen ist nicht nötig – Chats, Einstellungen und Modelle bleiben erhalten.'),
+          content: const Text('Die neue Version wird im Browser heruntergeladen, Junels beendet sich dann selbst.\n\n'
+              '1. Im Ordner „Downloads“ Junels.dmg öffnen.\n'
+              '2. Junels auf „Programme“ ziehen → „Ersetzen“.\n'
+              '3. Beim ersten Start: Rechtsklick auf Junels → „Öffnen“ → „Öffnen“. '
+              '(Falls nötig: Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“.)\n\n'
+              'Chats, Einstellungen und Modelle bleiben erhalten.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Laden und beenden')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Herunterladen und beenden')),
           ],
         ),
       );

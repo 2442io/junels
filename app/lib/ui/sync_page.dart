@@ -341,7 +341,7 @@ class _SyncPageState extends State<SyncPage> {
                   keyboardType: TextInputType.url,
                   autocorrect: false,
                   decoration: const InputDecoration(labelText: 'Server-Adresse', hintText: 'z. B. https://agent.2442.io'),
-                  onChanged: (v) => cfg.serverUrl = v.trim(),
+                  onChanged: (v) => setState(() => cfg.serverUrl = v.trim()),
                   onSubmitted: (_) async {
                     await _saveServer();
                     setState(() {});
@@ -373,16 +373,15 @@ class _SyncPageState extends State<SyncPage> {
                           ? null
                           : () async {
                               await _saveServer();
-                              final has = await sync.serverHasSso();
-                              if (has == false) {
-                                _snack('Dieser Server hat kein SSO – Abgleich geht trotzdem, nur ohne Konto.');
-                                return;
-                              }
                               try {
                                 await sync.ssoLogin();
-                                if (mounted) setState(() {});
                               } catch (e) {
-                                _snack('$e');
+                                _snack('$e'.replaceFirst('SyncException: ', ''));
+                              }
+                              if (mounted) {
+                                // Adresse kann automatisch korrigiert worden sein
+                                _server.text = sync.config.serverUrl;
+                                setState(() {});
                               }
                             },
                     ),

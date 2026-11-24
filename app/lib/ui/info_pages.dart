@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.53.1', [
+    'Mac-Update: Die neue Version wird jetzt im Browser geladen statt in der App – in der App geladene Updates hat macOS wegen der Sandbox-Quarantäne nicht gestartet („kann nicht geöffnet werden“)',
+    'SSO-Anmeldung: Junels prüft die Server-Adresse und stellt automatisch auf die Agent-API um (z. B. sso.2442.io → agent.2442.io); klare Meldung, wenn dort keine Agent-API läuft',
+    'SSO: „Mit SSO anmelden“ wird sofort aktiv, sobald eine Adresse eingetippt ist',
+    'Schnellmenü am Mac kompakt und mittig statt über die ganze Breite (wurde unten abgeschnitten)',
+  ]),
   ('1.53.0', [
     'Seitenmenü neu: Chats direkt unter der Suche (die letzten 5, dann „Alle x Chats anzeigen“); alle anderen Gruppen eingeklappt und aufklappbar',
     'Automatisierung: Geplante Aufgaben, Prozesse & Beobachtungen und ihre Ergebnis-Chats (früher „Routinen“) in einer Gruppe',

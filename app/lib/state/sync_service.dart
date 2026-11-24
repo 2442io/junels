@@ -288,6 +288,51 @@ class SyncService implements SyncSource {
   bool get ssoSignedIn => config.ssoName.isNotEmpty || config.ssoEmail.isNotEmpty;
 
   /// Unterstützt der Server SSO? (GET liefert {"sso": true})
+  /// Prüft eine Adresse: Läuft dort die Junels Agent-API (mit SSO)? null = nicht erreichbar / keine Agent-API.
+  static Future<bool?> probeAgentApi(String base) async {
+    var u = base.trim();
+    if (u.isEmpty) return null;
+    if (!u.startsWith('http')) u = 'https://$u';
+    while (u.endsWith('/')) {
+      u = u.substring(0, u.length - 1);
+    }
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final r = await (await c.getUrl(Uri.parse('$u/'))).close().timeout(const Duration(seconds: 10));
+      final j = jsonDecode(await r.transform(utf8.decoder).join());
+      if (j is! Map || j['app'] != 'junels-api') return null;
+      return j['sso'] == true;
+    } catch (_) {
+      return null;
+    } finally {
+      c.close(force: true);
+    }
+  }
+
+  /// Findet die Agent-API: die eingetragene Adresse, sonst agent.<domain> (häufiger Fehler: SSO-Adresse
+  /// statt Agent-API eingetragen, z. B. sso.2442.io statt agent.2442.io). Stellt die Adresse ggf. um.
+  Future<void> _ensureAgentApi() async {
+    final cur = config.serverUrl.trim();
+    if (await probeAgentApi(cur) == true) return;
+    final host = Uri.tryParse(cur.startsWith('http') ? cur : 'https://$cur')?.host ?? '';
+    final parts = host.split('.');
+    final base = parts.length > 2 ? parts.sublist(parts.length - 2).join('.') : host;
+    for (final cand in {'agent.$base', if (parts.length > 2) 'agent.${parts.sublist(1).join('.')}'}) {
+      if (cand == host || base.isEmpty) continue;
+      if (await probeAgentApi(cand) == true) {
+        config.serverUrl = 'https://$cand';
+        await saveConfig();
+        appLog('Sync', 'Server-Adresse auf $cand umgestellt (dort läuft die Agent-API)');
+        status.value = 'Adresse auf $cand umgestellt – dort läuft deine Agent-API.';
+        return;
+      }
+    }
+    throw SyncException(host.isEmpty
+        ? 'Bitte zuerst die Adresse deiner Agent-API eintragen, z. B. https://agent.2442.io'
+        : 'Unter $host läuft keine Junels Agent-API. Trag die Adresse deiner Agent-API ein '
+            '(z. B. https://agent.2442.io) – nicht die Adresse des SSO.');
+  }
+
   Future<bool?> serverHasSso() async {
     if (config.serverUrl.trim().isEmpty) return null;
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 8);
@@ -311,6 +356,8 @@ class SyncService implements SyncSource {
   Future<void> ssoLogin() async {
     if (config.serverUrl.trim().isEmpty) throw SyncException('Bitte zuerst die Server-Adresse eintragen.');
     if (_legacyServer) throw SyncException('SSO gibt es nur mit der Agent-API (Weiche). Trage deren Adresse ein, z. B. https://agent.2442.io');
+    status.value = 'Prüfe Server …';
+    await _ensureAgentApi();
     final rnd = Random.secure();
     final verifier = hexOf(List<int>.generate(32, (_) => rnd.nextInt(256)));
     await Vault.write('sso:verifier', verifier);

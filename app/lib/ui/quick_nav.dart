@@ -64,11 +64,16 @@ Future<void> showQuickNav(BuildContext context) async {
   ];
   final picked = await showSheet<Object>(
     context: context,
-    showDragHandle: true,
+    isScrollControlled: true,
     builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      child: Center(
+        heightFactor: 1,
+        // Mac/Tablet: nicht über die ganze Breite ziehen – sonst werden die Kacheln riesig und unten abgeschnitten
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
               child: FilledButton.icon(
@@ -88,13 +93,15 @@ Future<void> showQuickNav(BuildContext context) async {
           ]),
           const SizedBox(height: 8),
           const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: 4,
+          GridView(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 6,
-            childAspectRatio: 0.95,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 120,
+              mainAxisExtent: 92,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+            ),
             children: [
               for (final (s, badge) in sections)
                 InkWell(
@@ -119,6 +126,8 @@ Future<void> showQuickNav(BuildContext context) async {
             ],
           ),
         ]),
+          ),
+        ),
       ),
     ),
   );

@@ -16,7 +16,10 @@ import 'voice_service.dart' show appLog;
 const _repo = '2442io/junels';
 
 class UpdateInfo {
-  UpdateInfo(this.version, this.build, this.notes, this.date, this.assetUrl, this.assetName, this.size);
+  UpdateInfo(this.version, this.build, this.notes, this.date, this.assetUrl, this.assetName, this.size, {this.browserUrl = ''});
+
+  /// Öffentlicher Download-Link (Mac: Download im Browser statt in der App)
+  final String browserUrl;
   final String version;
   final int build;
   final String notes;
@@ -116,7 +119,8 @@ class UpdateService {
       lastCheck = DateTime.now();
       if (build > (int.tryParse(appBuild) ?? 0)) {
         available.value = UpdateInfo(v['version'] as String, build, v['notes'] as String? ?? '', v['date'] as String? ?? '',
-            app['url'] as String, app['name'] as String, (app['size'] as num?)?.toInt() ?? 0);
+            app['url'] as String, app['name'] as String, (app['size'] as num?)?.toInt() ?? 0,
+            browserUrl: app['browser_download_url'] as String? ?? '');
         status.value = 'Update verfügbar: ${v['version']} (Build $build)';
         appLog('Update', status.value);
       } else {
@@ -138,6 +142,22 @@ class UpdateService {
     final info = available.value;
     if (info == null || progress.value != null) return;
     error.value = null;
+    // Mac: NICHT in der App laden. Dateien, die eine Sandbox-App lädt, bekommen eine Quarantäne-Markierung,
+    // mit der macOS die neue App gar nicht startet („kann nicht geöffnet werden“). Über den Browser geladen
+    // ist es ein normaler Download, den macOS nach einmaligem „Öffnen“ startet.
+    if (Platform.isMacOS) {
+      final url = info.browserUrl.isNotEmpty ? info.browserUrl : 'https://github.com/$_repo/releases/download/aktuell/${info.assetName}';
+      await NativeFiles.openUrl(url);
+      status.value = 'Download läuft im Browser – danach die Datei öffnen und Junels auf „Programme“ ziehen.';
+      appLog('Update', '${info.version}: Download im Browser gestartet');
+      if (quitAfterOpen) {
+        await Future<void>.delayed(const Duration(seconds: 3));
+        Process.killPid(pid, ProcessSignal.sigkill);
+        await Future<void>.delayed(const Duration(seconds: 2));
+        exit(0);
+      }
+      return;
+    }
     progress.value = 0;
     status.value = 'Lade ${info.assetName} …';
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 15);
