@@ -61,7 +61,8 @@ class TasksPage extends StatelessWidget {
                 PageHeader(
                   icon: Icons.schedule,
                   title: 'Geplante Aufgaben',
-                  subtitle: 'Der Agent erledigt diese Aufträge selbständig zur eingestellten Zeit und meldet sich per Push-Nachricht.',
+                  subtitle: 'Der Agent erledigt diese Aufträge selbständig zur eingestellten Zeit und meldet sich per Push-Nachricht. '
+                      'Sie laufen auf jedem Gerät, auf dem sie aktiv sind – soll etwas nur am Mac laufen, am Handy auf „Nur per Klick“ stellen.',
                 ),
                 Row(children: [
                   _Stat(label: 'Aktiv', value: '$active', color: c.mint),

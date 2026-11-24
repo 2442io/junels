@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.51.1', [
+    'Konto, Datenschutz & Abgleich neu aufgebaut: Status ganz oben („Abgleich aktiv · zuletzt …“ mit „Jetzt“-Knopf), dann 3 klare Schritte – Was soll mit? → Sync-Passwort → Verbinden',
+    'Verbinden: „Über Server“ oder „Nur im WLAN“ wählen – es wird nur angezeigt, was dazu gehört. Server-Adresse und SSO-Anmeldung stehen jetzt zusammen (vorher brauchte SSO eine Adresse, die erst weiter unten kam)',
+    'Einzelne Kategorien, Server-Einrichtung und manuelle WLAN-Adresse unter „Einzeln anpassen“ bzw. aufklappbar; erledigte Schritte mit Häkchen',
+    'Hängende Meldung „Anmeldung im Browser …“ verschwindet, wenn nichts mehr läuft; Hinweis zu geplanten Aufgaben steht jetzt bei den geplanten Aufgaben',
+  ]),
   ('1.51.0', [
     'Einstellungen neu geordnet nach dem, was du erledigen willst: KI · Verbindungen · Alltag · Daten & Konto · Hilfe & Wartung – keine doppelten Einträge mehr',
     'Suche in den Einstellungen: z. B. „Kalender“, „Stimme“, „MCP“ führt direkt zum richtigen Bereich',
