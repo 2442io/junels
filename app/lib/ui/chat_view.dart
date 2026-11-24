@@ -1290,7 +1290,7 @@ class _InputBarState extends State<_InputBar> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Row(children: [
-                      Flexible(
+                      Expanded(
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           child: Row(children: const [
@@ -1300,7 +1300,7 @@ class _InputBarState extends State<_InputBar> {
                           ]),
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 6),
                       PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnellmenü', onPressed: () => showQuickNav(context)),
                     ]),
                   ),
