@@ -152,7 +152,7 @@ class _DevicePageState extends State<DevicePage> {
         );
 
     return Scaffold(
-      appBar: JAppBar(title: const Text('Gerät & Automatik')),
+      appBar: JAppBar(title: const Text('Kalender, Gerät & Ordner')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

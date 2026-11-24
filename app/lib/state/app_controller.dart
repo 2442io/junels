@@ -3439,7 +3439,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         if (p.nextAfter(now) case final at?) (id: p.id, title: p.title, at: at),
       for (final f in flows.flows)
         if (f.nextAfter(now) case final at?) (id: 'flow:${f.id}', title: f.name, at: at),
-      if (watchAt != null) (id: '__watch__', title: 'Watchlist', at: watchAt.isBefore(now) ? now.add(const Duration(minutes: 1)) : watchAt),
+      if (watchAt != null) (id: '__watch__', title: 'Beobachtungen', at: watchAt.isBefore(now) ? now.add(const Duration(minutes: 1)) : watchAt),
     ]);
   }
 
@@ -3912,7 +3912,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       runningConvId = null;
       conv.entries
         ..add(ChatEntry(role: 'user', text: input.trim()))
-        ..add(ChatEntry(role: 'assistant', error: usedCloud ? 'Kein Cloud-Anbieter eingerichtet (Einstellungen → KI-Anbieter).' : 'Kein Modell bereit.'));
+        ..add(ChatEntry(role: 'assistant', error: usedCloud ? 'Kein Cloud-Anbieter eingerichtet (Einstellungen → Cloud & eigene Server).' : 'Kein Modell bereit.'));
       notifyListeners();
       onAnswer?.call('', true);
       return;

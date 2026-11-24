@@ -123,7 +123,7 @@ class LooseEndsTool extends AgentTool {
         ? 'Prüfe JETZT zusätzlich mit ${mcp.take(6).join(', ')}: ${mailChecked ? '' : 'unbeantwortete Mails, '}offene Aufgaben/Tickets der letzten $days Tage.'
         : mailChecked
             ? ''
-            : 'Mails konnte ich nicht prüfen: Kein Posteingang eingerichtet (Einstellungen → Verbindungen → Tresor & Konten → Mail-Konto → „Posteingang lesen“) '
+            : 'Mails konnte ich nicht prüfen: Kein Posteingang eingerichtet (Einstellungen → Tresor & Mail-Konto → „Posteingang lesen“) '
                 'und kein Mail-Werkzeug verbunden.';
 
     if (out.isEmpty) return 'In Chats, Prozessen, Beobachtungen und Kalender ist nichts liegengeblieben (letzte $days Tage). $hint';

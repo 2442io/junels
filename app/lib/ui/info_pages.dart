@@ -14,6 +14,14 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.51.0', [
+    'Einstellungen neu geordnet nach dem, was du erledigen willst: KI · Verbindungen · Alltag · Daten & Konto · Hilfe & Wartung – keine doppelten Einträge mehr',
+    'Suche in den Einstellungen: z. B. „Kalender“, „Stimme“, „MCP“ führt direkt zum richtigen Bereich',
+    'Neuer Bereich „Erweiterungen“: MCP-Store, Junels für andere Programme, Web-Zugänge und Apps steuern an einem Ort',
+    '„Letztes Modell beim Start laden“ steht jetzt bei den Modellen statt bei der Darstellung; Darstellung & Designs zusammengelegt',
+    'Menü: Heute · Automatisch erledigen · Fähigkeiten & Wissen · Kontrolle; Schnellnavigation in derselben Reihenfolge',
+    'Einheitliche Begriffe: „Beobachtungen“ statt Watchlist, „Vorlagen“, „Aktivität & Überwachung“ (Überwachung jetzt dort zu finden)',
+  ]),
   ('1.50.0', [
     'Prozesse: neuer Baustein „Team“ – mehrere Agenten mit Rollen arbeiten nacheinander (z. B. Recherche → Autor → Prüfer); der Prüfer kann Überarbeitungen verlangen. Je Mitglied eigener Skill und eigenes Modell',
     'Modellwahl je Baustein: Agent, Skill und Team-Mitglieder können lokal, auf deinem Server oder in der Cloud laufen',

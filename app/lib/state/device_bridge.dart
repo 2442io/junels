@@ -255,7 +255,7 @@ class DeviceBridge implements DeviceActions {
     return 'Gelesene Kalender: $names. HINWEIS FÜR DEN NUTZER: '
         '${total == 0 ? 'In keinem Kalender liegen Termine auf dem Gerät' : googleEmpty ? 'Die Google-Kalender auf dem Gerät sind leer (nur Geburtstage/Feiertage sichtbar)' : 'Bei einigen Kalendern ist die Synchronisierung aus'} – '
         'vermutlich ist die Kalender-Synchronisierung aus (Android Einstellungen → Konten → Google → Kontosynchronisierung → Kalender) '
-        'oder die Termine liegen in einem Arbeitsprofil. Alternative: Einstellungen → Gerät & Automatik → Kalender-Abo (iCal-Adresse von Google). '
+        'oder die Termine liegen in einem Arbeitsprofil. Alternative: Junels-Einstellungen → Kalender, Gerät & Ordner → Kalender-Abo (iCal-Adresse von Google). '
         'Sag das dem Nutzer kurz, damit er weiß, warum Termine fehlen können.';
   }
 

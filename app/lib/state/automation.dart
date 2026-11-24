@@ -62,7 +62,7 @@ class WatchlistService {
       items.insert(0, item);
       unawaited(app.logActivity(Activity(
           kind: 'internet',
-          title: 'Watchlist: „${item.title}“ angelegt',
+          title: 'Beobachtung „${item.title}“ angelegt',
           detail: item.target,
           approval: 'Du hast den Eintrag angelegt und damit den Abruf erlaubt')));
     }
@@ -715,7 +715,7 @@ class FlowService {
     final label = '„${n.title}“: MCP';
     final srv = app.mcpServers.where((s) => s.id == n.str('server')).firstOrNull;
     if (srv == null) return PreflightCheck(label, ok: false, detail: 'Server nicht gefunden – im Baustein wählen.', nodeId: n.id, fix: 'node');
-    if (!srv.enabled) return PreflightCheck(label, ok: false, detail: '„${srv.name}“ ist ausgeschaltet (Einstellungen → MCP).', nodeId: n.id, fix: 'mcp');
+    if (!srv.enabled) return PreflightCheck(label, ok: false, detail: '„${srv.name}“ ist ausgeschaltet (Einstellungen → Erweiterungen → MCP-Store & Server).', nodeId: n.id, fix: 'mcp');
     if (app.mcpNeedsLogin.containsKey(srv.id) && !srv.loggedIn) {
       return PreflightCheck(label, ok: false, detail: '„${srv.name}“ verlangt eine Anmeldung.', nodeId: n.id, fix: 'login:${srv.id}');
     }
@@ -751,7 +751,7 @@ class FlowService {
       return FlowError(msg, 'Das Werkzeug ist nicht aktiv. Im Baustein ein anderes wählen oder es in den Einstellungen einschalten.');
     }
     if (m.contains('kein modell') || m.contains('modell bereit')) {
-      return FlowError(msg, 'Im Systemcheck ein Sprachmodell laden oder unter Einstellungen → KI-Anbieter einen Anbieter einrichten.');
+      return FlowError(msg, 'Im Systemcheck ein Sprachmodell laden oder unter Einstellungen → Cloud & eigene Server einen Anbieter einrichten.');
     }
     if (m.contains('keine treffer')) {
       return FlowError(msg, 'Suchbegriff anpassen (kürzer, ohne Datum) – oder den Agenten beheben lassen. Ein Agent-Baustein sucht flexibler als ein festes Werkzeug.');

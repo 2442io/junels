@@ -127,7 +127,7 @@ class AppControlTool extends AgentTool {
     var app = find(appName);
     if (app == null && (action == 'suchen' || action == 'abspielen')) app = defaultSearchApp();
     if (app == null) {
-      throw ToolException('„$appName“ ist nicht freigegeben. Hinweis für den Nutzer: Einstellungen → Apps steuern → App hinzufügen.');
+      throw ToolException('„$appName“ ist nicht freigegeben. Hinweis für den Nutzer: Einstellungen → Erweiterungen → Apps steuern → App hinzufügen.');
     }
     if (unattended() && !app.inAutomation) {
       throw ToolException('„${app.name}“ darf nur gesteuert werden, wenn du selbst dabei bist (nicht in Prozessen/geplanten Aufgaben).');

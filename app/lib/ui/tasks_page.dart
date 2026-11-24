@@ -8,6 +8,7 @@ import '../state/app_scope.dart';
 import '../state/vault.dart';
 import 'chat_view.dart' show showMailAccountDialog;
 import 'device_page.dart' show setupMorningBriefing;
+import 'monitor_page.dart';
 import 'prompt_editor.dart';
 import 'theme.dart';
 import 'quick_nav.dart';
@@ -410,7 +411,7 @@ class ActivityPage extends StatelessWidget {
       ));
     }
     return Scaffold(
-      appBar: JAppBar(title: const Text('Was hat der Agent getan?'), actions: [
+      appBar: JAppBar(title: const Text('Aktivität & Überwachung'), actions: [
         if (items.isNotEmpty)
           IconButton(
             tooltip: 'Verlauf leeren',
@@ -435,6 +436,22 @@ class ActivityPage extends StatelessWidget {
               ),
             ),
           ),
+          Builder(builder: (context) {
+            final week = app.runStats.since(DateTime.now().subtract(const Duration(days: 7)));
+            final bad = week.where((r) => r.status == 'error').length;
+            return Card(
+              child: ListTile(
+                leading: const Icon(Icons.insights_outlined),
+                title: const Text('Überwachung'),
+                subtitle: Text(week.isEmpty
+                    ? 'Dauer, Erfolgsquote und Tokens deiner Prozesse und externen Aufrufe'
+                    : '${week.length} Läufe in 7 Tagen · ${bad == 0 ? 'alle erfolgreich' : '$bad mit Fehler'}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage())),
+              ),
+            );
+          }),
+          const SectionLabel('Was der Agent getan hat', padding: EdgeInsets.fromLTRB(4, 16, 4, 8)),
           ...rows,
           if (items.isEmpty)
             Padding(

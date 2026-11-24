@@ -53,8 +53,8 @@ Future<void> showQuickNav(BuildContext context) async {
   final c = AppColors.of(context);
   final sections = [
     (AppSection.inbox, app.todoCount > 0 ? '${app.todoCount}' : null),
-    (AppSection.flows, null),
     (AppSection.tasks, null),
+    (AppSection.flows, null),
     (AppSection.skills, null),
     (AppSection.prompts, null),
     (AppSection.knowledge, app.memory.pending.isNotEmpty ? '${app.memory.pending.length}' : null),
@@ -87,19 +87,7 @@ Future<void> showQuickNav(BuildContext context) async {
             ),
           ]),
           const SizedBox(height: 8),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            TextButton.icon(
-              icon: const Icon(Icons.health_and_safety_outlined, size: 18),
-              label: const Text('Selbsttest'),
-              onPressed: () => Navigator.pop(ctx, 'selftest'),
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.insights_outlined, size: 18),
-              label: const Text('Überwachung'),
-              onPressed: () => Navigator.pop(ctx, 'monitor'),
-            ),
-          ]),
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
           GridView.count(
             crossAxisCount: 4,
             shrinkWrap: true,
@@ -161,12 +149,12 @@ Future<void> showQuickNav(BuildContext context) async {
 
 String _short(AppSection s) => switch (s) {
       AppSection.inbox => 'Benach­richtigungen',
-      AppSection.flows => 'Prozesse & Watchlist',
+      AppSection.flows => 'Prozesse',
       AppSection.tasks => 'Geplant',
       AppSection.prompts => 'Vorlagen',
       AppSection.skills => 'Skills',
       AppSection.knowledge => 'Wissen',
-      AppSection.activity => 'Aktivitäten',
+      AppSection.activity => 'Aktivität',
       AppSection.settings => 'Einstellungen',
       AppSection.help => 'Hilfe',
       _ => s.label,

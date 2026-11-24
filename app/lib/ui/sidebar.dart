@@ -156,21 +156,22 @@ class _SidebarState extends State<Sidebar> {
               ),
 
               // ---- Benachrichtigungen & To-dos
-              const SectionLabel('Übersicht'),
+              const SectionLabel('Heute'),
               item(AppSection.inbox, count: app.todoCount == 0 ? null : '${app.todoCount}', dot: app.notifier.hasWarning),
-              // ---- Arbeitsbereich
-              const SectionLabel('Automatik'),
+              // ---- Was Junels selbständig erledigt
+              const SectionLabel('Automatisch erledigen'),
               item(AppSection.tasks,
                   count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
               // Watchlist ist Teil der Prozesse (Beobachten-Auslöser im Canvas)
               item(AppSection.flows,
                   count: app.watchlist.unseen > 0 || app.flows.flows.isEmpty ? null : '${app.flows.flows.length}',
                   dot: app.watchlist.unseen > 0),
-              const SectionLabel('Arbeitsbereich'),
+              const SectionLabel('Fähigkeiten & Wissen'),
               item(AppSection.skills, count: app.skills.own.isEmpty ? null : '${app.skills.own.length}'),
               item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
               item(AppSection.knowledge, dot: app.memory.pending.isNotEmpty),
-              item(AppSection.activity),
+              const SectionLabel('Kontrolle'),
+              item(AppSection.activity, dot: app.runStats.records.isNotEmpty && app.runStats.records.last.status == 'error'),
 
               // ---- Routinen: je Aufgabe bzw. Prozess ein Chat mit allen Ergebnissen
               if (q.isEmpty && routines.isNotEmpty) ...[

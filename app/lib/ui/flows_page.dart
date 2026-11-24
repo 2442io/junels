@@ -72,7 +72,7 @@ String _nodeHint(FlowNodeType t) => switch (t) {
 const _examples = [
   'Jeden Morgen um 7 die wichtigsten Tech-News suchen, in 5 Punkten zusammenfassen und mir als Push schicken',
   'Werktags um 17 Uhr das Wetter für morgen in Wien prüfen und nur bei Regen eine Erinnerung an den Schirm schicken',
-  'Wenn sich auf meiner Watchlist etwas ändert, die Änderung zusammenfassen und als Notiz speichern',
+  'Wenn sich bei meinen Beobachtungen etwas ändert, die Änderung zusammenfassen und als Notiz speichern',
 ];
 
 /// Startet einen Prozess – vorher Vorab-Check (zeigt, was fehlt, und bietet Behebung an).
@@ -2038,7 +2038,7 @@ class _NodeInspectorState extends State<_NodeInspector> {
               initialValue: app.watchlist.items.any((w) => w.id == n.str('watchId')) ? n.str('watchId') : '',
               decoration: const InputDecoration(labelText: 'Bei Änderung von'),
               items: [
-                const DropdownMenuItem(value: '', child: Text('jedem Watchlist-Eintrag')),
+                const DropdownMenuItem(value: '', child: Text('jeder Beobachtung')),
                 for (final w in app.watchlist.items.where((w) => w.flowId == null)) DropdownMenuItem(value: w.id, child: Text(w.title)),
               ],
               onChanged: (v) => setState(() => _set('watchId', v ?? '')),

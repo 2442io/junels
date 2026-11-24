@@ -18,11 +18,11 @@ enum AppSection {
   inbox('Benachrichtigungen', Icons.notifications_outlined),
   skills('Skills', Icons.auto_awesome),
   tasks('Geplante Aufgaben', Icons.schedule),
-  flows('Prozesse & Watchlist', Icons.account_tree_outlined),
-  watch('Watchlist', Icons.radar),
-  prompts('Prompt-Vorlagen', Icons.bolt_outlined),
+  flows('Prozesse & Beobachtungen', Icons.account_tree_outlined),
+  watch('Beobachtungen', Icons.radar),
+  prompts('Vorlagen', Icons.bolt_outlined),
   knowledge('Wissen & Gedächtnis', Icons.local_library_outlined),
-  activity('Aktivitäten', Icons.history),
+  activity('Aktivität & Überwachung', Icons.history),
   settings('Einstellungen', Icons.settings_outlined),
   help('Hilfe', Icons.help_outline);
 

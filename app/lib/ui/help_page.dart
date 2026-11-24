@@ -340,7 +340,7 @@ Im Bereich *Artefakte* siehst du die Folien als kleine Bilder. Antippen öffnet 
     keywords: 'email mail whatsapp senden entwurf freigabe karte smtp verwerfen bearbeiten',
     body: '''Bittest du den Agenten, eine E-Mail oder WhatsApp-Nachricht zu schreiben, erscheint eine Karte mit **Senden**, **Bearbeiten** und **Verwerfen**.
 
-- Mit eingerichtetem Mail-Konto (Einstellungen → Gerät & Verbindungen → Tresor & Konten) sendet Junels direkt.
+- Mit eingerichtetem Mail-Konto (Einstellungen → Tresor & Mail-Konto) sendet Junels direkt.
 - Sonst öffnet „Senden“ deine Mail- bzw. WhatsApp-App mit dem fertigen Text.
 - Im Gesprächsmodus genügt ein gesprochenes „Ja“.
 
@@ -438,7 +438,7 @@ Auswahl und Optionen unter Einstellungen → Sprache.''',
     id: 'watchlist',
     category: 'Automatik',
     icon: Icons.radar,
-    title: 'Watchlist',
+    title: 'Beobachtungen (Watchlist)',
     summary: 'Webseiten oder Themen beobachten und bei Änderungen benachrichtigt werden.',
     shot: 'watch',
     open: 'watch',
@@ -580,7 +580,7 @@ Werkzeuge mit Internetzugriff fragen vorher nach (je nach Internet-Schalter des 
 - **MCP-Store**: empfohlene Server (GitHub, Notion, Atlassian, Microsoft, Stripe …) und Suche im offiziellen Verzeichnis – mit einem Tipp hinzufügen.
 - **Anmeldung** im Browser (OAuth); Tokens werden automatisch erneuert und liegen im Tresor.
 
-Zu finden unter Einstellungen → Agent & Werkzeuge → MCP-Store & Server.''',
+Zu finden unter Einstellungen → Erweiterungen → MCP-Store & Server.''',
   ),
   HelpArticle(
     id: 'vault',
@@ -593,7 +593,7 @@ Zu finden unter Einstellungen → Agent & Werkzeuge → MCP-Store & Server.''',
 
 Hier liegen: Mail-Konto (SMTP mit App-Passwort), API-Schlüssel der KI-Anbieter und MCP-Anmeldungen.
 
-Zu finden unter Einstellungen → Gerät & Verbindungen → Tresor & Konten.''',
+Zu finden unter Einstellungen → Tresor & Mail-Konto.''',
   ),
   HelpArticle(
     id: 'sync',
@@ -604,7 +604,7 @@ Zu finden unter Einstellungen → Gerät & Verbindungen → Tresor & Konten.''',
     keywords: 'abgleich sync synchronisieren server wlan verschlüsselt',
     body: '''Junels gleicht Chats, Prompts, Aufgaben und Notizen zwischen Mac und Android ab – über deinen eigenen Server oder direkt im WLAN, **Ende-zu-Ende verschlüsselt**.
 
-Einrichten unter Einstellungen → Gerät & Verbindungen → Abgleich.''',
+Einrichten unter Einstellungen → Konto, Datenschutz & Abgleich.''',
   ),
   HelpArticle(
     id: 'device',
@@ -613,7 +613,7 @@ Einrichten unter Einstellungen → Gerät & Verbindungen → Abgleich.''',
     title: 'Gerät, Kalender & Dateien',
     summary: 'Heimatort, Schnellstart, Kalender, Kontakte, Ordner.',
     keywords: 'heimatort schnellstart startbildschirm dock kalender kontakte anrufen ordner dateien umbenennen verschieben',
-    body: '''Unter Einstellungen → Gerät & Verbindungen → **Gerät & Automatik**:
+    body: '''Unter Einstellungen → **Kalender, Gerät & Ordner**:
 
 - **Heimatort** für Wetter und Morgen-Übersicht.
 - **Schnellstart**: Knöpfe auf dem Startbildschirm (Android) bzw. im Dock-Menü (Mac).
@@ -666,9 +666,9 @@ Bitte prüfe wichtige Angaben – Zahlen, Termine, Namen, rechtliche oder medizi
 
 **Am Mac**: „Jetzt aktualisieren“ lädt die neue Version, öffnet das Installationsfenster und beendet Junels – eine geöffnete App kann macOS nicht ersetzen. Dann Junels auf „Programme“ ziehen, „Ersetzen“ wählen und neu starten. Löschen ist nicht nötig.
 
-**Versionsverlauf**: steht auf derselben Seite unter „Was ist neu“ (Einstellungen → Darstellung & App → Updates & Versionsverlauf).
+**Versionsverlauf**: steht auf derselben Seite unter „Was ist neu“ (Einstellungen → Updates & Neuigkeiten).
 
-**Protokoll**: Unter Einstellungen → Darstellung & App → Protokoll siehst du Fehler, Lade- und Antwortzeiten. Du kannst es kopieren und teilen.''',
+**Protokoll**: Unter Einstellungen → Protokoll siehst du Fehler, Lade- und Antwortzeiten. Du kannst es kopieren und teilen.''',
   ),
   HelpArticle(
     id: 'appearance',
@@ -678,7 +678,7 @@ Bitte prüfe wichtige Angaben – Zahlen, Termine, Namen, rechtliche oder medizi
     summary: 'Hell, Dunkel oder System – und der Fokus-Modus.',
     open: 'settings:app',
     keywords: 'dunkel hell design theme fokus vollbild',
-    body: '''Unter Einstellungen → **Darstellung & App** wählst du Hell, Dunkel oder wie das System.
+    body: '''Unter Einstellungen → **Darstellung & Designs** wählst du Hell, Dunkel oder wie das System.
 
 Der **Fokus-Modus** (Symbol oben rechts im Chat) blendet alle Leisten aus – nur der Chat bleibt.''',
   ),

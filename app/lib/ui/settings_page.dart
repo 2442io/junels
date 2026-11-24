@@ -12,7 +12,9 @@ import '../state/app_scope.dart';
 import '../version.dart';
 import 'device_page.dart';
 import 'info_pages.dart';
+import 'connections_page.dart';
 import 'mcp_page.dart';
+import 'mcp_serve_page.dart';
 import 'model_import.dart';
 import 'profile_editor.dart';
 import 'providers_page.dart';
@@ -30,22 +32,66 @@ import 'theme.dart';
 import 'update_page.dart';
 import 'quick_nav.dart';
 
-class SettingsSection {
-  const SettingsSection(this.id, this.icon, this.title, this.subtitle);
+/// Ein Eintrag der Einstellungen: entweder ein Bereich (eigener Inhalt) oder eine eigene Seite.
+class SettingsEntry {
+  const SettingsEntry(this.id, this.group, this.icon, this.title, this.subtitle, {this.keywords = const [], this.open});
   final String id;
+  final String group;
   final IconData icon;
   final String title;
   final String subtitle;
+
+  /// Begriffe, die in diesem Bereich vorkommen (für die Suche)
+  final List<String> keywords;
+
+  /// Eigene Seite statt Bereich
+  final void Function(BuildContext context)? open;
+
+  bool get isSection => open == null;
 }
 
-const settingsSections = [
-  SettingsSection('models', Icons.memory, 'Lokale Modelle', 'Systemcheck, Modell laden, Context'),
-  SettingsSection('providers', Icons.cloud_outlined, 'KI-Anbieter', 'On-Prem und Cloud, Freigaben'),
-  SettingsSection('agent', Icons.smart_toy_outlined, 'Agent & Werkzeuge', 'Profil, Werkzeuge, MCP-Server'),
-  SettingsSection('voice', Icons.graphic_eq, 'Sprache', 'Erkennung, Stimme, Vorlesen'),
-  SettingsSection('connections', Icons.devices_other, 'Gerät & Verbindungen', 'Heimatort, Abgleich, Tresor, Ordner'),
-  SettingsSection('app', Icons.tune, 'Darstellung & App', 'Design, Updates, Protokoll'),
-];
+/// Alle Einstellungen, geordnet nach dem, was man erledigen will.
+List<SettingsEntry> settingsEntries(AppController app) => [
+      SettingsEntry('models', 'KI', Icons.memory, 'Modell auf dem Gerät',
+          app.engine == null ? 'Kein Modell geladen · Systemcheck, Modelle laden' : 'Systemcheck, Modell laden, automatische Modellwahl',
+          keywords: ['Systemcheck', 'Context', 'GGUF', 'schnelles Modell', 'starkes Modell', 'Download', 'lokal']),
+      SettingsEntry('providers', 'KI', Icons.cloud_outlined, 'Cloud & eigene Server',
+          app.providers.isEmpty ? 'OpenAI, Claude, Gemini, Ollama … verbinden' : '${app.providers.length} Anbieter · wann die Cloud helfen darf',
+          keywords: ['KI-Anbieter', 'OpenAI', 'Anthropic', 'Claude', 'Gemini', 'Ollama', 'On-Prem', 'Hybrid', 'API-Schlüssel', 'Routing']),
+      SettingsEntry('agent', 'KI', Icons.smart_toy_outlined, 'Agent & Werkzeuge', 'Profil, Persönlichkeit, welche Werkzeuge der Agent nutzt',
+          keywords: ['Profil', 'Systemprompt', 'Werkzeuge', 'Tools', 'Websuche', 'Wetter']),
+      SettingsEntry('voice', 'KI', Icons.graphic_eq, 'Sprache & Stimme', 'Spracheingabe, Stimme, Vorlesen',
+          keywords: ['Whisper', 'Mikrofon', 'Vorlesen', 'Stimme', 'Wake-Word', 'Gesprächsmodus']),
+      SettingsEntry('ext', 'Verbindungen', Icons.extension_outlined, 'Erweiterungen',
+          'MCP-Server, Junels für andere Programme, Web-Zugänge, Apps steuern',
+          keywords: ['MCP', 'MCP-Store', 'MCP-Server', 'Claude Desktop', 'n8n', 'Dify', 'Zugänge', 'OAuth', 'API', 'Spotify', 'Apps']),
+      SettingsEntry('device', 'Verbindungen', Icons.event_outlined, 'Kalender, Gerät & Ordner',
+          app.settings.homeCity.isEmpty ? 'Kalender-Abo, Heimatort, Schnellstart, beobachtete Ordner' : 'Heimatort ${app.settings.homeCity} · Kalender-Abo · Ordner',
+          keywords: ['Kalender', 'iCal', 'Google Kalender', 'Kalender prüfen', 'Heimatort', 'Morgen-Übersicht', 'Ordner', 'Teilen', 'Schnellstart', 'Widget'],
+          open: openDevicePage),
+      SettingsEntry('vault', 'Verbindungen', Icons.lock_outline, 'Tresor & Mail-Konto',
+          app.settings.smtpReady ? 'Mail-Konto ${app.settings.smtpUser}' : 'Passwörter und Schlüssel sicher ablegen, Mail direkt senden',
+          keywords: ['Passwort', 'Schlüssel', 'SMTP', 'E-Mail', 'IMAP'], open: openVault),
+      SettingsEntry('notify', 'Alltag', Icons.notifications_outlined, 'Benachrichtigungen', 'Arten an/aus, Ruhezeit, Infos gesammelt',
+          keywords: ['Push', 'Ruhezeit', 'Erinnerung', 'Warnung', 'Ton'], open: openNotifySettings),
+      SettingsEntry('app', 'Alltag', Icons.palette_outlined, 'Darstellung & Designs', 'Hell/Dunkel, eigene Designs für Präsentationen und PDFs',
+          keywords: ['Dunkel', 'Hell', 'Theme', 'Design', 'CI', 'Präsentation', 'Schrift', 'Farben']),
+      SettingsEntry('sync', 'Daten & Konto', Icons.shield_outlined, 'Konto, Datenschutz & Abgleich',
+          app.sync.config.level >= 0
+              ? 'Stufe ${app.sync.config.level}: ${PrivacyLevel.all[app.sync.config.level].title}'
+                  '${app.sync.ssoSignedIn ? ' · ${app.sync.config.ssoName.isNotEmpty ? app.sync.config.ssoName : app.sync.config.ssoEmail}' : ''}'
+              : 'Datenschutz-Stufe, SSO-Konto, Abgleich Mac ↔ Handy',
+          keywords: ['SSO', 'Anmelden', 'Datenschutz', 'Sync', 'Abgleich', 'Server', 'WLAN', 'Konto'], open: openSync),
+      SettingsEntry('data', 'Daten & Konto', Icons.archive_outlined, 'Sicherung & Geräte-Setups', 'Alles sichern oder wiederherstellen, Einstellungen je Gerät',
+          keywords: ['Backup', 'Export', 'Import', 'Wiederherstellen', 'Setup', 'Desktop', 'Handy']),
+      SettingsEntry('updates', 'Hilfe & Wartung', Icons.system_update_outlined, 'Updates & Neuigkeiten',
+          app.updates.available.value != null ? 'Neue Version ${app.updates.available.value!.version} verfügbar' : 'Installiert: $appVersion · Was ist neu?',
+          keywords: ['Version', 'Changelog', 'Aktualisieren'], open: openUpdates),
+      SettingsEntry('selftest', 'Hilfe & Wartung', Icons.health_and_safety_outlined, 'Selbsttest', 'Junels prüft sich selbst – Bericht zum Teilen',
+          keywords: ['Fehler', 'Test', 'Diagnose', 'funktioniert nicht'], open: openSelfTest),
+      SettingsEntry('log', 'Hilfe & Wartung', Icons.receipt_long_outlined, 'Protokoll', 'Technische Fehler und Zeiten',
+          keywords: ['Log', 'Fehler', 'Debug'], open: openLog),
+    ];
 
 Future<void> openSettings(BuildContext context, {String? section}) => Navigator.of(context)
     .push(MaterialPageRoute(builder: (_) => SettingsPage(initial: section)));
@@ -60,97 +106,131 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late String _section = widget.initial ?? 'models';
+  final _search = TextEditingController();
+  String _q = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Treffer der Suche: Eintrag + passender Begriff
+  List<(SettingsEntry, String?)> _filtered(List<SettingsEntry> all) {
+    final q = _q.trim().toLowerCase();
+    if (q.isEmpty) return [for (final e in all) (e, null)];
+    return [
+      for (final e in all)
+        if (e.title.toLowerCase().contains(q) || e.subtitle.toLowerCase().contains(q))
+          (e, null)
+        else if (e.keywords.where((k) => k.toLowerCase().contains(q)).firstOrNull case final k?)
+          (e, k)
+    ];
+  }
+
+  void _activate(BuildContext context, SettingsEntry e, {required bool wide}) {
+    if (e.open != null) {
+      e.open!(context);
+    } else if (wide) {
+      setState(() => _section = e.id);
+    } else {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => _SectionPage(id: e.id)));
+    }
+  }
+
+  Widget _searchField(AppColors c) => TextField(
+        controller: _search,
+        onChanged: (v) => setState(() => _q = v),
+        decoration: InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Icons.search, size: 18, color: c.faint),
+          hintText: 'Einstellung suchen – z. B. Kalender, Stimme, MCP',
+          suffixIcon: _q.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  onPressed: () => setState(() {
+                    _search.clear();
+                    _q = '';
+                  })),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final app = AppScope.of(context);
+    final all = settingsEntries(app);
+    final hits = _filtered(all);
+    final groups = <String>[for (final e in all) e.group].toSet().toList();
     return LayoutBuilder(builder: (context, box) {
       final wide = box.maxWidth >= 760;
       if (!wide) {
-        if (widget.initial != null) return _SectionPage(id: widget.initial!);
+        if (widget.initial != null && all.any((e) => e.id == widget.initial && e.isSection)) return _SectionPage(id: widget.initial!);
         return Scaffold(
           appBar: JAppBar(title: const Text('Einstellungen')),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
             children: [
-              for (final s in settingsSections)
+              _searchField(c),
+              if (hits.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Panel(
-                    padding: EdgeInsets.zero,
-                    onTap: () => Navigator.of(context)
-                        .push(MaterialPageRoute(builder: (_) => _SectionPage(id: s.id))),
-                    child: ListTile(
-                      leading: _SectionIcon(s.icon),
-                      title: Text(s.title),
-                      subtitle: Text(s.subtitle),
-                      trailing: const Icon(Icons.chevron_right),
-                    ),
-                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Text('Nichts gefunden. Tipp: in der Hilfe suchen.', style: Theme.of(context).textTheme.bodySmall),
                 ),
-              // Direkt erreichbar, ohne Unterseite
-              for (final (icon, title, sub, open) in [
-                (Icons.health_and_safety_outlined, 'Selbsttest', 'Junels prüft sich selbst – Bericht zum Teilen', openSelfTest),
-                (Icons.notifications_outlined, 'Benachrichtigungen', 'Arten an/aus, Ruhezeit, Infos gesammelt', openNotifySettings),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Panel(
+              for (final g in groups)
+                if (hits.any((h) => h.$1.group == g)) ...[
+                  SectionLabel(g, padding: const EdgeInsets.fromLTRB(4, 18, 4, 8)),
+                  Panel(
                     padding: EdgeInsets.zero,
-                    onTap: () => open(context),
-                    child: ListTile(
-                      leading: _SectionIcon(icon),
-                      title: Text(title),
-                      subtitle: Text(sub),
-                      trailing: const Icon(Icons.chevron_right),
-                    ),
+                    child: Column(children: [
+                      for (final (e, kw) in hits.where((h) => h.$1.group == g))
+                        ListTile(
+                          leading: _SectionIcon(e.icon),
+                          title: Text(e.title),
+                          subtitle: Text(kw == null ? e.subtitle : 'enthält „$kw“', maxLines: 2, overflow: TextOverflow.ellipsis),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => _activate(context, e, wide: false),
+                        ),
+                    ]),
                   ),
-                ),
-              const SizedBox(height: 8),
+                ],
+              const SizedBox(height: 16),
               Center(child: MonoText('Junels $appVersion · Build $appBuild')),
             ],
           ),
         );
       }
-      final current = settingsSections.firstWhere((s) => s.id == _section, orElse: () => settingsSections.first);
+      final current = all.firstWhere((e) => e.id == _section && e.isSection, orElse: () => all.first);
       return Scaffold(
         appBar: JAppBar(title: const Text('Einstellungen')),
         body: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Container(
-            width: 260,
+            width: 280,
             decoration: BoxDecoration(color: c.panel, border: Border(right: BorderSide(color: c.border))),
             child: ListView(padding: const EdgeInsets.all(10), children: [
-              for (final s in settingsSections)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: ListTile(
-                    dense: true,
-                    selected: s.id == _section,
-                    leading: Icon(s.icon, size: 20, color: s.id == _section ? c.mint : null),
-                    title: Text(s.title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                    onTap: () => setState(() => _section = s.id),
-                  ),
-                ),
-              const Divider(height: 20),
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.health_and_safety_outlined, size: 20),
-                title: const Text('Selbsttest', style: TextStyle(fontWeight: FontWeight.w500)),
-                onTap: () => openSelfTest(context),
-              ),
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.notifications_outlined, size: 20),
-                title: const Text('Benachrichtigungen', style: TextStyle(fontWeight: FontWeight.w500)),
-                onTap: () => openNotifySettings(context),
-              ),
+              _searchField(c),
+              for (final g in groups)
+                if (hits.any((h) => h.$1.group == g)) ...[
+                  SectionLabel(g, padding: const EdgeInsets.fromLTRB(8, 14, 8, 4)),
+                  for (final (e, kw) in hits.where((h) => h.$1.group == g))
+                    ListTile(
+                      dense: true,
+                      selected: e.id == current.id,
+                      leading: Icon(e.icon, size: 20, color: e.id == current.id ? c.mint : null),
+                      title: Text(e.title, style: const TextStyle(fontWeight: FontWeight.w500)),
+                      subtitle: kw == null ? null : Text('enthält „$kw“', style: TextStyle(fontSize: 11, color: c.faint)),
+                      trailing: e.open == null ? null : Icon(Icons.open_in_new, size: 14, color: c.faint),
+                      onTap: () => _activate(context, e, wide: true),
+                    ),
+                ],
               const SizedBox(height: 16),
               Center(child: MonoText('Junels $appVersion · Build $appBuild', size: 10.5)),
             ]),
           ),
           Expanded(
             child: ListView(
-              key: ValueKey(_section),
+              key: ValueKey(current.id),
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 48),
               children: [
                 Center(
@@ -191,7 +271,7 @@ class _SectionPage extends StatelessWidget {
   final String id;
   @override
   Widget build(BuildContext context) {
-    final s = settingsSections.firstWhere((x) => x.id == id);
+    final s = settingsEntries(AppScope.read(context)).firstWhere((x) => x.id == id);
     return Scaffold(
       appBar: JAppBar(title: Text(s.title)),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 48), children: [SettingsBody(id: id)]),
@@ -219,29 +299,64 @@ class SettingsBody extends StatelessWidget {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           group(null, [_ModelSection(app: app)]),
           group('Automatische Modellwahl', [_AutoModelSection(app: app)]),
+          group('Beim Start', [
+            SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              title: const Text('Letztes Modell beim Start laden'),
+              subtitle: const Text('Antworten sind sofort bereit, braucht aber Arbeitsspeicher'),
+              value: app.settings.autoLoadLastModel,
+              onChanged: app.setAutoLoad,
+            ),
+          ]),
         ]);
       case 'providers':
         return const ProvidersSettings();
       case 'agent':
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           group('Profil', [_ProfileSection(app: app)]),
-          group('Erweiterungen', [
-            _NavTile(
-              icon: Icons.hub_outlined,
-              title: 'MCP-Store & Server',
-              subtitle: app.mcpServers.isEmpty
-                  ? 'Weitere Werkzeuge anbinden (Slack, Gmail, Notion …)'
-                  : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Werkzeuge',
-              onTap: () => openMcp(context),
-            ),
-            _NavTile(
-              icon: Icons.apps,
-              title: 'Apps steuern',
-              subtitle: AppScope.of(context).allowedApps.isEmpty
-                  ? 'Freigabeliste: welche Apps (z. B. Spotify) der Agent öffnen und steuern darf'
-                  : '${AppScope.of(context).allowedApps.map((a) => a.name).join(', ')} freigegeben',
-              onTap: () => openAppsPage(context),
-            ),
+          group('Werkzeuge', [_ToolSection(app: app)]),
+        ]);
+      case 'voice':
+        return group(null, [_VoiceSection(app: app)]);
+      case 'ext':
+        return group(null, [
+          _NavTile(
+            icon: Icons.hub_outlined,
+            title: 'MCP-Store & Server',
+            subtitle: app.mcpServers.isEmpty
+                ? 'Weitere Werkzeuge anbinden (Slack, Gmail, Notion, GitHub …)'
+                : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Werkzeuge',
+            onTap: () => openMcp(context),
+          ),
+          _NavTile(
+            icon: Icons.cable_outlined,
+            title: 'Junels für andere Programme',
+            subtitle: app.mcpServe.running
+                ? 'An · ${app.mcpServe.url}'
+                : 'Aus · Claude Desktop, n8n, Dify … deine Skills und Prozesse nutzen lassen',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const McpServePage())),
+          ),
+          _NavTile(
+            icon: Icons.key_outlined,
+            title: 'Web-Zugänge',
+            subtitle: app.connections.items.isEmpty
+                ? 'Anmeldungen für Web-APIs und Plattformen (API-Schlüssel, Google, SSO)'
+                : '${app.connections.items.length} Zugänge',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ConnectionsPage())),
+          ),
+          _NavTile(
+            icon: Icons.apps,
+            title: 'Apps steuern',
+            subtitle: app.allowedApps.isEmpty
+                ? 'Welche Apps (z. B. Spotify) der Agent öffnen und steuern darf'
+                : '${app.allowedApps.map((a) => a.name).join(', ')} freigegeben',
+            onTap: () => openAppsPage(context),
+          ),
+        ]);
+      case 'app':
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          group('Darstellung', [_SettingsSection(app: app)]),
+          group('Designs', [
             _NavTile(
               icon: Icons.palette_outlined,
               title: 'Eigene Designs',
@@ -251,81 +366,21 @@ class SettingsBody extends StatelessWidget {
               onTap: () => openDesigns(context),
             ),
           ]),
-          group('Werkzeuge', [_ToolSection(app: app)]),
         ]);
-      case 'voice':
-        return group(null, [_VoiceSection(app: app)]);
-      case 'connections':
+      case 'data':
         return group(null, [
           _NavTile(
-            icon: Icons.health_and_safety_outlined,
-            title: 'Selbsttest',
-            subtitle: 'Junels prüft sich selbst (Kalender, Zeitpläne, Modell, Sync …) – Bericht zum Teilen',
-            onTap: () => openSelfTest(context),
+            icon: Icons.archive_outlined,
+            title: 'Sicherung',
+            subtitle: 'Alle Chats, Prozesse und Einstellungen exportieren oder wiederherstellen',
+            onTap: () => openBackup(context),
           ),
           _NavTile(
-            icon: Icons.notifications_outlined,
-            title: 'Benachrichtigungen',
-            subtitle: 'Arten (Aktion, Warnung, Erinnerung, Ergebnis, Info), Ruhezeit',
-            onTap: () => openNotifySettings(context),
+            icon: Icons.devices_outlined,
+            title: 'Geräte-Setups',
+            subtitle: 'Einstellungen als „Desktop“, „Handy“ … speichern und anwenden',
+            onTap: () => openSetups(context),
           ),
-          _NavTile(
-            icon: Icons.home_outlined,
-            title: 'Gerät & Automatik',
-            subtitle: app.settings.homeCity.isEmpty ? 'Heimatort, Schnellstart, beobachtete Ordner' : 'Heimatort ${app.settings.homeCity} · Schnellstart · Ordner',
-            onTap: () => openDevicePage(context),
-          ),
-          _NavTile(
-            icon: Icons.shield_outlined,
-            title: 'Konto, Daten & Abgleich',
-            subtitle: app.sync.config.level >= 0
-                ? 'Datenschutz-Stufe ${app.sync.config.level}: ${PrivacyLevel.all[app.sync.config.level].title}'
-                    '${app.sync.ssoSignedIn ? ' · ${app.sync.config.ssoName.isNotEmpty ? app.sync.config.ssoName : app.sync.config.ssoEmail}' : ''}'
-                : !app.sync.configured
-                ? 'Datenschutz-Stufe wählen, SSO-Konto, Abgleich Mac ↔ Handy'
-                : app.sync.lastSync == null
-                    ? 'Eingerichtet'
-                    : 'Zuletzt ${TimeOfDay.fromDateTime(app.sync.lastSync!).format(context)}',
-            onTap: () => openSync(context),
-          ),
-          _NavTile(
-            icon: Icons.lock_outline,
-            title: 'Tresor & Konten',
-            subtitle: app.settings.smtpReady ? 'Mail-Konto ${app.settings.smtpUser}' : 'Passwörter und Schlüssel sicher ablegen, Mail direkt senden',
-            onTap: () => openVault(context),
-          ),
-        ]);
-      case 'app':
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          group('Darstellung', [_SettingsSection(app: app)]),
-          group('App', [
-            _NavTile(
-              icon: Icons.system_update_outlined,
-              title: 'Updates & Versionsverlauf',
-              subtitle: app.updates.available.value != null
-                  ? 'Neue Version ${app.updates.available.value!.version} verfügbar'
-                  : 'Installiert: $appVersion · Was ist neu?',
-              onTap: () => openUpdates(context),
-            ),
-            _NavTile(
-              icon: Icons.devices_outlined,
-              title: 'Geräte-Setups',
-              subtitle: 'Einstellungen als „Desktop“, „Handy“ … speichern und anwenden',
-              onTap: () => openSetups(context),
-            ),
-            _NavTile(
-              icon: Icons.archive_outlined,
-              title: 'Sicherung',
-              subtitle: 'Alle Chats, Prozesse und Einstellungen exportieren oder wiederherstellen',
-              onTap: () => openBackup(context),
-            ),
-            _NavTile(
-              icon: Icons.receipt_long_outlined,
-              title: 'Protokoll',
-              subtitle: 'Fehler und Zeiten einsehen',
-              onTap: () => openLog(context),
-            ),
-          ]),
         ]);
     }
     return const SizedBox();
@@ -844,7 +899,7 @@ class _SettingsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionTitle('Einstellungen'),
+        const _SectionTitle('Erscheinungsbild'),
         SegmentedButton<int>(
           segments: const [
             ButtonSegment(value: 0, label: Text('System'), icon: Icon(Icons.brightness_auto, size: 18)),
@@ -864,13 +919,6 @@ class _SettingsSection extends StatelessWidget {
             2 => true,
             _ => null,
           }),
-        ),
-        SwitchListTile(
-          dense: true,
-          contentPadding: const EdgeInsets.only(left: 4),
-          title: const Text('Letztes Modell beim Start laden'),
-          value: app.settings.autoLoadLastModel,
-          onChanged: app.setAutoLoad,
         ),
       ],
     );

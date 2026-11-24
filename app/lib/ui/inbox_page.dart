@@ -412,7 +412,7 @@ class _TodoSection extends StatelessWidget {
         _TodoCard(
           kind: NotifyKind.info,
           icon: Icons.radar,
-          title: '$unseen neue ${unseen == 1 ? 'Meldung' : 'Meldungen'} in der Watchlist',
+          title: '$unseen neue ${unseen == 1 ? 'Meldung' : 'Meldungen'} bei den Beobachtungen',
           detail: 'Noch nicht angesehen',
           primary: ('Ansehen', () {
             // genau eine Beobachtung mit Neuem → direkt dorthin, sonst die Liste

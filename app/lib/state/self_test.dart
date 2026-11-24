@@ -128,7 +128,7 @@ class SelfTest {
           ? (CheckState.ok, '${app.flows.flows.length} Prozesse, ${app.flows.flows.where((f) => f.enabled).length} aktiv')
           : (CheckState.warn, 'Zuletzt fehlgeschlagen: ${failed.join(', ')}');
     });
-    await _check('Zeitpläne', 'Watchlist', () async {
+    await _check('Zeitpläne', 'Beobachtungen', () async {
       final err = [for (final w in app.watchlist.items) if ((w.lastError ?? '').isNotEmpty) w.title];
       return err.isEmpty
           ? (CheckState.ok, '${app.watchlist.items.length} Beobachtungen')

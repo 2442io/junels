@@ -700,7 +700,7 @@ class WatchlistPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: JAppBar(
-        title: const Text('Watchlist'),
+        title: const Text('Beobachtungen'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
@@ -723,7 +723,7 @@ class WatchlistPage extends StatelessWidget {
                 children: [
                   const PageHeader(
                     icon: Icons.radar,
-                    title: 'Watchlist',
+                    title: 'Beobachtungen',
                     subtitle:
                         'Junels prüft Webseiten und Themen regelmäßig – auch minütlich – und meldet sich, wenn es Neues gibt. '
                         'Jede Beobachtung ist ein Prozess im Canvas.',
