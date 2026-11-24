@@ -43,6 +43,48 @@ Future<void> main() async {
   final envModel = Platform.environment['AE_TEST_MODEL'] ?? '';
   final modelPath = envModel.isEmpty ? null : envModel;
 
+  await group('Agent-Test-Satz: Werkzeug-Auswahl', () async {
+    final names = [for (final t in evalToolSpecs) t.name, 'look_at_image', 'text_search', 'json_query', 'write_artifact', 'file_rename', 'file_move'];
+    var fails = 0;
+    for (final c in agentCases) {
+      final p = checkRouting(c, names);
+      if (p.isNotEmpty) fails++;
+      check(p.isEmpty, '${c.id}: ${p.isEmpty ? 'ok' : p.join('; ')}');
+    }
+    print('  Auswahl: ${agentCases.length - fails}/${agentCases.length} Fälle richtig');
+    check(agentCases.map((c) => c.id).toSet().length == agentCases.length, 'Fall-IDs eindeutig');
+    for (final c in agentCases) {
+      for (final t in c.call) {
+        check(evalToolSpecs.any((s) => s.name == t), '${c.id}: Test-Werkzeug „$t“ vorhanden');
+      }
+    }
+  });
+
+  await group('Agent-Test-Satz: Auswertung', () async {
+    // Skript-Modell ruft das Wetter auf und antwortet mit den Testdaten
+    final be = ScriptedBackend([
+      'Mir geht es gut, danke!',
+      '{"thought": "Wetter abrufen", "action": "weather", "args": {"ort": "Wien"}}',
+      '{"thought": "fertig", "final_answer": "Morgen in Wien 12 °C mit leichtem Regen."}',
+    ]);
+    final ev = AgentEvaluator(backend: be, systemPrompt: evalSystemPrompt, tools: evalToolSpecs, model: 'Skript');
+    final rep = await ev.run(agentCases.where((c) => c.id == 'wetter' || c.id == 'gruss').toList());
+    check(rep.results.length == 2, 'zwei Fälle gelaufen');
+    final w = rep.results.firstWhere((r) => r.c.id == 'wetter');
+    check(w.passed && w.called.contains('weather'), 'Wetter-Fall bestanden: ${w.problems}');
+    check(rep.results.firstWhere((r) => r.c.id == 'gruss').passed, 'Gruß ohne Werkzeug bestanden');
+    check(rep.toMarkdown().contains('2/2'), 'Bericht: 2/2');
+    // Fehlverhalten wird erkannt
+    final be2 = ScriptedBackend(['{"thought": "", "final_answer": "Das Wetter wird schön."}']);
+    final r2 = await AgentEvaluator(backend: be2, systemPrompt: evalSystemPrompt, tools: evalToolSpecs)
+        .runCase(agentCases.firstWhere((c) => c.id == 'wetter'));
+    check(!r2.passed && r2.problems.any((p) => p.contains('erwartet weather')), 'ohne Werkzeug-Aufruf → durchgefallen');
+    // ausgeschaltetes Werkzeug → übersprungen
+    final r3 = await AgentEvaluator(backend: be2, systemPrompt: evalSystemPrompt, tools: [evalToolSpecs.first])
+        .runCase(agentCases.firstWhere((c) => c.id == 'kalender'));
+    check(r3.skipped, 'fehlendes Werkzeug → übersprungen');
+  });
+
   await group('Agent-Plattformen', () async {
     final dify = jsonDecode(platformRequestBody(AgentPlatform.dify, Uri.parse('https://api.dify.ai/v1/workflows/run'), 'Hallo', inputKey: 'text')) as Map;
     check(dify['inputs']['text'] == 'Hallo' && dify['response_mode'] == 'blocking', 'Dify-Workflow: inputs');

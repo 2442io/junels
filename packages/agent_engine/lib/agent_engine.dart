@@ -51,3 +51,5 @@ export 'src/model_router.dart';
 export 'src/http_call.dart';
 export 'src/platforms.dart';
 export 'src/mcp_serve.dart';
+export 'src/harness/routing.dart';
+export 'src/harness/eval.dart';

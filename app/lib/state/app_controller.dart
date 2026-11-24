@@ -2174,99 +2174,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  static final _makeVerb = RegExp(r'erstell|mach|bau|generier|erzeug|schreib|gestalt|überarbeit|entwirf|entwerf|anlegen|leg .* an|exportier|als (pdf|powerpoint|pptx|datei)|brauche|hätte gern|möchte',
-      caseSensitive: false);
-  static final _deckWord = RegExp(r'präsentation|powerpoint|folien|pptx|slides|foliensatz|slide ?deck', caseSensitive: false);
-  static final _docWord = RegExp(r'\bpdf\b|word-?dokument|dokument|handout|bericht als', caseSensitive: false);
-
-  /// Verlangt die Nachricht eine Datei? → Werkzeug, das der Agent dafür nutzen muss.
-  static final _editIntent = RegExp(r'(folie|abschnitt|kapitel|seite)\s*\d+|überarbeit|ändere|ersetze|lösche|füge .* ein|ergänze|kürze|korrigier',
-      caseSensitive: false);
-
-  static String? requiredToolFor(String text, {bool hasFiles = false}) {
-    // Bestehende Datei ändern („Folie 3 überarbeiten“) – edit_file oder neu erstellen zählt
-    if (hasFiles && _editIntent.hasMatch(text) && !RegExp(r'neue (präsentation|powerpoint|datei|pdf)', caseSensitive: false).hasMatch(text)) {
-      return 'edit_file|create_presentation|create_document';
-    }
-    if (!_makeVerb.hasMatch(text)) return null;
-    if (_deckWord.hasMatch(text)) return 'create_presentation';
-    if (_docWord.hasMatch(text)) return 'create_document';
-    return null;
-  }
-
-  /// Auslöser je Werkzeug: Nur wenn die Nachricht danach klingt, bekommt das Modell
-  /// das Werkzeug zu sehen. Für „Hi“ oder normale Fragen gibt es gar keine Werkzeuge –
-  /// dann antwortet das Modell direkt (ein Durchlauf statt Agenten-Schleife).
-  static final _toolTriggers = <String, RegExp>{
-    'browser': RegExp(r'browser|https?://|flug|flüge|flight|\bvols?\b|vuelos?|voli\b|hotel|unterkunft|zimmer frei|bahn|zugticket|train|billet|ticket|reservier|buchen|booking|verfügbar|'
-        r'tarif|\bprix\b|price|prezz|precio|günstigst|cheapest|moins cher|'
-        r'\b[a-z0-9-]+\.(at|de|com|ch|li|net|org|io|eu|info|fyi|app|dev|ai|co|shop)\b|öffne\w* .*(seite|webseite|website)|geh\w* auf|navigier|klick|surf|'
-        r'amazon|ebay|willhaben|shop|bestell|anmelde|formular|auf der seite|im browser|such\w* (auf|bei) '),
-    'web_fetch': RegExp(r'https?://|www\.|\b[\w-]+\.(com|at|de|ch|li|org|net|io|eu|fyi|ai|app)\b|webseite|website|link\b|artikel'),
-    'site_search': RegExp(r'amazon|ebay|geizhals|idealo|willhaben|otto\.de|mediamarkt|thalia|chefkoch|wikipedia|'
-        r'shop|kaufen|bestell|angebot|günstig|preisvergleich|produkt|auf [\w-]+\.(at|de|com)\b.*such|such\w* (auf|bei) '),
-    'web_search': RegExp(r'internet|im netz|online|google|web\b|search|look up|find\b|cherche|recherche|regarde|trouve|busca|cerca|'
-        r'flug|flüge|flight|\bvols?\b|hotel|tarif|\bprix\b|price|prezz|precio|actuel|current|latest|'
-        r'such(e|en)? (im|nach|mal|mir)|such mir|finde (mir|im)|recherch|'
-        r'angebot|kaufen|empfehl\w* .*(produkt|marke)|vergleich|test(sieger|bericht)|'
-        r'aktuell|neueste|letzte woche|börse|aktienkurs|wechselkurs|was kostet|preis von|wer ist (der|die) (aktuelle|neue)'),
-    // Wortgrenzen: „Regenbogen“, „Windows“, „Jackett“ sind keine Wetterfragen
-    'weather': RegExp(r'wetter|\bregen\b|regnet|regenschirm|temperatur|\d+\s*grad\b|\bgrad (wird|hat|haben)|\bschnee\b|schneit|sonnig|'
-        r'\bwind(ig)?\b|gewitter|\bschirm\b|\bjacke\b|vorhersage'),
-    'news': RegExp(r'news|nachrichten|schlagzeilen|neuigkeiten|neues (zu|von|aus|über|bei|in)|was gibt.s neues|was gibt es neues|meldungen|presse|morgen-übersicht'),
-    'contacts_search': RegExp(r'nummer von|telefonnummer|handynummer|e-?mail-?adresse von|adresse von|kontakt'),
-    'compose_email': RegExp(r'e-?mail|\bmail\b|mail an|mailen'),
-    'compose_whatsapp': RegExp(r'whats ?app|\bwa\b'),
-    'call_phone': RegExp(r'ruf\w* .*\ban\b|anrufen|telefonier|\banruf'),
-    'calendar_add': RegExp(r'termin|kalender|eintragen|trag .* ein|meeting|besprechung|einladung|veranstaltung|plakat|flyer'),
-    'calendar_list': RegExp(r'termin|kalender|was steht|was hab ich|habe ich (heute|morgen)|agenda|tagesplan|morgen-übersicht|bin ich (frei|verfügbar)'),
-    'file_search': RegExp(r'datei|dateien|ordner|dokumente? (finden|suchen)|finde .*\.(pdf|docx?|xlsx?|jpg|png)|downloads|schreibtisch'),
-    'file_rename': RegExp(r'umbenenn|benenn|dateinamen?'),
-    'file_move': RegExp(r'verschieb|sortier|aufräumen|ordne|in den ordner'),
-    'calculator': RegExp(r'\d\s*(%|prozent|[+*/^×÷]|mal\b|geteilt|plus|minus|hoch)|rechne|berechne|wurzel|zins'),
-    'datetime': RegExp(r'uhrzeit|wie spät|datum|wochentag|welcher tag|kalenderwoche|wie lange (noch )?bis|in \d+ tagen'),
-    'remember': RegExp(r'merk dir|merke dir|vergiss|behalte|notier dir|erinnere dich|was weißt du über mich'),
-    'send_notification': RegExp(r'erinner|wecker|benachrichtig|push|in \d+ (minuten|stunden)|um \d{1,2}[:.]\d{2}|morgen um'),
-    'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
-    'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
-    'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
-    'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|spiel|abspielen|play|pause|nächste[rn]? (lied|titel|song)|weiter|lauter|musik|playlist|podcast|youtube|\bsuch|\bfind|\bhör|jazz|song|lied|album|künstler|band\b'),
-    'mail_inbox': RegExp(r'\bmails?\b|e-?mails?|posteingang|inbox|unbeantwortet|ungelesen|nachrichten von|hat .* geschrieben|liegengeblieben|unerledigt'),
-    'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
-    'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
-    'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
-    'skill_erstellen': RegExp(r'\bskills?\b|fähigkeit'),
-    'generate_image': RegExp(r'(erstell|generier|mal|zeichne|erzeug)\w* .*\b(bild|foto|illustration|logo|grafik)|bild von|zeichne|male mir'),
-    'knowledge_search': RegExp(r'wissensbasis|meine(n)? (dokument|unterlagen|quellen|notizen)|laut (dem|der|meinen)|im dokument'),
-    'search_history': RegExp(r'früher|letztes mal|haben wir (schon|mal)|hatte ich|verlauf|vorhin|gestern (gesagt|gefragt)'),
-    'read_file': RegExp(r'datei|file|\.txt|\.csv|\.md\b'),
-    'text_search': RegExp(r'such(e|en)? (in|im) (der|dem|den) (datei|text)'),
-    'json_query': RegExp(r'\bjson\b'),
-    'write_artifact': RegExp(r'\bhtml\b|webseite (bauen|erstellen)|artefakt|code (für|schreiben)|skript'),
-  };
+  static String? requiredToolFor(String text, {bool hasFiles = false}) => ToolRouter.requiredToolFor(text, hasFiles: hasFiles);
 
   /// Werkzeuge passend zur Nachricht (Chat und Gespräch).
-  List<AgentTool> toolsFor(String input, {bool hasImages = false, bool hasDocs = false}) {
-    final t = input.toLowerCase();
-    final words = RegExp(r'[\p{L}\d]{5,}', unicode: true).allMatches(t).map((m) => m.group(0)!).toSet();
-    return [
-      for (final tool in activeTools)
-        if (_toolTriggers[tool.name]?.hasMatch(t) ??
-            (tool.name == 'look_at_image'
-                ? hasImages
-                : tool.name.contains('__')
-                    // MCP: wenn Wörter aus Name/Beschreibung in der Nachricht vorkommen
-                    ? words.any((w) => '${tool.name} ${tool.title} ${tool.description}'.toLowerCase().contains(w))
-                    : false))
-          tool
-        else if (hasDocs && (tool.name == 'knowledge_search' || tool.name == 'read_file'))
-          tool
-        // „Was ist liegengeblieben?“: auch Mail-/Aufgaben-Werkzeuge (MCP) und Kalender
-        else if ((_toolTriggers['find_loose_ends']?.hasMatch(t) ?? false) &&
-            (tool.name == 'calendar_list' || (tool.name.contains('__') && looseEndsMcp.hasMatch('${tool.name} ${tool.title} ${tool.description}'))))
-          tool,
-    ];
-  }
+  List<AgentTool> toolsFor(String input, {bool hasImages = false, bool hasDocs = false}) =>
+      ToolRouter.select(activeTools, (t) => (name: t.name, title: t.title, description: t.description), input,
+          hasImages: hasImages, hasDocs: hasDocs);
 
   @Deprecated('toolsFor verwenden')
   List<AgentTool> voiceToolsFor(String input) => toolsFor(input);

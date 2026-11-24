@@ -1,0 +1,67 @@
+name: Agent-Test-Satz (live)
+
+# Lässt den Agenten mit einem echten Modell alle Fälle des Test-Satzes lösen
+# (Test-Werkzeuge ohne Wirkung). Ergebnis in der Zusammenfassung des Laufs.
+on:
+  workflow_dispatch:
+    inputs:
+      modell:
+        description: 'Modell'
+        type: choice
+        default: qwen2.5-3b
+        options: [qwen2.5-1.5b, qwen2.5-3b, gemma-4-e4b]
+      faelle:
+        description: 'Nur diese Fälle (Komma-getrennt, leer = alle)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '17 3 * * 1'
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+      - name: Cache Quellen
+        uses: actions/cache@v5
+        with:
+          path: third_party
+          key: src-${{ hashFiles('scripts/fetch_llama.sh', 'scripts/slim_sd_vocab.py') }}
+      - name: Cache Build
+        uses: actions/cache@v5
+        with:
+          path: build-linux
+          key: linux-${{ hashFiles('scripts/fetch_llama.sh', 'packages/agent_engine/src/**') }}
+          restore-keys: linux-
+      - name: Modell wählen
+        id: m
+        run: |
+          case "${{ inputs.modell || 'qwen2.5-3b' }}" in
+            qwen2.5-1.5b) echo "url=https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf" >> "$GITHUB_OUTPUT";;
+            gemma-4-e4b) echo "url=https://huggingface.co/lmstudio-community/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf" >> "$GITHUB_OUTPUT";;
+            *) echo "url=https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf" >> "$GITHUB_OUTPUT";;
+          esac
+          echo "key=$(echo '${{ inputs.modell || 'qwen2.5-3b' }}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Modell
+        uses: actions/cache@v5
+        with:
+          path: evalmodel
+          key: evalmodel-${{ steps.m.outputs.key }}
+      - name: Engine bauen
+        run: |
+          bash scripts/fetch_llama.sh
+          cmake -S packages/agent_engine/src -B build-linux -DCMAKE_BUILD_TYPE=Release > /dev/null
+          cmake --build build-linux --target agent_engine -j 4 2>&1 | tail -3
+      - name: Modell laden
+        run: |
+          mkdir -p evalmodel
+          [ -s evalmodel/model.gguf ] || curl -sSL --retry 3 -o evalmodel/model.gguf "${{ steps.m.outputs.url }}"
+          ls -la evalmodel
+      - name: Test-Satz
+        working-directory: packages/agent_engine
+        run: |
+          dart pub get
+          export AE_LIB_PATH=$GITHUB_WORKSPACE/build-linux/libagent_engine.so
+          dart run tool/agent_eval.dart $GITHUB_WORKSPACE/evalmodel/model.gguf "${{ inputs.faelle }}"

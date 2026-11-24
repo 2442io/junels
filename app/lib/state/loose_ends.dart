@@ -6,8 +6,7 @@ import 'package:agent_engine/agent_engine.dart';
 import 'app_controller.dart';
 
 /// MCP-Werkzeuge, die Mails, Aufgaben oder Tickets lesen können.
-final looseEndsMcp = RegExp(r'mail|gmail|outlook|inbox|imap|message|slack|todo|task|aufgabe|ticket|issue|jira|linear|asana|trello|notion|github|calendar',
-    caseSensitive: false);
+final looseEndsMcp = ToolRouter.looseEndsMcp;
 
 class LooseEndsTool extends AgentTool {
   LooseEndsTool(this.app, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
