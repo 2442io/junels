@@ -68,7 +68,7 @@ const agentCases = <AgentCase>[
   AgentCase('regenbogen', 'Gespräch', 'Wie entsteht ein Regenbogen?', notTools: {'weather', 'web_search'}, noCall: true,
       answerAny: ['licht', 'tropfen', 'brech']),
   AgentCase('uebersetzen', 'Gespräch', 'Übersetze ins Englische: Ich freue mich auf das Treffen.',
-      notTools: {'web_search', 'weather', 'calendar_add'}, noCall: true, answerAny: ['looking forward']),
+      notTools: {'web_search', 'weather', 'calendar_add'}, noCall: true, answerAny: ['meeting']),
   AgentCase('windows', 'Gespräch', 'Wie mache ich unter Windows einen Screenshot?', notTools: {'weather'}),
   // ---- Wetter, News, Websuche
   AgentCase('wetter', 'Wetter & Web', 'Wie wird das Wetter morgen in Wien?',
