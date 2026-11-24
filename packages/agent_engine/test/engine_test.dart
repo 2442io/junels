@@ -590,6 +590,86 @@ Future<void> main() async {
     check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
   });
 
+  await group('Word & Excel', () async {
+    // Zellwerte
+    check(parseCell('1.234,56').kind == CellKind.number && parseCell('1.234,56').number == 1234.56, 'deutsche Zahl');
+    check(parseCell('12 %').kind == CellKind.percent && (parseCell('12 %').number - 0.12).abs() < 1e-9, 'Prozent');
+    check(parseCell('12,50 €').kind == CellKind.currency && parseCell('12,50 €').number == 12.5, 'Euro');
+    check(parseCell('31.12.2026').kind == CellKind.date && parseCell('31.12.2026').number == 46387, 'Datum als Excel-Zahl');
+    check(parseCell('0664 1234').kind == CellKind.text && parseCell('01234').kind == CellKind.text, 'führende Null bleibt Text');
+    check(parseCell('900').kind == CellKind.integer && parseCell('1.500').number == 1500, 'Ganzzahl, Tausenderpunkt');
+    check(excelFormula('SUMME(B2;B3)*1,5') == 'SUM(B2,B3)*1.5', 'Formel übersetzt: ${excelFormula('SUMME(B2;B3)*1,5')}');
+    check(excelFormula('WENN(A1>0;"ja;nein";"x")') == 'IF(A1>0,"ja;nein","x")', 'Text in Formeln bleibt');
+    final ev = FormulaEval((c, r) => {(1, 1): 900.0, (1, 2): 400.0, (1, 3): 250.0}[(c, r)]);
+    check(ev.eval('SUM(B2:B4)') == 1550 && ev.eval('B2*2-B3/4') == 1700 && ev.eval('ROUND(AVERAGE(B2:B4),1)') == 516.7, 'Formeln vorrechnen');
+    check(ev.eval('VLOOKUP(A1,B2:C4,2)') == null, 'unbekannte Funktion → Excel rechnet');
+    final sheets = sheetsFromMarkdown('## Budget\n| Posten | Betrag |\n|---|---|\n| Miete | 900 € |\n| Essen | 400 € |\n| Summe | =SUMME(B2:B3) |\n\n## Notizen\n| Was |\n|---|\n| Test |');
+    check(sheets.length == 2 && sheets.first.name == 'Budget' && sheets.first.rows.length == 4, 'Blätter aus Markdown');
+    check(sheetsFromMarkdown('Name;Alter\nAnna;30').single.rows[1][1] == '30', 'CSV');
+
+    // Neue Mappe
+    final x = buildXlsx(sheets, title: 'Budget');
+    final z = readZip(x);
+    final s1 = utf8.decode(z['xl/worksheets/sheet1.xml']!);
+    check(s1.contains('<f>SUM(B2:B3)</f><v>1300</v>') && s1.contains('s="6"'), 'Formel mit Ergebnis, Euro-Format');
+    check(s1.contains('state="frozen"') && s1.contains('<autoFilter'), 'Kopfzeile fixiert, Filter');
+    check(officeText(x, 'xlsx').contains('Miete'), 'lesbar');
+    final book = XlsxBook.open(x);
+    check(book.sheets.map((s) => s.$1).join(',') == 'Budget,Notizen', 'Blätter lesen');
+    book.setCells('Budget', {'B3': '450 €', 'C1': 'Notiz', 'B10': '=SUMME(B2:B3)'});
+    book.appendRows('Notizen', [['Neu']]);
+    final added = book.addSheet('Auswertung', [['Kennzahl', 'Wert'], ['Gesamt', '=Budget!B4']]);
+    final x2 = book.save();
+    final b2 = XlsxBook.open(x2);
+    final (v, f) = b2.cells(b2.sheet('Budget').$2);
+    check(v[(1, 2)] == 450 && v[(2, 0)] == 'Notiz' && f[(1, 9)] == 'SUM(B2:B3)' && v[(1, 9)] == 1350, 'Zellen gesetzt + vorgerechnet: ${v[(1, 9)]}');
+    check(v[(1, 3)] == 1350, 'bestehende Summe neu vorgerechnet: ${v[(1, 3)]}');
+    check(b2.preview('Notizen').contains('Neu') && added == 'Auswertung' && b2.sheets.length == 3, 'Zeilen angefügt, Blatt neu');
+    check(utf8.decode(b2.files['xl/workbook.xml']!).contains('fullCalcOnLoad="1"'), 'Excel rechnet beim Öffnen neu');
+
+    // Word
+    final docx = buildDocx(title: 'Bericht', markdown: '# Bericht\n## Einleitung\nText **fett**\n\n1. eins\n2. zwei\n\nZwischen\n\n1. neu\n\n- Punkt\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n> Zitat\n## Fazit\nEnde');
+    final dz = readZip(docx);
+    final dx = utf8.decode(dz['word/document.xml']!);
+    check(dx.contains('w:val="Heading2"') && dx.contains('<w:b/>') && dx.contains('<w:tbl>') && dx.contains('w:val="Quote"'), 'Word: Stile, fett, Tabelle, Zitat');
+    check(utf8.decode(dz['word/numbering.xml']!).contains('<w:num w:numId="4">'), 'zweite nummerierte Liste beginnt neu');
+    check(!dx.contains('<w:t xml:space="preserve">Bericht</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val="Heading1"/>'), 'Titel nicht doppelt');
+    check(officeText(docx, 'docx').contains('## Fazit'), 'Word lesbar');
+
+    // fremde Word-Datei direkt ändern
+    final doc = DocxDocument.open(docx);
+    check(doc.overview().contains('Einleitung') && doc.overview().contains('Fazit'), 'Abschnitte erkannt: ${doc.overview()}');
+    final s = doc.section('Fazit');
+    doc.elements.replaceRange(s.start + 1, s.end, doc.fromMarkdown('Neues Fazit mit **Zahl** 42'));
+    check(doc.replaceText('Zwischen', 'Dazwischen') == 1, 'Text ersetzt');
+    final d2 = DocxDocument.open(doc.save());
+    final t2 = d2.textOf(0, d2.elements.length);
+    check(t2.contains('Neues Fazit') && !t2.contains('Ende') && t2.contains('Dazwischen') && t2.contains('Einleitung'), 'Abschnitt ersetzt, Rest bleibt');
+
+    // Werkzeuge
+    final dir = Directory.systemTemp.createTempSync('office');
+    final att = File('${dir.path}/../Vertrag-${DateTime.now().microsecondsSinceEpoch}.docx')..writeAsBytesSync(docx);
+    final out = OutputSpace(dir, attachedFiles: () => {'Vertrag.docx': att.path});
+    final arts = <String>[];
+    final ctx = ToolContext(onArtifact: (a) => arts.add(a.kind));
+    final r1 = await CreateExcelTool(out).run({'title': 'Budget', 'content': sheets.isEmpty ? '' : '| Posten | Betrag |\n|---|---|\n| Miete | 900 |\n| Essen | 400 |\n| Summe | =SUMME(B2:B3) |'}, ctx);
+    check(r1.contains('Budget.xlsx') && arts.contains('xlsx'), 'create_excel');
+    final edit = EditFileTool(out);
+    final r2 = await edit.run({'aktion': 'ersetzen', 'datei': 'Budget', 'folie': 0, 'abschnitt': '', 'inhalt': '', 'suchen': '', 'zellen': 'B3=450; B5==SUMME(B2;B3)'}, ctx);
+    final bk = XlsxBook.open(File('${dir.path}/Budget.xlsx').readAsBytesSync());
+    check(r2.contains('2 Zelle') && bk.preview('').contains('450') && bk.cells(bk.sheet('').$2).$2[(1, 4)] == 'SUM(B2,B3)', 'Excel-Zellen ändern: $r2');
+    final r3 = await CreateWordTool(out).run({'title': 'Kündigung', 'content': 'Sehr geehrte Damen und Herren,\n\nhiermit kündige ich zum 31.12.', 'vorlage': ''}, ctx);
+    check(r3.contains('Kündigung.docx') && arts.contains('docx'), 'create_word');
+    await edit.run({'aktion': 'ersetzen', 'datei': 'Kündigung', 'folie': 0, 'abschnitt': '', 'inhalt': '31.01.', 'suchen': '31.12.', 'zellen': ''}, ctx);
+    check(officeText(File('${dir.path}/Kündigung.docx').readAsBytesSync(), 'docx').contains('31.01.'), 'Word (eigene Datei) Text ersetzen');
+    final r4 = await edit.run({'aktion': 'einfuegen', 'datei': 'Vertrag.docx', 'folie': 0, 'abschnitt': 'Einleitung', 'inhalt': '## Anhang\nNeu eingefügt', 'suchen': '', 'zellen': ''}, ctx);
+    final copy = File('${dir.path}/Vertrag (bearbeitet).docx');
+    check(r4.contains('eingefügt') && copy.existsSync() && officeText(copy.readAsBytesSync(), 'docx').contains('Neu eingefügt'), 'Anhang als Kopie geändert: $r4');
+    check(officeText(att.readAsBytesSync(), 'docx').contains('Neu eingefügt') == false, 'Original bleibt unverändert');
+    check(EditFileTool.parseCells('A1=x\nC3==SUMME(B1;B2); D4: 5') .length == 3, 'Zellangaben lesen');
+    att.deleteSync();
+  });
+
   await group('Agent: Datei statt Beschreibung', () async {
     final dir = Directory.systemTemp.createTempSync('deliver');
     final plan = '**Folie 1: Okzitanien (Titel)**\n* **Text:** „Dein Abenteuer im Süden.“\n* **Grafik-Idee:** Karte.\n'

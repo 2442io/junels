@@ -1301,12 +1301,13 @@ class FlowService {
       case FlowNodeType.save:
         final content = prevText.trim();
         if (n.str('mode', 'memory') == 'document') {
-          final doc = app.tools.where((t) => t.name == 'create_document').firstOrNull;
-          if (doc == null) throw Exception('Werkzeug „create_document“ nicht verfügbar');
+          final toolName = switch (n.str('format', 'pdf')) { 'word' => 'create_word', 'excel' => 'create_excel', _ => 'create_document' };
+          final doc = app.tools.where((t) => t.name == toolName).firstOrNull;
+          if (doc == null) throw Exception('Werkzeug „$toolName“ nicht verfügbar');
           final title = Workflow.fill(n.str('title', '${wf.name} ${vars['datum']}'), vars);
           return doc.run({'title': title, 'content': content}, ToolContext(onArtifact: (a) {
             conv.artifacts.add(a.toJson());
-            if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) log.files.add(a.content);
+            if (const {'pdf', 'pptx', 'docx', 'xlsx', 'image'}.contains(a.kind)) log.files.add(a.content);
           }));
         }
         final note = content.length > 600 ? '${content.substring(0, 600)}…' : content;

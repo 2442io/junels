@@ -14,6 +14,8 @@ class NativeFiles {
     return switch (ext) {
       'pdf' => 'application/pdf',
       'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'png' => 'image/png',
       'jpg' || 'jpeg' => 'image/jpeg',
       'md' => 'text/markdown',

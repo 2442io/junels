@@ -1,4 +1,4 @@
-// Werkzeuge zum Erstellen von Dateien: PDF-Dokumente, Präsentationen (PPTX + PDF),
+// Werkzeuge zum Erstellen von Dateien: PDF-Dokumente, Word, Excel, Präsentationen (PPTX + PDF),
 // Diagramme und Bilder. Ergebnisse landen im Ausgabe-Ordner und als Artefakt im Chat.
 
 import 'dart:convert';
@@ -11,12 +11,19 @@ import '../documents/pptx_writer.dart';
 import '../documents/design.dart';
 import '../documents/design_library.dart';
 import '../documents/office_read.dart';
+import '../documents/docx_writer.dart';
+import '../documents/xlsx_writer.dart';
+import '../documents/office_edit.dart';
 import 'design_resolver.dart';
 import 'tool.dart';
 
 /// Gemeinsame Umgebung für die Datei-Werkzeuge.
 class OutputSpace {
-  OutputSpace(this.dir, {this.extraImages, this.imageGenerator, this.maxAutoImages = 3, this.decodeImage, this.fetchBytes});
+  OutputSpace(this.dir,
+      {this.extraImages, this.imageGenerator, this.maxAutoImages = 3, this.decodeImage, this.fetchBytes, this.attachedFiles});
+
+  /// Angehängte Word-/Excel-Dateien (Name → Pfad), die edit_file als Kopie ändern darf.
+  final Map<String, String> Function()? attachedFiles;
 
   /// Bilder dekodieren (für Farben aus Beispielbildern) – in der App über dart:ui.
   final ImageDecoder? decodeImage;
@@ -247,6 +254,96 @@ class CreateDocumentTool extends AgentTool {
     _artifact(ctx, f, 'pdf');
     return 'PDF erstellt: ${f.uri.pathSegments.last} (${(bytes.length / 1024).ceil()} KB). ${look.design.source != null ? '${look.summary}. ' : ''}'
         'Der Nutzer sieht die Datei im Chat.${_imagesHint(out, content)}';
+  }
+}
+
+class CreateWordTool extends AgentTool {
+  CreateWordTool(this.out);
+  final OutputSpace out;
+
+  @override
+  Duration? get timeout => const Duration(minutes: 15);
+  @override
+  String get name => 'create_word';
+  @override
+  String get keywords => 'word docx dokument brief vorlage bericht bearbeitbar';
+  @override
+  String get title => 'Word-Dokument erstellen';
+  @override
+  String get description =>
+      'Erstellt ein bearbeitbares Word-Dokument (.docx) aus Markdown: # Überschriften, Listen, Tabellen, **fett**, Zitate, '
+      'Bilder mit ![Titel](dateiname.png) oder ![Bildbeschreibung auf Englisch](auto). Für Briefe, Berichte, Vorlagen, die man weiter bearbeitet.';
+  @override
+  List<ToolParam> get params => const [
+        ToolParam('title', ParamType.string, 'Titel des Dokuments'),
+        ToolParam('content', ParamType.string, 'Inhalt in Markdown'),
+        ToolParam('vorlage', ParamType.string, 'Design-Vorlagen des Nutzers: Links/Dateinamen (optional)'),
+      ];
+
+  @override
+  Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
+    final title = (args['title'] ?? '').toString().trim();
+    if ((args['content'] ?? '').toString().trim().isEmpty) throw ToolException('content ist leer');
+    final want = wantsImages(ctx.userRequest);
+    final raw = placeImages((args['content'] ?? '').toString(),
+        files: ctx.generatedImages, auto: want && out.imageGenerator?.call() != null, maxAuto: out.maxAutoImages, slides: false);
+    final (content, _) = await autoImages(out, raw, ctx);
+    final look = await resolveDesign(
+      ctx: ctx,
+      topic: '$title $content',
+      reference: args['vorlage']?.toString(),
+      decodeImage: out.decodeImage,
+      readLocal: out.resolveImage,
+      fetch: out.fetchBytes,
+    );
+    final t = title.isEmpty ? 'Dokument' : title;
+    final bytes = buildDocx(title: t, markdown: content, resolveImage: out.resolveImage, design: look.design);
+    final f = out.fileFor(t, 'docx');
+    await f.writeAsBytes(bytes);
+    await FileSource.save(f, type: 'docx', title: t, content: content, design: look.design);
+    _artifact(ctx, f, 'docx');
+    return 'Word-Dokument erstellt: ${f.uri.pathSegments.last} (${(bytes.length / 1024).ceil()} KB). '
+        '${look.design.source != null ? '${look.summary}. ' : ''}Der Nutzer sieht die Datei im Chat.${_imagesHint(out, content)}';
+  }
+}
+
+class CreateExcelTool extends AgentTool {
+  CreateExcelTool(this.out);
+  final OutputSpace out;
+
+  @override
+  String get name => 'create_excel';
+  @override
+  String get keywords => 'excel xlsx tabelle tabellenkalkulation liste budget kalkulation auswertung spreadsheet';
+  @override
+  String get title => 'Excel-Tabelle erstellen';
+  @override
+  String get description =>
+      'Erstellt eine Excel-Mappe (.xlsx). content: eine oder mehrere Markdown-Tabellen, je Blatt "## Blattname" davor '
+      '(oder CSV mit ; getrennt). Erste Zeile = Spaltenköpfe. Zahlen, Datum (31.12.2026), Prozent (12 %) und Euro (12,50 €) werden echte Werte. '
+      'Formeln mit = am Anfang, z. B. =SUMME(B2:B9) oder =B2*C2.';
+  @override
+  List<ToolParam> get params => const [
+        ToolParam('title', ParamType.string, 'Dateiname/Titel der Mappe'),
+        ToolParam('content', ParamType.string, 'Markdown-Tabellen (je Blatt "## Name" davor) oder CSV'),
+      ];
+
+  @override
+  Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
+    final title = (args['title'] ?? '').toString().trim();
+    final content = (args['content'] ?? '').toString();
+    final sheets = sheetsFromMarkdown(content, fallbackName: title.isEmpty ? 'Tabelle1' : sheetName(title));
+    if (sheets.isEmpty) throw ToolException('Keine Tabelle gefunden – content als Markdown-Tabelle (| Spalte | … |) oder CSV angeben.');
+    final t = title.isEmpty ? 'Tabelle' : title;
+    final look = await resolveDesign(ctx: ctx, topic: t, decodeImage: out.decodeImage, readLocal: out.resolveImage, fetch: out.fetchBytes);
+    final bytes = buildXlsx(sheets, title: t, design: look.design);
+    final f = out.fileFor(t, 'xlsx');
+    await f.writeAsBytes(bytes);
+    await FileSource.save(f, type: 'xlsx', title: t, content: content, design: look.design);
+    _artifact(ctx, f, 'xlsx');
+    final formulas = RegExp(r'(^|\|)\s*=').allMatches(content).length;
+    return 'Excel-Mappe erstellt: ${f.uri.pathSegments.last} – ${sheets.length} Blatt/Blätter '
+        '(${sheets.map((s) => '${s.name}: ${s.rows.length} Zeilen').join(', ')})${formulas > 0 ? ', mit Formeln' : ''}. Der Nutzer sieht die Datei im Chat.';
   }
 }
 
@@ -481,7 +578,7 @@ class FileSource {
       this.agenda = false,
       this.templatePath});
   final File file;
-  final String type; // pptx | pdf
+  final String type; // pptx | pdf | docx | xlsx | raw-docx | raw-xlsx (fremde Datei, direkt geändert)
   String title;
   String content;
   final SlideDesign design;
@@ -537,7 +634,7 @@ class FileSource {
     if (!dir.existsSync()) return const [];
     final list = [
       for (final e in dir.listSync())
-        if (e is File && !e.uri.pathSegments.last.startsWith('.') && RegExp(r'\.(pptx|pdf)$').hasMatch(e.path) && _meta(e).existsSync()) e
+        if (e is File && !e.uri.pathSegments.last.startsWith('.') && RegExp(r'\.(pptx|pdf|docx|xlsx)$').hasMatch(e.path) && _meta(e).existsSync()) e
     ];
     // PDF neben einer PPTX gehört zur Präsentation
     list.removeWhere((f) => f.path.endsWith('.pdf') && File(f.path.replaceFirst(RegExp(r'\.pdf$'), '.pptx')).existsSync() && !FileSource._isDoc(f));
@@ -564,7 +661,9 @@ class FileSource {
   static String join(String pre, List<String> parts) => [if (pre.trim().isNotEmpty) pre.trim(), ...parts].join('\n\n');
 }
 
-/// Einzelne Folien oder Abschnitte einer erstellten Datei ändern, statt alles neu zu machen.
+/// Einzelne Folien, Abschnitte oder Zellen einer Datei ändern, statt alles neu zu machen.
+/// Präsentationen, PDF- und Word-Dokumente von Junels über ihren Markdown; fremde Word-/Excel-Dateien
+/// (Anhänge) direkt im Dateiformat – deren Layout bleibt erhalten, geändert wird eine Kopie.
 class EditFileTool extends AgentTool {
   EditFileTool(this.out);
   final OutputSpace out;
@@ -576,40 +675,92 @@ class EditFileTool extends AgentTool {
   @override
   String get title => 'Datei gezielt ändern';
   @override
-  String get keywords => 'folie abschnitt überarbeiten ändern ersetzen einfügen löschen präsentation dokument korrigieren';
+  String get keywords => 'folie abschnitt überarbeiten ändern ersetzen einfügen löschen präsentation dokument korrigieren word excel zelle zeile blatt';
   @override
   String get description =>
-      'Ändert eine schon erstellte Präsentation oder ein PDF-Dokument gezielt, ohne alles neu zu erstellen. '
-      'Erst mit aktion "anzeigen" (ohne folie/abschnitt) die Übersicht holen bzw. mit folie/abschnitt den aktuellen Inhalt lesen. '
-      'Dann "ersetzen" (inhalt = neuer Markdown der Folie, beginnt mit "# Titel"), "einfuegen" (nach dieser Folie/diesem Abschnitt) oder "loeschen". '
-      'folie: Nummer wie in PowerPoint (1 = Titelfolie). abschnitt: Nummer oder Überschrift. datei: leer = zuletzt erstellt.';
+      'Ändert eine erstellte oder angehängte Datei gezielt: Präsentation, PDF, Word (.docx) oder Excel (.xlsx). '
+      'Erst aktion "anzeigen" (Übersicht; mit folie/abschnitt den Inhalt lesen). Dann "ersetzen", "einfuegen" (danach) oder "loeschen". '
+      'Präsentation: folie = Nummer (1 = Titelfolie). Dokument/Word: abschnitt = Nummer oder Überschrift; suchen + inhalt ersetzt Text. '
+      'Excel: abschnitt = Blattname; zellen = "B3=42; C3==SUMME(B1:B2)" setzt Zellen, inhalt = Tabelle/CSV hängt Zeilen an (einfuegen) '
+      'oder ersetzt das Blatt (ersetzen); einfuegen mit neuem Blattnamen legt ein Blatt an. datei: leer = zuletzt erstellt.';
   @override
   List<ToolParam> get params => const [
         ToolParam('aktion', ParamType.enumeration, 'Was tun', values: ['anzeigen', 'ersetzen', 'einfuegen', 'loeschen']),
         ToolParam('datei', ParamType.string, 'Dateiname ("" = zuletzt erstellt)'),
         ToolParam('folie', ParamType.integer, 'Foliennummer der Präsentation (1 = Titelfolie, 0 = keine)'),
-        ToolParam('abschnitt', ParamType.string, 'Abschnitt im Dokument: Nummer oder Überschrift ("" = keiner)'),
-        ToolParam('inhalt', ParamType.string, 'Neuer Inhalt in Markdown ("" bei anzeigen/loeschen)'),
+        ToolParam('abschnitt', ParamType.string, 'Abschnitt (Nummer/Überschrift) oder Excel-Blatt ("" = keiner)'),
+        ToolParam('inhalt', ParamType.string, 'Neuer Inhalt in Markdown, Excel: Tabelle/CSV ("" bei anzeigen/loeschen)'),
+        ToolParam('suchen', ParamType.string, 'Word/Dokument: Text, der durch inhalt ersetzt wird ("" = keiner)'),
+        ToolParam('zellen', ParamType.string, 'Excel: Zellen setzen, z. B. "B3=42; C3==SUMME(B1:B2)" ("" = keine)'),
       ];
 
-  File? _find(String name) {
+  static final _ext = RegExp(r'\.(pptx|pdf|docx|xlsx)$', caseSensitive: false);
+
+  /// Datei finden: erstellte Dateien, sonst angehängte Word/Excel (→ Kopie zum Bearbeiten)
+  Future<File?> _find(String name) async {
     final files = FileSource.editable(out.dir);
-    if (name.trim().isEmpty) return files.firstOrNull;
     final n = name.trim().toLowerCase();
-    return files.where((f) => f.uri.pathSegments.last.toLowerCase() == n).firstOrNull ??
-        files.where((f) => Uri.decodeComponent(f.uri.pathSegments.last).toLowerCase().contains(n.replaceAll(RegExp(r'\.(pptx|pdf)$'), ''))).firstOrNull;
+    if (n.isEmpty) return files.firstOrNull;
+    final hit = files.where((f) => f.path.split(Platform.pathSeparator).last.toLowerCase() == n).firstOrNull ??
+        files.where((f) => f.path.split(Platform.pathSeparator).last.toLowerCase().contains(n.replaceAll(_ext, ''))).firstOrNull;
+    if (hit != null) return hit;
+    final att = out.attachedFiles?.call() ?? const {};
+    final key = att.keys.where((k) => k.toLowerCase() == n).firstOrNull ??
+        att.keys.where((k) => k.toLowerCase().contains(n.replaceAll(_ext, ''))).firstOrNull;
+    if (key == null) return null;
+    final ext = key.split('.').last.toLowerCase();
+    if (ext != 'docx' && ext != 'xlsx') return null;
+    final copy = out.fileFor('${key.substring(0, key.length - ext.length - 1)} (bearbeitet)', ext);
+    await File(att[key]!).copy(copy.path);
+    await FileSource.save(copy, type: 'raw-$ext', title: key, content: '', design: designById('klar'));
+    return copy;
+  }
+
+  /// „B3=42; C3==SUMME(B1;B2)“ → {B3: 42, C3: =SUMME(B1;B2)} (Semikolon in Formeln bleibt erhalten)
+  static Map<String, String> parseCells(String text) {
+    final out = <String, String>{};
+    for (final part in text.split(RegExp(r'\n|;\s*(?=[A-Za-z]{1,3}\d+\s*[:=])'))) {
+      final m = RegExp(r'^\s*([A-Za-z]{1,3}\d+)\s*[:=]\s?(.*)$', dotAll: true).firstMatch(part);
+      if (m != null) out[m.group(1)!.toUpperCase()] = m.group(2)!.trim();
+    }
+    return out;
+  }
+
+  static List<List<String>> _rows(String inhalt) {
+    final sheets = sheetsFromMarkdown(inhalt);
+    return sheets.isEmpty ? [] : sheets.first.rows;
   }
 
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
-    final f = _find((args['datei'] ?? '').toString());
-    if (f == null) throw ToolException('Keine änderbare Datei gefunden. Nur hier erstellte Präsentationen/PDFs lassen sich gezielt ändern.');
+    final f = await _find((args['datei'] ?? '').toString());
+    if (f == null) {
+      throw ToolException('Keine änderbare Datei gefunden. Ändern lassen sich hier erstellte Präsentationen, PDFs, Word- und Excel-Dateien '
+          'sowie angehängte Word-/Excel-Dateien.');
+    }
     final src = FileSource.load(f)!;
-    final deck = src.type == 'pptx';
-    final (pre, parts) = FileSource.parts(src.content, slides: deck);
     final action = (args['aktion'] ?? 'anzeigen').toString();
     final inhalt = (args['inhalt'] ?? '').toString().trim();
-    final name = Uri.decodeComponent(f.uri.pathSegments.last);
+    final suchen = (args['suchen'] ?? '').toString();
+    final zellen = (args['zellen'] ?? '').toString().trim();
+    final abschnitt = (args['abschnitt'] ?? '').toString().trim();
+    final name = f.path.split(Platform.pathSeparator).last;
+    switch (src.type) {
+      case 'xlsx' || 'raw-xlsx':
+        return _excel(f, name, action, abschnitt, inhalt, zellen, ctx);
+      case 'raw-docx':
+        return _word(f, name, action, abschnitt, inhalt, suchen, ctx);
+    }
+    // Text ersetzen in Junels-Dokumenten
+    if (suchen.isNotEmpty) {
+      if (!src.content.contains(suchen)) throw ToolException('„$suchen“ kommt in $name nicht vor.');
+      final n = suchen.allMatches(src.content).length;
+      await _rebuild(f, src, src.title, src.content.replaceAll(suchen, inhalt), ctx);
+      ctx.answerNow = true;
+      return '$name: „$suchen“ $n× ersetzt.';
+    }
+    final deck = src.type == 'pptx';
+    final (pre, parts) = FileSource.parts(src.content, slides: deck);
     String headOf(String p) => p.split('\n').first.replaceFirst(RegExp(r'^#+\s*'), '').trim();
 
     // Nummer → Index in parts (Präsentation: 1 = Titel, ggf. 2 = Route)
@@ -625,10 +776,9 @@ class EditFileTool extends AgentTool {
       } else {
         index = n - 1 - offset;
       }
-    } else if (!deck && (args['abschnitt'] ?? '').toString().trim().isNotEmpty) {
-      final a = args['abschnitt'].toString().trim();
-      final n = int.tryParse(a);
-      index = n != null ? n - 1 : parts.indexWhere((p) => headOf(p).toLowerCase().contains(a.toLowerCase()));
+    } else if (!deck && abschnitt.isNotEmpty) {
+      final n = int.tryParse(abschnitt);
+      index = n != null ? n - 1 : parts.indexWhere((p) => headOf(p).toLowerCase().contains(abschnitt.toLowerCase()));
     }
     if (index != null && index != -1 && (index < 0 || index >= parts.length)) {
       throw ToolException('${deck ? 'Folie' : 'Abschnitt'} gibt es nicht. ${_overview(deck, src, parts, offset)}');
@@ -638,6 +788,13 @@ class EditFileTool extends AgentTool {
       if (index == null) return '$name – ${_overview(deck, src, parts, offset)}';
       if (index == -1) return 'Folie 1 (Titelfolie):\n# ${src.title}\n$pre';
       return '${deck ? 'Folie ${index + 1 + offset}' : 'Abschnitt ${index + 1}'} von $name:\n\n${parts[index]}';
+    }
+    // Dokument ohne Abschnittsangabe: einfuegen = ans Ende
+    if (index == null && !deck && action == 'einfuegen' && inhalt.isNotEmpty) index = parts.isEmpty ? null : parts.length - 1;
+    if (index == null && !deck && action == 'einfuegen' && inhalt.isNotEmpty) {
+      await _rebuild(f, src, src.title, FileSource.join(pre, [inhalt]), ctx);
+      ctx.answerNow = true;
+      return '$name: Inhalt angefügt.';
     }
     if (index == null) throw ToolException('Bitte ${deck ? 'folie' : 'abschnitt'} angeben. ${_overview(deck, src, parts, offset)}');
 
@@ -675,44 +832,148 @@ class EditFileTool extends AgentTool {
           throw ToolException('Unbekannte aktion "$action".');
       }
     }
-    var content = FileSource.join(newPre, parts);
-    // neue Bilder (![…](auto)) erzeugen
-    final (withImages, made) = await autoImages(out, content, ctx);
-    content = withImages;
-
-    if (deck) {
-      final split = splitSlides(content);
-      PptxTemplate? tpl;
-      if (src.templatePath != null && File(src.templatePath!).existsSync()) {
-        tpl = PptxTemplate.parse(File(src.templatePath!).readAsBytesSync());
-      }
-      await f.writeAsBytes(buildPptx(
-          title: newTitle,
-          subtitle: split.subtitle,
-          slides: split.slides,
-          resolveImage: out.resolveImage,
-          design: src.design,
-          template: tpl,
-          agenda: src.agenda));
-      final pdf = File(f.path.replaceFirst(RegExp(r'\.pptx$'), '.pdf'));
-      await pdf.writeAsBytes(buildSlidesPdf(
-          title: newTitle, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage, theme: src.design.pdfTheme));
-      await FileSource.save(f,
-          type: 'pptx',
-          title: newTitle,
-          content: content,
-          design: src.design,
-          agenda: src.agenda,
-          templateBytes: tpl == null ? null : File(src.templatePath!).readAsBytesSync());
-      _artifact(ctx, f, 'pptx');
-      _artifact(ctx, pdf, 'pdf');
-    } else {
-      await f.writeAsBytes(buildPdfDocument(title: newTitle, markdown: content, resolveImage: out.resolveImage, theme: src.design.pdfTheme));
-      await FileSource.save(f, type: 'pdf', title: newTitle, content: content, design: src.design);
-      _artifact(ctx, f, 'pdf');
-    }
+    final made = await _rebuild(f, src, newTitle, FileSource.join(newPre, parts), ctx);
     ctx.answerNow = true;
     return '$name: $done. Design und übrige ${deck ? 'Folien' : 'Abschnitte'} unverändert.${made > 0 ? ' $made Bild(er) neu erzeugt.' : ''}';
+  }
+
+  /// Junels-Datei aus geändertem Markdown neu erzeugen → Anzahl neuer Bilder
+  Future<int> _rebuild(File f, FileSource src, String newTitle, String content0, ToolContext ctx) async {
+    final (content, made) = await autoImages(out, content0, ctx);
+    switch (src.type) {
+      case 'pptx':
+        final split = splitSlides(content);
+        PptxTemplate? tpl;
+        if (src.templatePath != null && File(src.templatePath!).existsSync()) {
+          tpl = PptxTemplate.parse(File(src.templatePath!).readAsBytesSync());
+        }
+        await f.writeAsBytes(buildPptx(
+            title: newTitle,
+            subtitle: split.subtitle,
+            slides: split.slides,
+            resolveImage: out.resolveImage,
+            design: src.design,
+            template: tpl,
+            agenda: src.agenda));
+        final pdf = File(f.path.replaceFirst(RegExp(r'\.pptx$'), '.pdf'));
+        await pdf.writeAsBytes(buildSlidesPdf(
+            title: newTitle, subtitle: split.subtitle, slides: split.slides, resolveImage: out.resolveImage, theme: src.design.pdfTheme));
+        await FileSource.save(f,
+            type: 'pptx',
+            title: newTitle,
+            content: content,
+            design: src.design,
+            agenda: src.agenda,
+            templateBytes: tpl == null ? null : File(src.templatePath!).readAsBytesSync());
+        _artifact(ctx, f, 'pptx');
+        _artifact(ctx, pdf, 'pdf');
+      case 'docx':
+        await f.writeAsBytes(buildDocx(title: newTitle, markdown: content, resolveImage: out.resolveImage, design: src.design));
+        await FileSource.save(f, type: 'docx', title: newTitle, content: content, design: src.design);
+        _artifact(ctx, f, 'docx');
+      default:
+        await f.writeAsBytes(buildPdfDocument(title: newTitle, markdown: content, resolveImage: out.resolveImage, theme: src.design.pdfTheme));
+        await FileSource.save(f, type: 'pdf', title: newTitle, content: content, design: src.design);
+        _artifact(ctx, f, 'pdf');
+    }
+    return made;
+  }
+
+  Future<String> _excel(File f, String name, String action, String abschnitt, String inhalt, String zellen, ToolContext ctx) async {
+    final book = XlsxBook.open(await f.readAsBytes());
+    String overview() => 'Blätter: ${[for (final (i, s) in book.sheets.indexed) '${i + 1}. ${s.$1}'].join(' · ')}';
+    try {
+      if (action == 'anzeigen') {
+        return abschnitt.isEmpty && book.sheets.length > 1 ? '$name – ${overview()}\n\n${book.preview('')}' : '$name – ${book.preview(abschnitt)}';
+      }
+      String done;
+      if (zellen.isNotEmpty) {
+        final cells = parseCells(zellen);
+        if (cells.isEmpty) throw ToolException('zellen nicht verstanden – Beispiel: "B3=42; C3==SUMME(B1:B2)"');
+        if (action == 'loeschen') cells.updateAll((_, __) => '');
+        book.setCells(abschnitt, cells);
+        done = '${cells.length} Zelle(n) ${action == 'loeschen' ? 'geleert' : 'gesetzt'} (${cells.keys.take(8).join(', ')})';
+      } else if (action == 'einfuegen') {
+        final rows = _rows(inhalt);
+        if (rows.isEmpty) throw ToolException('inhalt: Zeilen als Markdown-Tabelle oder CSV angeben.');
+        final exists = abschnitt.isEmpty || book.sheets.any((s) => s.$1.toLowerCase() == abschnitt.toLowerCase()) || int.tryParse(abschnitt) != null;
+        if (exists) {
+          final at = book.appendRows(abschnitt, rows);
+          done = '${rows.length} Zeile(n) ab Zeile $at angefügt';
+        } else {
+          final n = book.addSheet(abschnitt, rows);
+          done = 'neues Blatt „$n“ mit ${rows.length} Zeilen';
+        }
+      } else if (action == 'ersetzen') {
+        final rows = _rows(inhalt);
+        if (rows.isEmpty) throw ToolException('inhalt: neue Tabelle angeben oder zellen nutzen.');
+        book.replaceSheet(abschnitt, rows);
+        done = 'Blatt ${abschnitt.isEmpty ? '1' : '„$abschnitt“'} ersetzt (${rows.length} Zeilen)';
+      } else {
+        throw ToolException('Zum Löschen zellen angeben (z. B. "B3=; B4="). ${overview()}');
+      }
+      await f.writeAsBytes(book.save());
+      _artifact(ctx, f, 'xlsx');
+      ctx.answerNow = true;
+      return '$name: $done. Übrige Zellen und Formatierung unverändert; Formeln rechnet Excel beim Öffnen neu.';
+    } on FormatException catch (e) {
+      throw ToolException('${e.message} ${overview()}');
+    }
+  }
+
+  Future<String> _word(File f, String name, String action, String abschnitt, String inhalt, String suchen, ToolContext ctx) async {
+    final doc = DocxDocument.open(await f.readAsBytes());
+    try {
+      if (action == 'anzeigen') {
+        if (abschnitt.isEmpty) {
+          final all = doc.textOf(0, doc.elements.length);
+          return '$name – ${doc.overview()}${all.length < 4000 ? '\n\n$all' : ''}';
+        }
+        final s = doc.section(abschnitt);
+        return 'Abschnitt „${s.title}“ von $name:\n\n${doc.textOf(s.start, s.end)}';
+      }
+      String done;
+      if (suchen.isNotEmpty) {
+        final n = doc.replaceText(suchen, inhalt);
+        if (n == 0) throw ToolException('„$suchen“ kommt in $name nicht vor (Text muss genau passen).');
+        done = '„$suchen“ in $n Absatz/Absätzen ersetzt';
+      } else {
+        switch (action) {
+          case 'ersetzen' || 'einfuegen':
+            if (inhalt.isEmpty) throw ToolException('inhalt fehlt.');
+            final news = doc.fromMarkdown(inhalt, resolveImage: out.resolveImage);
+            if (abschnitt.isEmpty) {
+              if (action == 'ersetzen') throw ToolException('Bitte abschnitt angeben (oder suchen nutzen). ${doc.overview()}');
+              doc.elements.addAll(news);
+              done = 'Inhalt am Ende angefügt';
+            } else {
+              final s = doc.section(abschnitt);
+              if (action == 'einfuegen') {
+                doc.elements.insertAll(s.end, news);
+                done = 'nach „${s.title}“ eingefügt';
+              } else {
+                // eigene Überschrift im inhalt ersetzt auch die alte, sonst bleibt sie
+                final keepHead = !inhalt.trimLeft().startsWith('#');
+                doc.elements.replaceRange(keepHead ? s.start + 1 : s.start, s.end, news);
+                done = 'Abschnitt „${s.title}“ ersetzt';
+              }
+            }
+          case 'loeschen':
+            if (abschnitt.isEmpty) throw ToolException('Bitte abschnitt angeben. ${doc.overview()}');
+            final s = doc.section(abschnitt);
+            doc.elements.removeRange(s.start, s.end);
+            done = 'Abschnitt „${s.title}“ gelöscht';
+          default:
+            throw ToolException('Unbekannte aktion "$action".');
+        }
+      }
+      await f.writeAsBytes(doc.save());
+      _artifact(ctx, f, 'docx');
+      ctx.answerNow = true;
+      return '$name: $done. Übriges Dokument und Formatierung unverändert.';
+    } on FormatException catch (e) {
+      throw ToolException(e.message);
+    }
   }
 
   String _overview(bool deck, FileSource src, List<String> parts, int offset) {

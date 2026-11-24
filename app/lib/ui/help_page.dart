@@ -307,6 +307,24 @@ Gespeichert wird auf **deinem eigenen Server** – immer auf dem Gerät mit dein
 Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt. Tipp: Als geplante Aufgabe jeden Freitag laufen lassen.''',
   ),
   HelpArticle(
+    id: 'word-excel',
+    category: 'Chat',
+    icon: Icons.table_chart_outlined,
+    title: 'Word & Excel',
+    summary: 'Word-Dokumente und Excel-Tabellen erstellen und bestehende Dateien gezielt ändern.',
+    keywords: 'word docx excel xlsx tabelle tabellenkalkulation formel summe zelle blatt brief kündigung budget ändern bearbeiten',
+    body: '''**Erstellen**
+- „Schreib mir eine Kündigung als **Word**-Dokument“ – mit echten Formatvorlagen (Überschriften, Listen, Tabellen), in Word, Pages oder Google Docs weiter bearbeitbar.
+- „Mach eine **Excel**-Tabelle für mein Monatsbudget“ – Zahlen, Datum, Prozent und Euro werden echte Werte, Summen echte Formeln. Mehrere Blätter gehen auch („je Monat ein Blatt“).
+
+**Ändern statt neu machen**
+- Excel: „Setz bei Essen 450 statt 400“, „Füg eine Zeile Strom 80 € an“, „Leg ein Blatt Auswertung an“. Formeln wie =SUMME(B2:B9) darfst du deutsch schreiben.
+- Word: „Ersetze überall 31.12. durch 31.01.“, „Schreib den Abschnitt Fazit neu“, „Füg nach der Einleitung einen Absatz ein“.
+- **Angehängte Dateien** ändert Junels als Kopie („… (bearbeitet).docx“) – dein Original bleibt unverändert, Layout und Formatierung der übrigen Stellen auch.
+
+Formeln rechnet Excel beim Öffnen neu; einfache Summen und Mittelwerte rechnet Junels vor, damit auch Vorschauen gleich das Ergebnis zeigen.''',
+  ),
+  HelpArticle(
     id: 'designs',
     category: 'Chat',
     icon: Icons.palette_outlined,

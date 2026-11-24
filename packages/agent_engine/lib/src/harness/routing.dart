@@ -11,19 +11,27 @@ class ToolRouter {
   static final _makeVerb = RegExp(r'erstell|mach|bau|generier|erzeug|schreib|gestalt|überarbeit|entwirf|entwerf|anlegen|leg .* an|exportier|als (pdf|powerpoint|pptx|datei)|brauche|hätte gern|möchte',
       caseSensitive: false);
   static final deckWord = RegExp(r'präsentation|powerpoint|folien|pptx|slides|foliensatz|slide ?deck', caseSensitive: false);
-  static final _docWord = RegExp(r'\bpdf\b|word-?dokument|dokument|handout|bericht als', caseSensitive: false);
+  static final _docWord = RegExp(r'\bpdf\b|dokument|handout|bericht als', caseSensitive: false);
+  static final wordWord = RegExp(r'\bword\b|\bdocx\b|word-?(dokument|datei)', caseSensitive: false);
+  static final excelWord = RegExp(r'excel|\bxlsx\b|tabellenkalkulation|spreadsheet|kalkulationstabelle', caseSensitive: false);
 
   /// Verlangt die Nachricht eine Datei? → Werkzeug, das der Agent dafür nutzen muss.
-  static final _editIntent = RegExp(r'(folie|abschnitt|kapitel|seite)\s*\d+|überarbeit|ändere|ersetze|lösche|füge .* ein|ergänze|kürze|korrigier',
+  static final _editIntent = RegExp(
+      r'(folie|abschnitt|kapitel|seite)\s*\d+|überarbeit|ändere|ersetze|lösche|füge .* ein|ergänze|kürze|korrigier|'
+      r'(tabelle|zelle|spalte|zeile|blatt|liste)\b.*\btrag\w* .*\bein\b|\btrag\w* .*(tabelle|zelle|spalte|blatt)\b.*\bein\b|\d+ statt \d+',
       caseSensitive: false);
 
   static String? requiredToolFor(String text, {bool hasFiles = false}) {
     // Bestehende Datei ändern („Folie 3 überarbeiten“) – edit_file oder neu erstellen zählt
-    if (hasFiles && _editIntent.hasMatch(text) && !RegExp(r'neue (präsentation|powerpoint|datei|pdf)', caseSensitive: false).hasMatch(text)) {
-      return 'edit_file|create_presentation|create_document';
+    if (hasFiles &&
+        _editIntent.hasMatch(text) &&
+        !RegExp(r'neue (präsentation|powerpoint|datei|pdf|tabelle|mappe)|kalender|termin', caseSensitive: false).hasMatch(text)) {
+      return 'edit_file|create_presentation|create_document|create_word|create_excel';
     }
     if (_makeVerb.hasMatch(text)) {
       if (deckWord.hasMatch(text)) return 'create_presentation';
+      if (excelWord.hasMatch(text)) return 'create_excel';
+      if (wordWord.hasMatch(text)) return 'create_word';
       if (_docWord.hasMatch(text)) return 'create_document';
     }
     // Fragen zu den eigenen Daten: nachsehen statt raten
@@ -84,14 +92,16 @@ class ToolRouter {
     'remember': RegExp(r'merk dir|merke dir|vergiss|behalte|notier dir|erinnere dich|was weißt du über mich'),
     'send_notification': RegExp(r'erinner|wecker|benachrichtig|push|in \d+ (minuten|stunden)|um \d{1,2}[:.]\d{2}|morgen um'),
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
-    'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
+    'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout'),
+    'create_word': RegExp(r'\bword\b|docx|brief\b|anschreiben|kündigung|vorlage|bearbeitbar'),
+    'create_excel': RegExp(r'excel|xlsx|tabellenkalkulation|spreadsheet|kalkulation|budget|haushaltsbuch|als tabelle'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
     // Nur bei App-/Musik-Wunsch – nicht bei jedem „such“ (Flugsuche!) oder „Beispiel“
     'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|\bspiel(e|en)?\b|abspielen|\bplay\b|pause|nächste[rns]? (lied|titel|song)|lauter|leiser|'
         r'musik|playlist|podcast|youtube|\bhör\w* (mir|mal|musik|was)|jazz|\bsong|\blied\b|album|künstler|\bband\b'),
     'mail_inbox': RegExp(r'\bmails?\b|e-?mails?|posteingang|inbox|unbeantwortet|ungelesen|nachrichten von|hat .* geschrieben|liegengeblieben|unerledigt'),
     'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
-    'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
+    'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|zelle|spalte|\bblatt\b|zeilen? (an|hinzu|ein)|\d+ statt \d+|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),
     'create_chart': RegExp(r'diagramm|chart|grafik|balken|kurve|visualisier'),
     'skill_erstellen': RegExp(r'\bskills?\b|fähigkeit'),
     'generate_image': RegExp(r'(erstell|generier|mal|zeichne|erzeug)\w* .*\b(bild|foto|illustration|logo|grafik)|bild von|zeichne|male mir'),

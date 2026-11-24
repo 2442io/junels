@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.57.0', [
+    'Word-Dokumente erstellen: echte Formatvorlagen (Überschriften, Listen, Tabellen, Zitate, Bilder) – weiter bearbeitbar in Word, Pages und Google Docs',
+    'Excel-Tabellen erstellen: mehrere Blätter, Zahlen/Datum/Prozent/Euro als echte Werte, Formeln (auch deutsch, z. B. =SUMME(B2:B9)), fixierte Kopfzeile und Filter; einfache Formeln werden vorgerechnet',
+    'Word und Excel gezielt ändern: Zellen setzen, Zeilen anfügen, Blätter anlegen; Abschnitte ersetzen, einfügen, löschen, Text suchen und ersetzen',
+    'Angehängte Word-/Excel-Dateien ändert Junels als Kopie – Original, Layout und Formatierung bleiben erhalten',
+    'Vorschau von Word und Excel direkt im Chat; im Ablauf-Baustein „Speichern“ als PDF, Word oder Excel',
+  ]),
   ('1.56.0', [
     'Skills im offenen Agent-Skills-Standard (agentskills.io, wie Claude, Codex, Cursor, Gemini CLI): SKILL.md mit name/description, Junels-Einstellungen (Werkzeuge, Internet, Modell …) unter metadata – andere Agents ignorieren sie, Junels liest sie wieder ein',
     'Skill teilen als Standard-Paket (.zip mit Ordner, SKILL.md und Dateien) – einzeln im Editor oder alle eigenen Skills auf einmal; „Standard prüfen“ zeigt, ob ein Skill konform ist',

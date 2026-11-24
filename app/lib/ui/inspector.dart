@@ -82,6 +82,12 @@ class _ArtifactList extends StatelessWidget {
             if (!sibling) SlidePreview(a.content, key: ValueKey(a.content)),
           ]);
         }
+        if (a.kind == 'docx' || a.kind == 'xlsx') {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            FileCard(a.content),
+            OfficePreview(a.content, key: ValueKey(a.content)),
+          ]);
+        }
         return _ArtifactCard(artifact: a);
       },
     );

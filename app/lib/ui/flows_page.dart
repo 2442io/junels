@@ -2650,12 +2650,25 @@ class _NodeInspectorState extends State<_NodeInspector> {
           SegmentedButton<String>(
             segments: const [
               ButtonSegment(value: 'memory', label: Text('Gedächtnis')),
-              ButtonSegment(value: 'document', label: Text('Dokument (PDF)')),
+              ButtonSegment(value: 'document', label: Text('Datei')),
             ],
             selected: {n.str('mode', 'memory')},
             showSelectedIcon: false,
             onSelectionChanged: (v) => setState(() => _set('mode', v.first)),
           ),
+          if (n.str('mode', 'memory') == 'document') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: n.str('format', 'pdf'),
+              decoration: const InputDecoration(labelText: 'Dateiformat'),
+              items: const [
+                DropdownMenuItem(value: 'pdf', child: Text('PDF')),
+                DropdownMenuItem(value: 'word', child: Text('Word (.docx)')),
+                DropdownMenuItem(value: 'excel', child: Text('Excel (.xlsx) – aus Tabellen im Ergebnis')),
+              ],
+              onChanged: (v) => setState(() => _set('format', v ?? 'pdf')),
+            ),
+          ],
           const SizedBox(height: 12),
           _field('title', 'Titel'),
         ]);

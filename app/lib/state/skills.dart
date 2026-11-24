@@ -182,6 +182,8 @@ class Skill {
     'file_search': 'Glob',
     'edit_file': 'Edit',
     'create_document': 'Write',
+    'create_word': 'Write',
+    'create_excel': 'Write',
   };
 
   /// YAML-Wert sicher schreiben (Anführungszeichen, wenn nötig)

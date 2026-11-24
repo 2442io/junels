@@ -292,6 +292,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             imageModel != null && ImageEngine.available && settings.enabledTools.contains('generate_image') ? _generateImage : null,
         maxAutoImages: Platform.isAndroid || Platform.isIOS ? 3 : 6,
         decodeImage: _decodeRgba,
+        attachedFiles: () => {
+          for (final a in attachments)
+            if (a.path != null && RegExp(r'\.(docx|xlsx)$', caseSensitive: false).hasMatch(a.name)) a.name: a.path!,
+        },
       );
       tools = [
         ...builtinTools(),
@@ -313,6 +317,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         HistorySearchTool(_searchHistory),
         KnowledgeSearchTool(knowledge),
         CreateDocumentTool(out),
+        CreateWordTool(out),
+        CreateExcelTool(out),
         CreatePresentationTool(out),
         EditFileTool(out),
         LooseEndsTool(this),
@@ -2133,7 +2139,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         'Wissen, sag das nicht extra – die App ergänzt die Quellenangabe automatisch.');
     if (activeTools.any((t) => t.name.startsWith('create_') || t.name == 'generate_image')) {
       system.write('\n\nDATEIEN: Wünscht der Nutzer ein Dokument, eine Präsentation, ein Diagramm oder ein Bild, '
-          'erstelle es mit create_document, create_presentation, create_chart bzw. generate_image. '
+          'erstelle es mit create_document (PDF), create_word (Word), create_excel (Excel-Tabelle), create_presentation, '
+          'create_chart bzw. generate_image. Angehängte oder erstellte Dateien änderst du mit edit_file statt neu. '
           '${imageModel != null ? 'Für Bilder in Folien/Dokumenten schreibe ![kurze englische Bildbeschreibung](auto) – sie werden automatisch erzeugt. ' : ''}'
           'Bilder und Diagramme zuerst erzeugen, dann im Dokument/den Folien mit ![](dateiname.png) einbinden. '
           'Schreibe Inhalte vollständig und gut gegliedert. Beschreibe Folien oder Dokumente nie nur (kein Folienplan, '
@@ -3536,7 +3543,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         },
         onArtifact: (a) {
           conv.artifacts.add(a.toJson());
-          if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) entry.files.add(a.content);
+          if (const {'pdf', 'pptx', 'docx', 'xlsx', 'image'}.contains(a.kind)) entry.files.add(a.content);
           notifyListeners();
         },
       );
@@ -3905,7 +3912,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         (requiredToolFor(prevUser)?.contains(RegExp('create_|edit_file')) ?? false);
     final gateText = looksLikeFollowUp(input) || designFollowUp ? '$prevUser $input' : input;
     var requiredTool = requiredToolFor(gateText,
-        hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf'}.contains(a['kind'])));
+        hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf', 'docx', 'xlsx'}.contains(a['kind'])) ||
+            attachments.any((a) => RegExp(r'\.(docx|xlsx|pptx)$', caseSensitive: false).hasMatch(a.name)));
     if (skill != null) requiredTool = skill.requiredTool.isEmpty ? null : skill.requiredTool;
     // Gesprächsmodus: gleicher Verlauf und gleicher System-Prompt wie im Chat – so bleibt der
     // vorgerechnete Teil (Cache) gültig und die erste Antwort kommt ohne langes Vorrechnen.
@@ -4038,7 +4046,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         // gezielt geänderte Datei: alten Eintrag ersetzen statt verdoppeln
         conv.artifacts.removeWhere((x) => x['content'] == a.content && x['kind'] == a.kind);
         conv.artifacts.add(a.toJson());
-        if (const {'pdf', 'pptx', 'image'}.contains(a.kind)) {
+        if (const {'pdf', 'pptx', 'docx', 'xlsx', 'image'}.contains(a.kind)) {
           if (!answer.files.contains(a.content)) answer.files.add(a.content);
         } else {
           inspectorAttention = true;

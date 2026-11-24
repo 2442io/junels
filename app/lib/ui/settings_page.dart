@@ -677,6 +677,8 @@ class _ToolSection extends StatelessWidget {
     'web_fetch': Icons.public,
     'remember': Icons.bookmark_add_outlined,
     'create_document': Icons.picture_as_pdf_outlined,
+    'create_word': Icons.description_outlined,
+    'create_excel': Icons.table_chart_outlined,
     'create_presentation': Icons.slideshow_outlined,
     'edit_file': Icons.edit_document,
     'find_loose_ends': Icons.pending_actions_outlined,
@@ -708,7 +710,7 @@ class _ToolSection extends StatelessWidget {
 
   static const _groups = [
     ('Internet', ['web_search', 'web_fetch', 'news', 'weather', 'site_search', 'browser', 'begleiten', 'mail_inbox']),
-    ('Erstellen', ['create_document', 'create_presentation', 'create_chart', 'write_artifact', 'edit_file', 'generate_image', 'skill_erstellen', 'save_prompt']),
+    ('Erstellen', ['create_document', 'create_word', 'create_excel', 'create_presentation', 'create_chart', 'write_artifact', 'edit_file', 'generate_image', 'skill_erstellen', 'save_prompt']),
     ('Wissen & Dateien', ['text_search', 'read_file', 'knowledge_search', 'search_history', 'remember', 'look_at_image', 'json_query', 'file_search', 'file_rename', 'file_move']),
     ('Gerät & Apps', ['calendar_list', 'calendar_add', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'control_app', 'send_notification']),
     ('Rechnen & Ordnen', ['calculator', 'datetime', 'find_loose_ends']),

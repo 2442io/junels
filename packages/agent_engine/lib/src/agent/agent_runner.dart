@@ -578,8 +578,10 @@ class AgentRunner {
           'Rufe JETZT create_presentation auf: title = Titel; content = alle Folien in Markdown, jede Folie beginnt mit "# Folientitel", '
           'darunter der echte Folientext als Stichpunkte (keine Angaben wie Layout, Grafik-Idee oder Stil)'
           '${refs.isEmpty ? '' : '; vorlage = ${refs.join(' ')}'}. Das Design übernimmt das Tool.',
-      'create_document' => 'Der Nutzer will eine fertige Datei – keine Beschreibung. Rufe JETZT create_document mit title und dem '
+      'create_document' || 'create_word' => 'Der Nutzer will eine fertige Datei – keine Beschreibung. Rufe JETZT $tool mit title und dem '
           'vollständigen Inhalt in Markdown auf.',
+      'create_excel' => 'Der Nutzer will eine fertige Excel-Datei – keine Beschreibung. Rufe JETZT create_excel auf: title und content = '
+          'Markdown-Tabelle(n) mit Kopfzeile (je Blatt "## Name" davor), Summen als Formel, z. B. =SUMME(B2:B9).',
       'edit_file' => 'Der Nutzer will die erstellte Datei ändern – nicht beschreiben, sondern ändern. Rufe JETZT edit_file auf '
           '(erst aktion "anzeigen" für den aktuellen Inhalt, dann "ersetzen"/"einfuegen"/"loeschen").',
       'calendar_list' || 'mail_inbox' || 'contacts_search' => 'Der Nutzer fragt nach seinen eigenen Daten – nicht raten oder erfinden. '
@@ -605,7 +607,11 @@ class AgentRunner {
       args['content'] = slides.content;
       final refs = designReferencesIn(ctx.userRequest);
       if (refs.isNotEmpty) args['vorlage'] = refs.join(' ');
-    } else if (need == 'create_document') {
+    } else if (need == 'create_excel') {
+      if (!answer.contains('|')) return null;
+      args['title'] = _titleFrom(input);
+      args['content'] = answer;
+    } else if (need == 'create_document' || need == 'create_word') {
       if (answer.trim().length < 80) return null;
       args['title'] = _titleFrom(input);
       args['content'] = answer;
