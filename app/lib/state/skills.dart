@@ -315,7 +315,7 @@ class Skill {
       knowledge: knowledge,
       internet: pick('internet', internetLabels, 'ask'),
       model: pick('model', modelLabels, ''),
-      output: OutputView.valid(j('output') ?? '') ? j('output')! : '',
+      output: OutputView.valid(j('output') ?? '') ? (j('output') ?? '') : '',
       icon: j('icon') ?? 'auto_awesome',
       auto: j('auto') != 'false',
       license: meta['license'] ?? '',
