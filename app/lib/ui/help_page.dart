@@ -54,7 +54,7 @@ const helpArticles = <HelpArticle>[
     body: '''Junels ist ein persönlicher KI-Agent für Mac und Android. Das Sprachmodell läuft **auf deinem Gerät** – deine Fragen, Dateien und Notizen verlassen es nicht.
 
 **So ist die App aufgebaut**
-- **Links** die Seitenleiste: Modellstatus, Neuer Chat, Gesprächsmodus, Automatik (Geplante Aufgaben, Prozesse & Watchlist), Arbeitsbereich (Prompt-Vorlagen, Wissen, Aktivitäten) und deine Chats. Ganz unten Einstellungen und Hilfe.
+- **Links** die Seitenleiste: Modellstatus, Neuer Chat, Gesprächsmodus, Skills & Abläufe (Skills, Abläufe mit Zeitplan oder Beobachtung, Geplante Aufgaben und ihre Ergebnisse), Wissen & Vorlagen und deine Chats. Ganz unten Einstellungen und Hilfe.
 - **In der Mitte** der Chat mit Eingabefeld.
 - **Rechts** Artefakte (erzeugte Dokumente, Tabellen, Diagramme) und Metriken.
 
@@ -305,6 +305,23 @@ Gespeichert wird auf **deinem eigenen Server** – immer auf dem Gerät mit dein
 - **Aufgaben, Tickets, weitere Postfächer** – wenn ein passendes Werkzeug verbunden ist (MCP-Store, z. B. Gmail, Slack, Jira, Notion)
 
 Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt. Tipp: Als geplante Aufgabe jeden Freitag laufen lassen.''',
+  ),
+  HelpArticle(
+    id: 'skills-ablaeufe',
+    category: 'Chat',
+    icon: Icons.account_tree_outlined,
+    title: 'Skills & Abläufe',
+    summary: 'Ein Ort für Skills, Abläufe, Zeitpläne und Beobachtungen – jeder Ablauf ist auch ein Skill mit /befehl.',
+    keywords: 'skill ablauf prozess automatisierung routine zeitplan beobachtung auslöser workflow canvas befehl zusammengelegt',
+    body: '''Skills und Automatisierungen sind eins:
+
+- **Skill mit Anleitung**: Anleitung + Werkzeuge, im Chat per /befehl. Unter **Auslöser & Ablauf** bekommt er einen Zeitplan, eine Beobachtung oder weitere Schritte (z. B. danach Push-Nachricht, als Word speichern).
+- **Ablauf**: mehrere Bausteine im Canvas (Agent, Skill, Team, Plattform, Web-API, Bedingung …). Jeder Ablauf ist automatisch auch ein Skill – „/name Eingabe“ im Chat startet ihn, das Ergebnis erscheint direkt im Chat.
+- **Beobachtungen** sind Abläufe mit dem Auslöser „Beobachten“.
+
+Die Liste hat Filter: Anleitung, Mit Ablauf, Zeitplan, Beobachtet, Probleme (Fehler oder unterbrochen). Überwachung, Fortsetzen nach Unterbrechung und alle Bausteine bleiben wie gewohnt.
+
+**Teilen**: Ein Skill-Paket enthält den Ablauf als assets/junels-flow.json. Beim Import baut Junels ihn wieder auf – pausiert, bis du ihn einschaltest. Andere Agents lesen die Schrittliste als Anleitung.''',
   ),
   HelpArticle(
     id: 'ausgabe',

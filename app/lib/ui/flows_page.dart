@@ -14,6 +14,7 @@ import '../data/models.dart';
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import '../state/automation.dart';
+import '../state/skills.dart';
 import 'connections_page.dart';
 import 'mcp_page.dart';
 import 'notify_style.dart';
@@ -70,7 +71,7 @@ String _nodeHint(FlowNodeType t) => switch (t) {
       FlowNodeType.save => 'Notiz oder Dokument',
     };
 
-const _examples = [
+const flowExamples = [
   'Jeden Morgen um 7 die wichtigsten Tech-News suchen, in 5 Punkten zusammenfassen und mir als Push schicken',
   'Werktags um 17 Uhr das Wetter für morgen in Wien prüfen und nur bei Regen eine Erinnerung an den Schirm schicken',
   'Wenn sich bei meinen Beobachtungen etwas ändert, die Änderung zusammenfassen und als Notiz speichern',
@@ -89,6 +90,74 @@ Future<void> startFlow(BuildContext context, Workflow wf, {String? startAt, Valu
     }
   }
   unawaited(app.flows.run(wf, startAt: startAt));
+}
+
+/// Neuen Ablauf in eigenen Worten beschreiben – Junels baut ihn und öffnet den Editor.
+Future<void> describeNewFlow(BuildContext context) async {
+  final app = AppScope.read(context);
+  final nav = Navigator.of(context);
+  final m = ScaffoldMessenger.of(context);
+  final ctrl = TextEditingController();
+  final text = await showSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    title: 'Ablauf beschreiben',
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Was soll passieren – und wann?', style: Theme.of(ctx).textTheme.titleMedium),
+        const SizedBox(height: 10),
+        TextField(
+          controller: ctrl,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(hintText: 'z. B. Jeden Morgen um 7 die Tech-News zusammenfassen und schicken'),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final e in flowExamples) ActionChip(label: Text(e.length > 48 ? '${e.substring(0, 48)}…' : e), onPressed: () => ctrl.text = e),
+        ]),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+          icon: const Icon(Icons.auto_awesome, size: 18),
+          label: const Text('Ablauf bauen'),
+        ),
+      ]),
+    ),
+  );
+  ctrl.dispose();
+  if (text == null || text.isEmpty) return;
+  m.showSnackBar(const SnackBar(content: Text('Junels baut den Ablauf …')));
+  final wf = await app.flows.generate(text);
+  await app.flows.upsert(wf);
+  nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
+}
+
+/// Leeren Ablauf anlegen (optional mit einem Skill als erstem Schritt) und im Editor öffnen.
+Future<Workflow> newEmptyFlow(BuildContext context, {Skill? skill, bool open = true}) async {
+  final app = AppScope.read(context);
+  final nav = Navigator.of(context);
+  final wf = Workflow(id: newId(), name: skill?.name ?? 'Neuer Ablauf', description: skill?.when ?? '');
+  wf.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Start', config: {'mode': 'manual'}, x: 60, y: 120));
+  if (skill != null) {
+    wf.nodes.add(FlowNode(id: 'n2', type: FlowNodeType.skill, title: skill.name, config: {
+      'skill': skill.id,
+      'skillName': skill.name,
+      'skillCommand': skill.command,
+      'prompt': '{{vorher}}',
+    }));
+    wf.connect('n1', 'n2');
+    wf.nodes.add(FlowNode(id: 'n3', type: FlowNodeType.notify, title: 'Push-Nachricht', config: {'title': skill.name, 'text': '{{vorher}}'}));
+    wf.connect('n2', 'n3');
+    wf.layout();
+    skill.flowId = wf.id;
+    app.skills.upsert(skill);
+  }
+  await app.flows.upsert(wf);
+  if (open) nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: wf.id)));
+  return wf;
 }
 
 class FlowsPage extends StatefulWidget {
@@ -144,7 +213,7 @@ class _FlowsPageState extends State<FlowsPage> {
           ),
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final e in _examples)
+            for (final e in flowExamples)
               ActionChip(label: Text(e.length > 48 ? '${e.substring(0, 48)}…' : e), onPressed: () => ctrl.text = e),
           ]),
           const SizedBox(height: 12),
@@ -243,7 +312,7 @@ class _FlowsPageState extends State<FlowsPage> {
                     ),
                     const SizedBox(height: 10),
                     Wrap(spacing: 8, runSpacing: 8, children: [
-                      for (final e in _examples)
+                      for (final e in flowExamples)
                         ActionChip(
                           label: Text(e.length > 60 ? '${e.substring(0, 60)}…' : e),
                           onPressed: _busy ? null : () => setState(() => _prompt.text = e),
@@ -272,7 +341,7 @@ class _FlowsPageState extends State<FlowsPage> {
                       text: 'Über „+“ einen Ablauf beschreiben, eine Seite beobachten oder leer starten.',
                     ),
                   ),
-                for (final wf in flows) Padding(padding: const EdgeInsets.only(bottom: 8), child: _FlowCard(app: app, wf: wf)),
+                for (final wf in flows) Padding(padding: const EdgeInsets.only(bottom: 8), child: FlowCard(app: app, wf: wf)),
                 if (flows.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -291,10 +360,13 @@ class _FlowsPageState extends State<FlowsPage> {
   }
 }
 
-class _FlowCard extends StatelessWidget {
-  const _FlowCard({required this.app, required this.wf});
+class FlowCard extends StatelessWidget {
+  const FlowCard({super.key, required this.app, required this.wf, this.command});
   final AppController app;
   final Workflow wf;
+
+  /// Aufruf im Chat, wenn der Ablauf auch ein Skill ist
+  final String? command;
 
   @override
   Widget build(BuildContext context) {
@@ -326,6 +398,7 @@ class _FlowCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Flexible(child: Text(wf.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.titleSmall)),
+              if (command != null) ...[const SizedBox(width: 6), MonoText('/$command', color: c.muted)],
               const SizedBox(width: 8),
               if (running)
                 StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true)

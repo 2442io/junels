@@ -14,6 +14,14 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.59.0', [
+    'Skills & Abläufe zusammengeführt: eine Liste für Skills, Abläufe, Zeitpläne und Beobachtungen – mit Filtern (Anleitung, Mit Ablauf, Zeitplan, Beobachtet, Probleme)',
+    'Jeder Ablauf ist jetzt auch ein Skill: „/name Eingabe“ im Chat startet ihn, Schritte und Ergebnis erscheinen direkt im Chat. Bestehende Prozesse wurden automatisch übernommen',
+    'Skills bekommen „Auslöser & Ablauf“: Zeitplan, Beobachtung oder weitere Schritte direkt im Skill-Editor anlegen',
+    'Skill-Pakete enthalten den Ablauf (assets/junels-flow.json) – beim Import baut Junels ihn wieder auf, pausiert bis zum Einschalten; andere Agents lesen die Schrittliste',
+    'Abläufe können andere Ablauf-Skills als Baustein nutzen (Unter-Ablauf)',
+    'Seitenleiste aufgeräumt: „Skills & Abläufe“ und „Wissen & Vorlagen“',
+  ]),
   ('1.58.0', [
     'Ausgabeformat wählbar: Karussell, Tabelle, Checkliste, Ablauf (Zeitleiste), Diagramm, Text oder Datei (PDF, Word, Excel, PowerPoint)',
     'Im Chat über den Knopf „Format“ über der Eingabe – oder „… als Tabelle“, „… als Checkliste“, „… Schritt für Schritt“ in der Nachricht',

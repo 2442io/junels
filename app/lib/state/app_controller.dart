@@ -389,6 +389,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await loadDesigns();
       await watchlist.load();
       await flows.load();
+      // Skills & Abläufe sind eins: jeder Ablauf hat einen Skill (bestehende Prozesse werden beim Update übernommen)
+      for (final wf in flows.flows) {
+        skills.syncFlow(wf.id, wf.name, wf.description, enabled: wf.enabled);
+      }
       await connections.load();
       // Nach längerer Pause mit neuem Chat starten, sonst im letzten weiterarbeiten
       final last = conversations.isNotEmpty ? conversations.first : null;
@@ -2898,6 +2902,50 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Ablauf-Skill im Chat: Ablauf mit der Eingabe ausführen, Schritte und Ergebnis als Antwort zeigen.
+  Future<void> _runFlowSkill(
+      Conversation conv, Skill skill, Workflow wf, String input, String task, void Function(String, bool)? onAnswer) async {
+    final user = ChatEntry(role: 'user', text: input.trim());
+    final answer = ChatEntry(
+        role: 'assistant',
+        skill: skill.name,
+        via: 'Ablauf · ${wf.nodes.length} Bausteine',
+        view: skill.output.isEmpty || OutputView.isFile(skill.output) ? null : skill.output);
+    answer.steps.add(StepLog(step: 1)
+      ..tool = 'Ablauf'
+      ..thought = '„${wf.name}“ läuft …');
+    conv.entries
+      ..add(user)
+      ..add(answer);
+    conv.updated = DateTime.now();
+    notifyListeners();
+    if (flows.isRunning(wf.id)) {
+      answer
+        ..steps.clear()
+        ..error = 'Der Ablauf „${wf.name}“ läuft gerade schon – das Ergebnis steht danach unter Skills & Abläufe.';
+      await storage.saveConversation(conv);
+      notifyListeners();
+      onAnswer?.call('', true);
+      return;
+    }
+    final sw = Stopwatch()..start();
+    await flows.run(wf, input: task, event: 'Chat');
+    final log = routineConversation('flowrun-${wf.id}', '⚙ ${wf.name}').entries.lastOrNull;
+    answer.steps
+      ..clear()
+      ..addAll([for (final s in log?.steps ?? const <StepLog>[]) StepLog.fromJson(s.toJson())]);
+    answer
+      ..text = log?.text ?? ''
+      ..cards = [...?log?.cards]
+      ..durationMs = sw.elapsedMilliseconds;
+    answer.files.addAll(log?.files ?? const []);
+    answer.actions.addAll(log?.actions ?? const []);
+    if (answer.view == OutputView.cards && answer.cards.isEmpty) answer.cards = cardsFromText(answer.text);
+    await storage.saveConversation(conv);
+    notifyListeners();
+    onAnswer?.call(answer.text, true);
+  }
+
   /// Ausgabeformat für den aktuellen Chat (null/'' = automatisch). Datei-Formate gelten für die nächste Antwort.
   Future<void> setChatView(String? view) async {
     final c = _ensureConversation();
@@ -3944,6 +3992,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     final skillHit = skills.match(input);
     final skill = skillHit?.$1;
     final skillTask = skillHit?.$2 ?? '';
+    // Skill ist ein Ablauf: den Ablauf mit der Eingabe starten, Ergebnis kommt in diesen Chat
+    if (skill != null && skill.runsFlow) {
+      final wf = flows.flows.where((f) => f.id == skill.flowId).firstOrNull;
+      if (wf != null) {
+        await _runFlowSkill(conv, skill, wf, input, skillTask, onAnswer);
+        return;
+      }
+    }
     notifier.doneFor(conv.id); // offene Aktionen dieses Chats gelten als erledigt, sobald du weitermachst
     // Begleit-Modus: Webseite gemeinsam erledigen (URL + „mach mit mir …“ oder laufende Begleitung)
     final guideNow = !voice && !headless && onAnswer == null && (wantsGuide(input) || (Guide.of(conv)?.active ?? false));

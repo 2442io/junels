@@ -11,14 +11,13 @@ import 'knowledge_page.dart';
 import 'settings_page.dart';
 import 'tasks_page.dart';
 import 'watchlist_page.dart';
-import 'flows_page.dart';
 
 enum AppSection {
   chat('Chat', Icons.forum_outlined),
   inbox('Benachrichtigungen', Icons.notifications_outlined),
-  skills('Skills', Icons.auto_awesome),
+  skills('Skills & Abläufe', Icons.auto_awesome),
   tasks('Geplante Aufgaben', Icons.schedule),
-  flows('Prozesse & Beobachtungen', Icons.account_tree_outlined),
+  flows('Abläufe', Icons.account_tree_outlined),
   watch('Beobachtungen', Icons.radar),
   prompts('Vorlagen', Icons.bolt_outlined),
   knowledge('Wissen & Gedächtnis', Icons.local_library_outlined),
@@ -35,7 +34,7 @@ Widget pageFor(AppSection s) => switch (s) {
       AppSection.inbox => const InboxPage(),
       AppSection.skills => const SkillsPage(),
       AppSection.tasks => const TasksPage(),
-      AppSection.flows => const FlowsPage(),
+      AppSection.flows => const SkillsPage(filter: 'flow'),
       AppSection.watch => const WatchlistPage(),
       AppSection.prompts => const PromptsPage(),
       AppSection.knowledge => const KnowledgePage(),

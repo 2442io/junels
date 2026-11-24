@@ -210,6 +210,53 @@ Wetter am Zielort abfragen und kurz empfehlen.''';
       expect(Conversation.fromJson(c.toJson().cast<String, dynamic>()).view, 'table');
     });
 
+    test('Skills & Abläufe: jeder Ablauf ist ein Skill, Export/Import mit Ablauf', () {
+      final lib = SkillLibrary(File('${Directory.systemTemp.createTempSync('sk').path}/skills.json'));
+      lib.syncFlow('f1', 'Morgen-News', 'Jeden Morgen Tech-News');
+      final fs = lib.forFlow('f1')!;
+      expect(fs.runsFlow, isTrue);
+      expect(fs.command, 'morgen-news');
+      expect(lib.match('/morgen-news heute KI')?.$1.id, fs.id);
+      lib.syncFlow('f1', 'Morgen-News neu', 'x', enabled: false);
+      expect(lib.forFlow('f1')!.name, 'Morgen-News neu');
+      expect(lib.own.where((s) => s.flowId == 'f1').length, 1);
+      // Anleitungs-Skill mit Auslöser: kein zweiter Skill
+      final inst = Skill(id: 'i', name: 'Rechnungen', instructions: 'sammeln', flowId: 'f2');
+      lib.upsert(inst);
+      lib.syncFlow('f2', 'Rechnungen', '');
+      expect(lib.own.where((s) => s.flowId == 'f2').length, 1);
+      lib.flowRemoved('f2');
+      expect(lib.byId('i')!.flowId, isNull);
+      lib.flowRemoved('f1');
+      expect(lib.forFlow('f1'), isNull);
+
+      // Export mit Ablauf und Re-Import
+      final wf = Workflow(id: 'f3', name: 'Rechnungen', description: 'monatlich');
+      wf.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Start', config: {'mode': 'schedule', 'hour': 7}));
+      wf.nodes.add(FlowNode(id: 'n2', type: FlowNodeType.skill, title: 'Rechnungen', config: {'skill': 'i', 'skillName': 'Rechnungen'}));
+      wf.connect('n1', 'n2');
+      inst.flowId = 'f3';
+      final pure = Skill(id: 'flow-f4', name: 'Bericht', when: 'Wochenbericht', instructions: '', flowId: 'f4');
+      final wf4 = Workflow(id: 'f4', name: 'Bericht');
+      wf4.nodes.add(FlowNode(id: 'n1', type: FlowNodeType.trigger, title: 'Start', config: {'mode': 'manual'}));
+      wf4.nodes.add(FlowNode(id: 'n2', type: FlowNodeType.agent, title: 'Zusammenfassen', config: {'prompt': 'Fasse die Woche zusammen'}));
+      wf4.connect('n1', 'n2');
+      final zip = SkillImport.toZip([inst, pure], flows: [wf, wf4]);
+      final back = SkillImport.fromZip(zip, available: evalToolSpecs);
+      expect(back.length, 2);
+      final b1 = back.firstWhere((s) => s.name == 'Rechnungen');
+      final w1 = SkillImport.flowFromSkill(b1, 'new1')!;
+      expect(b1.flowId, 'new1');
+      expect(b1.instructions, 'sammeln');
+      expect(w1.nodes.firstWhere((n) => n.type == FlowNodeType.skill).config['skill'], b1.id);
+      expect(w1.enabled, isFalse);
+      expect(b1.files.containsKey('assets/junels-flow.json'), isFalse);
+      final b2 = back.firstWhere((s) => s.name == 'Bericht');
+      expect(b2.instructions, contains('Zusammenfassen'));
+      SkillImport.flowFromSkill(b2, 'new2');
+      expect(b2.runsFlow, isTrue);
+    });
+
     test('ZIP: Dateien bleiben erhalten, Export und Re-Import', () {
       final a = Skill(id: 'a', name: 'Kontenplan', when: 'Bucht nach Kontenplan', instructions: 'Kontenplan lesen')
         ..addFile('references/konten.md', '4000 Erlöse')

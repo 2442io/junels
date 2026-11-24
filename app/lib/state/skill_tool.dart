@@ -72,7 +72,7 @@ class SkillLoadTool extends AgentTool {
   final SkillLibrary library;
 
   /// Skills, die im Katalog stehen: eigene, aktiv, „automatisch erkennen“ an
-  List<Skill> get catalog => [for (final s in library.own) if (s.enabled && s.auto) s];
+  List<Skill> get catalog => [for (final s in library.own) if (s.enabled && s.auto && !s.runsFlow) s];
 
   @override
   String get name => 'skill';

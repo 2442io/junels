@@ -14,7 +14,13 @@ import '../state/skills.dart';
 import 'quick_nav.dart';
 import 'theme.dart';
 import 'answer_views.dart' show OutputViewField;
-import 'package:agent_engine/agent_engine.dart' show OutputView;
+import 'package:agent_engine/agent_engine.dart' show OutputView, Workflow;
+import '../data/models.dart' show ScheduleKind, newId;
+import '../state/app_controller.dart';
+import 'flows_page.dart' show FlowCard, describeNewFlow, newEmptyFlow, FlowEditor;
+import 'monitor_page.dart';
+import 'tasks_page.dart';
+import 'watchlist_page.dart' show showWatchDialog, WatchlistPage;
 
 const skillIcons = <String, IconData>{
   'auto_awesome': Icons.auto_awesome,
@@ -35,12 +41,48 @@ const skillIcons = <String, IconData>{
   'favorite': Icons.favorite_border,
   'code': Icons.code,
   'chart': Icons.insert_chart_outlined,
+  'flow': Icons.account_tree_outlined,
 };
 
 IconData skillIcon(String name) => skillIcons[name] ?? Icons.auto_awesome;
 
-class SkillsPage extends StatelessWidget {
-  const SkillsPage({super.key});
+class SkillsPage extends StatefulWidget {
+  const SkillsPage({super.key, this.filter = 'all'});
+
+  /// Start-Filter: all | skill | flow | schedule | watch | problem
+  final String filter;
+
+  @override
+  State<SkillsPage> createState() => _SkillsPageState();
+}
+
+class _SkillsPageState extends State<SkillsPage> {
+  late String _filter = widget.filter;
+  bool _showBasis = false;
+
+  static const _filters = {
+    'all': 'Alle',
+    'skill': 'Anleitung',
+    'flow': 'Mit Ablauf',
+    'schedule': 'Zeitplan',
+    'watch': 'Beobachtet',
+    'problem': 'Probleme',
+  };
+
+  Workflow? _flowOf(AppController app, Skill s) => s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
+
+  bool _matches(AppController app, Skill s) {
+    final wf = _flowOf(app, s);
+    final mode = wf?.trigger?.str('mode', 'manual');
+    return switch (_filter) {
+      'skill' => !s.runsFlow,
+      'flow' => wf != null,
+      'schedule' => mode == 'schedule',
+      'watch' => mode == 'watch',
+      'problem' => wf != null && (wf.lastStatus == 'Fehler' || app.flows.interrupted.containsKey(wf.id)),
+      _ => true,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,38 +91,60 @@ class SkillsPage extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
 
-    Widget tile(Skill s) => Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(color: s.builtin ? c.raised : c.amberSoft, borderRadius: BorderRadius.circular(10)),
-              child: Icon(skillIcon(s.icon), color: s.builtin ? c.muted : c.amber),
-            ),
-            title: Row(children: [
-              Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),
-              const SizedBox(width: 6),
-              MonoText('/${s.command}', color: c.muted),
-              if (s.edited) ...[const SizedBox(width: 6), StatusChip('angepasst', color: c.amber, dense: true)],
-            ]),
-            subtitle: Text(
-                [
-                  s.when.isEmpty ? '${s.tools.length} Werkzeuge' : s.when,
-                  if (s.internet == 'allow') '🌐 Internet erlaubt',
-                  if (s.internet == 'block') 'offline',
-                  if (s.model.isNotEmpty) Skill.modelLabels[s.model]!,
-                  if (s.output.isNotEmpty) 'Ausgabe: ${OutputView.labels[s.output]}',
-                ].join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-            trailing: Switch(value: s.enabled, onChanged: (v) => lib.setEnabled(s, v)),
-            onTap: () => openSkillEditor(context, s),
+    Widget tile(Skill s) {
+      final wf = _flowOf(app, s);
+      // reiner Ablauf: Karte des Ablaufs (Status, Stoppen, Fortsetzen, Ein/Aus)
+      if (s.runsFlow && wf != null) {
+        return Padding(padding: const EdgeInsets.only(bottom: 8), child: FlowCard(app: app, wf: wf, command: s.command));
+      }
+      final trig = wf?.trigger;
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: s.builtin ? c.raised : c.amberSoft, borderRadius: BorderRadius.circular(10)),
+            child: Icon(skillIcon(s.icon), color: s.builtin ? c.muted : c.amber),
           ),
-        );
+          title: Row(children: [
+            Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 6),
+            MonoText('/${s.command}', color: c.muted),
+            if (s.edited) ...[const SizedBox(width: 6), StatusChip('angepasst', color: c.amber, dense: true)],
+            if (wf != null && app.flows.isRunning(wf.id)) ...[const SizedBox(width: 6), StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true)],
+            if (wf != null && wf.lastStatus == 'Fehler' && !app.flows.isRunning(wf.id)) ...[
+              const SizedBox(width: 6),
+              StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true),
+            ],
+          ]),
+          subtitle: Text(
+              [
+                s.when.isEmpty ? '${s.tools.length} Werkzeuge' : s.when,
+                if (trig != null) '⏱ ${trig.summary}${wf!.enabled ? '' : ' (pausiert)'}',
+                if (s.internet == 'allow') '🌐 Internet erlaubt',
+                if (s.internet == 'block') 'offline',
+                if (s.model.isNotEmpty) Skill.modelLabels[s.model]!,
+                if (s.output.isNotEmpty) 'Ausgabe: ${OutputView.labels[s.output]}',
+              ].join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis),
+          trailing: Switch(value: s.enabled, onChanged: (v) => lib.setEnabled(s, v)),
+          onTap: () => openSkillEditor(context, s),
+        ),
+      );
+    }
+
+    final own = [for (final s in lib.own) if (_matches(app, s)) s];
+    final legacyWatch = [for (final w in app.watchlist.items) if (w.flowId == null) w];
+    final scheduled = [for (final p in app.prompts) if (p.schedule != ScheduleKind.off) p];
 
     return Scaffold(
-      appBar: JAppBar(title: const Text('Skills'), actions: [
+      appBar: JAppBar(title: const Text('Skills & Abläufe'), actions: [
+        IconButton(
+            tooltip: 'Überwachung',
+            icon: const Icon(Icons.insights_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage(source: 'flow')))),
         IconButton(tooltip: 'Skills importieren', icon: const Icon(Icons.download_outlined), onPressed: () => showSkillImport(context)),
         IconButton(
           tooltip: 'Eigene Skills exportieren (ZIP)',
@@ -91,66 +155,130 @@ class SkillsPage extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Noch keine eigenen oder angepassten Skills')));
               return;
             }
-            await shareSkillZip(list, 'junels-skills');
+            await shareSkillZip(list, 'junels-skills', flows: app.flows.flows);
           },
         ),
-        IconButton(tooltip: 'Neuer Skill', icon: const Icon(Icons.add), onPressed: () => openSkillEditor(context, null)),
+        PopupMenuButton<String>(
+          tooltip: 'Neu',
+          icon: const Icon(Icons.add),
+          onSelected: (v) {
+            switch (v) {
+              case 'skill':
+                openSkillEditor(context, null);
+              case 'describe':
+                describeNewFlow(context);
+              case 'watch':
+                showWatchDialog(context);
+              case 'empty':
+                newEmptyFlow(context);
+              case 'import':
+                showSkillImport(context);
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+                value: 'skill',
+                child: ListTile(leading: Icon(Icons.auto_awesome), title: Text('Skill entwerfen'), subtitle: Text('Anleitung + Werkzeuge, Aufruf per /befehl'))),
+            PopupMenuItem(
+                value: 'describe',
+                child: ListTile(
+                    leading: Icon(Icons.account_tree_outlined), title: Text('Ablauf beschreiben'), subtitle: Text('Mehrere Schritte, mit Zeitplan – Junels baut ihn'))),
+            PopupMenuItem(
+                value: 'watch',
+                child: ListTile(leading: Icon(Icons.radar), title: Text('Webseite oder Thema beobachten'), subtitle: Text('Melden, wenn sich etwas ändert'))),
+            PopupMenuItem(value: 'empty', child: ListTile(leading: Icon(Icons.add_box_outlined), title: Text('Leerer Ablauf'), subtitle: Text('Selbst aus Bausteinen bauen'))),
+            PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.download_outlined), title: Text('Importieren'), subtitle: Text('SKILL.md, ZIP, Link'))),
+          ],
+        ),
       ]),
       body: ListenableBuilder(
         listenable: lib,
         builder: (context, _) => ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 32), children: [
           Text(
-              'Ein Skill ist eine Anleitung plus die Werkzeuge, die Junels dafür nutzen darf. Aufrufen mit /befehl im Chat – '
-              'eigene Skills erkennt Junels auch automatisch. Gespeichert im offenen Agent-Skills-Standard (SKILL.md): '
-              'Skills aus Claude, Codex oder Cursor laufen hier, Junels-Skills dort. '
-              'Tipp: „Bau mir einen Skill, der …“ oder unter einer guten Antwort „Als Skill speichern“.',
+              'Ein Skill ist eine Anleitung plus Werkzeuge – aufrufen mit /befehl im Chat. Mit Ablauf läuft er auch von selbst: '
+              'nach Zeitplan, wenn sich etwas ändert, oder in mehreren Schritten. Gespeichert im offenen Agent-Skills-Standard.',
               style: t.bodySmall?.copyWith(color: c.muted)),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-              child: FilledButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('Skill entwerfen'),
-                onPressed: () => openSkillEditor(context, null),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (final e in _filters.entries)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(e.value),
+                    selected: _filter == e.key,
+                    onSelected: (_) => setState(() => _filter = e.key),
+                  ),
+                ),
+            ]),
+          ),
+          if (lib.own.isEmpty) ...[
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: FilledButton.icon(icon: const Icon(Icons.add), label: const Text('Skill entwerfen'), onPressed: () => openSkillEditor(context, null)),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.download_outlined),
-                label: const Text('Importieren'),
-                onPressed: () => showSkillImport(context),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                    icon: const Icon(Icons.account_tree_outlined), label: const Text('Ablauf beschreiben'), onPressed: () => describeNewFlow(context)),
               ),
-            ),
-          ]),
-          SectionLabel('Eigene Skills (${lib.own.length})', padding: const EdgeInsets.fromLTRB(4, 18, 4, 6)),
-          if (lib.own.isEmpty)
+            ]),
+          ],
+          SectionLabel('Meine Skills & Abläufe (${own.length})', padding: const EdgeInsets.fromLTRB(4, 16, 4, 6)),
+          if (own.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('Noch keine eigenen Skills.', style: t.bodySmall?.copyWith(color: c.muted)),
+              child: Text(_filter == 'all' ? 'Noch keine eigenen Skills oder Abläufe.' : 'Nichts in dieser Auswahl.',
+                  style: t.bodySmall?.copyWith(color: c.muted)),
             ),
-          for (final s in lib.own) tile(s),
-          const SectionLabel('Basis-Skills (aus den Werkzeugen)', padding: EdgeInsets.fromLTRB(4, 18, 4, 6)),
-          for (final s in lib.basis) tile(s),
+          for (final s in own) tile(s),
+          if ((_filter == 'all' || _filter == 'watch') && legacyWatch.isNotEmpty) ...[
+            SectionLabel('Beobachtungen (${legacyWatch.length})', padding: const EdgeInsets.fromLTRB(4, 16, 4, 6)),
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.radar),
+                title: Text('${legacyWatch.length} Beobachtung${legacyWatch.length == 1 ? '' : 'en'} ohne eigenen Ablauf'),
+                subtitle: Text(legacyWatch.map((w) => w.title).take(3).join(' · ')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WatchlistPage())),
+              ),
+            ),
+          ],
+          if ((_filter == 'all' || _filter == 'schedule') && scheduled.isNotEmpty) ...[
+            SectionLabel('Geplante Aufgaben (${scheduled.length})', padding: const EdgeInsets.fromLTRB(4, 16, 4, 6)),
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.schedule),
+                title: Text(scheduled.map((p) => p.title).take(3).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: const Text('Prompts mit Zeitplan'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksPage())),
+              ),
+            ),
+          ],
+          if (_filter == 'all' || _filter == 'skill') ...[
+            InkWell(
+              onTap: () => setState(() => _showBasis = !_showBasis),
+              child: SectionLabel('Basis-Skills (${lib.basis.length})',
+                  padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
+                  trailing: Icon(_showBasis ? Icons.expand_less : Icons.expand_more, size: 20, color: c.muted)),
+            ),
+            if (_showBasis) for (final s in lib.basis) tile(s),
+          ],
         ]),
       ),
     );
   }
 }
 
-/// Bytes als UTF-8 lesen (String.fromCharCodes liefert Latin-1).
-String utf8Fix(String s) {
-  try {
-    return utf8.decode(s.codeUnits);
-  } catch (_) {
-    return s;
-  }
-}
-
 /// Skills als Standard-Paket (ZIP mit <name>/SKILL.md + Dateien) teilen
-Future<void> shareSkillZip(List<Skill> skills, String fileName) async {
+Future<void> shareSkillZip(List<Skill> skills, String fileName, {List<Workflow> flows = const []}) async {
   final f = File('${Directory.systemTemp.path}/$fileName.zip');
-  await f.writeAsBytes(SkillImport.toZip(skills));
+  await f.writeAsBytes(SkillImport.toZip(skills, flows: flows));
   await NativeFiles.share(f.path);
 }
 
@@ -282,9 +410,24 @@ Future<void> showSkillImport(BuildContext context) async {
       s.slug = '$base-$i';
     }
   }
+  // Mitgelieferte Abläufe (aus Junels exportiert) wieder aufbauen – pausiert, bis du sie geprüft hast
+  final withFlow = <Skill>{};
+  for (final s in result) {
+    final wf = SkillImport.flowFromSkill(s, newId());
+    if (wf == null) continue;
+    app.skills.upsert(s);
+    await app.flows.upsert(wf);
+    withFlow.add(s);
+  }
   if (result.length == 1) {
     // einzeln: im Editor prüfen (Werkzeuge, Internet, Modell) und dann speichern
-    await nav.push(MaterialPageRoute(builder: (_) => SkillEditor(draft: result.first)));
+    final one = result.first;
+    if (withFlow.contains(one) && one.runsFlow) {
+      await nav.push(MaterialPageRoute(builder: (_) => FlowEditor(id: one.flowId!)));
+    } else {
+      await nav.push(MaterialPageRoute(builder: (_) => withFlow.contains(one) ? SkillEditor(skill: one) : SkillEditor(draft: one)));
+    }
+    if (withFlow.isNotEmpty) m.showSnackBar(const SnackBar(content: Text('Ablauf übernommen – pausiert, bis du ihn einschaltest')));
     return;
   }
   for (final s in result) {
@@ -367,7 +510,7 @@ class _SkillEditorState extends State<SkillEditor> {
                   m.showSnackBar(const SnackBar(content: Text('SKILL.md kopiert')));
                 case 'share':
                   _apply();
-                  await shareSkillZip([s], s.specName);
+                  await shareSkillZip([s], s.specName, flows: AppScope.read(context).flows.flows);
                 case 'check':
                   _apply();
                   final probs = SkillImport.validate(s.toMarkdown());
@@ -380,12 +523,29 @@ class _SkillEditorState extends State<SkillEditor> {
                   final d = s.copy(id: 'u-${DateTime.now().microsecondsSinceEpoch}', builtin: false)
                     ..name = '${s.name} (Kopie)'
                     ..slug = ''
-                    ..edited = false;
+                    ..edited = false
+                    ..flowId = null;
                   nav.pushReplacement(MaterialPageRoute(builder: (_) => SkillEditor(draft: d)));
                 case 'reset':
                   app.skills.reset(s);
                   nav.pop();
                 case 'delete':
+                  final wf = s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
+                  if (wf != null) {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: Text('„${s.name}“ löschen?'),
+                        content: const Text('Der Skill und sein Ablauf (Auslöser, Schritte, Verlauf) werden gelöscht.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Löschen')),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    await app.flows.remove(wf);
+                  }
                   app.skills.remove(s);
                   nav.pop();
               }
@@ -555,6 +715,46 @@ class _SkillEditorState extends State<SkillEditor> {
           }),
         ),
         const SizedBox(height: 14),
+        const SizedBox(height: 18),
+        Text('Auslöser & Ablauf', style: t.titleSmall),
+        const SizedBox(height: 2),
+        Text('Soll der Skill auch von selbst laufen – nach Zeitplan, wenn sich etwas ändert, oder mit weiteren Schritten danach?',
+            style: t.bodySmall?.copyWith(color: c.muted)),
+        const SizedBox(height: 8),
+        Builder(builder: (context) {
+          final wf = s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
+          if (wf == null) {
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.account_tree_outlined, size: 18),
+                label: const Text('Auslöser oder Schritte hinzufügen'),
+                onPressed: s.builtin
+                    ? null
+                    : () async {
+                        if (!_save()) return;
+                        final made = await newEmptyFlow(context, skill: s);
+                        if (mounted) setState(() => s.flowId = made.id);
+                      },
+              ),
+            );
+          }
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            FlowCard(app: app, wf: wf),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.link_off, size: 18),
+                label: const Text('Ablauf entfernen'),
+                onPressed: () async {
+                  await app.flows.remove(wf);
+                  if (mounted) setState(() => s.flowId = null);
+                },
+              ),
+            ),
+          ]);
+        }),
+        const SizedBox(height: 6),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           title: const Text('Wissen & Beispiele (optional)'),

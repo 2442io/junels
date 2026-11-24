@@ -53,9 +53,8 @@ Future<void> showQuickNav(BuildContext context) async {
   final c = AppColors.of(context);
   final sections = [
     (AppSection.inbox, app.todoCount > 0 ? '${app.todoCount}' : null),
-    (AppSection.tasks, null),
-    (AppSection.flows, null),
     (AppSection.skills, null),
+    (AppSection.tasks, null),
     (AppSection.prompts, null),
     (AppSection.knowledge, app.memory.pending.isNotEmpty ? '${app.memory.pending.length}' : null),
     (AppSection.activity, null),
@@ -161,7 +160,7 @@ String _short(AppSection s) => switch (s) {
       AppSection.flows => 'Prozesse',
       AppSection.tasks => 'Geplant',
       AppSection.prompts => 'Vorlagen',
-      AppSection.skills => 'Skills',
+      AppSection.skills => 'Skills & Abläufe',
       AppSection.knowledge => 'Wissen',
       AppSection.activity => 'Aktivität',
       AppSection.settings => 'Einstellungen',

@@ -135,10 +135,27 @@ class SkillImport {
   }
 
   /// Export als Standard-Paket: <name>/SKILL.md + Dateien – importierbar in Claude, Codex, Cursor & Co.
-  static Uint8List toZip(List<Skill> skills) {
+  /// Ablauf eines Skills liegt als assets/junels-flow.json bei (Junels baut ihn beim Import wieder auf);
+  /// reine Ablauf-Skills bekommen dazu eine lesbare Schrittliste als Anleitung – für andere Agents.
+  static Uint8List toZip(List<Skill> skills, {List<Workflow> flows = const []}) {
     final arc = Archive();
     final used = <String>{};
-    for (final s in skills) {
+    for (final s0 in skills) {
+      final wf = s0.flowId == null ? null : flows.where((f) => f.id == s0.flowId).firstOrNull;
+      var s = s0;
+      if (wf != null) {
+        s = s0.copy();
+        s.flowExport = s0.runsFlow ? 'ablauf' : 'ausloeser';
+        if (s0.runsFlow) s.instructions = flowSteps(wf);
+        final j = wf.toJson();
+        for (final n in (j['nodes'] as List)) {
+          final cfg = (n as Map)['config'];
+          if (cfg is Map && cfg['skill'] == s0.id) cfg['skill'] = '@self';
+        }
+        j.remove('lastRun');
+        j.remove('lastStatus');
+        s.files['assets/junels-flow.json'] = const JsonEncoder.withIndent('  ').convert(j);
+      }
       var dir = s.specName;
       for (var i = 2; used.contains(dir); i++) {
         dir = Skill.slugify('${s.specName}-$i');
@@ -152,6 +169,43 @@ class SkillImport {
       }
     }
     return ZipEncoder().encodeBytes(arc);
+  }
+
+  /// Lesbare Schrittliste eines Ablaufs (für andere Agents und zum Nachlesen)
+  static String flowSteps(Workflow wf) {
+    final b = StringBuffer('Ablauf in Schritten:\n');
+    var i = 1;
+    for (final n in wf.order()) {
+      final sum = n.summary.replaceAll(RegExp(r'\s+'), ' ').trim();
+      b.writeln('${i++}. ${n.title} (${n.type.label})${sum.isEmpty ? '' : ': ${sum.length > 200 ? '${sum.substring(0, 200)}…' : sum}'}');
+    }
+    return b.toString().trim();
+  }
+
+  /// Beim Import mitgelieferten Ablauf (assets/junels-flow.json) wieder aufbauen → neuer Workflow oder null
+  static Workflow? flowFromSkill(Skill s, String newFlowId) {
+    final raw = s.files.remove('assets/junels-flow.json');
+    if (raw == null) return null;
+    try {
+      final j = (jsonDecode(raw) as Map).cast<String, dynamic>();
+      j['id'] = newFlowId;
+      for (final n in (j['nodes'] as List? ?? const [])) {
+        final cfg = (n as Map)['config'];
+        if (cfg is Map && cfg['skill'] == '@self') {
+          cfg
+            ..['skill'] = s.id
+            ..['skillName'] = s.name
+            ..['skillCommand'] = s.command;
+        }
+      }
+      final wf = Workflow.fromJson(j);
+      wf.enabled = false; // erst nach dem Prüfen einschalten
+      s.flowId = wf.id;
+      if (s.flowExport == 'ablauf') s.instructions = '';
+      return wf;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Prüft eine SKILL.md gegen den Standard; leere Liste = gültig

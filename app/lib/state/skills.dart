@@ -30,6 +30,7 @@ class Skill {
     this.internet = 'ask',
     this.model = '',
     this.output = '',
+    this.flowId,
     Map<String, String>? files,
     this.license = '',
     this.compatibility = '',
@@ -64,6 +65,16 @@ class Skill {
 
   /// Ausgabeformat (OutputView): '' = automatisch, cards, table, list, steps, chart, pdf, word, excel, pptx
   String output;
+
+  /// Ablauf (Prozess) dieses Skills: Auslöser (Zeitplan, Beobachtung, Ereignis) und/oder mehrere Schritte.
+  /// Ohne eigene Anleitung ist der Skill der Ablauf selbst (/befehl startet ihn).
+  String? flowId;
+
+  /// Nur Export/Import: Rolle des mitgelieferten Ablaufs (ablauf | ausloeser), steht als metadata junels.flow
+  String flowExport = '';
+
+  /// Skill = Ablauf (keine eigene Anleitung)
+  bool get runsFlow => flowId != null && instructions.trim().isEmpty;
 
   /// Weitere Dateien des Skill-Ordners (relativer Pfad → Text), z. B. references/REFERENCE.md, scripts/x.py.
   /// Werden erst bei Bedarf gelesen (skill-Werkzeug). Skripte werden NIE ausgeführt.
@@ -144,6 +155,7 @@ class Skill {
         if (internet != 'ask') 'internet': internet,
         if (model.isNotEmpty) 'model': model,
         if (output.isNotEmpty) 'output': output,
+        if (flowId != null) 'flowId': flowId,
         if (files.isNotEmpty) 'files': files,
         if (license.isNotEmpty) 'license': license,
         if (compatibility.isNotEmpty) 'compatibility': compatibility,
@@ -170,6 +182,7 @@ class Skill {
         internet: internetLabels.containsKey(j['internet']) ? '${j['internet']}' : 'ask',
         model: modelLabels.containsKey(j['model']) ? '${j['model']}' : '',
         output: OutputView.valid('${j['output'] ?? ''}') ? '${j['output'] ?? ''}' : '',
+        flowId: j['flowId'] as String?,
         files: {for (final e in ((j['files'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
         license: '${j['license'] ?? ''}',
         compatibility: '${j['compatibility'] ?? ''}',
@@ -216,6 +229,7 @@ class Skill {
         if (internet != 'ask') 'junels.internet': internet,
         if (model.isNotEmpty) 'junels.model': model,
         if (output.isNotEmpty) 'junels.output': output,
+        if (flowExport.isNotEmpty) 'junels.flow': flowExport,
         if (icon != 'auto_awesome') 'junels.icon': icon,
         if (!auto) 'junels.auto': 'false',
         if (slug.isNotEmpty && slug != specName) 'junels.command': slug,
@@ -289,7 +303,7 @@ class Skill {
     final name = j('title') ?? h1?.group(1)?.trim() ?? (rawName.isEmpty ? 'Skill' : _titleFrom(rawName));
     String pick(String key, Map<String, String> labels, String dflt) => labels.containsKey(j(key)) ? j(key)! : dflt;
     final toolText = j('tools') ?? meta['allowed-tools'] ?? '';
-    return Skill(
+    final skill = Skill(
       id: id,
       name: name,
       slug: slugify(j('command') ?? (rawName.isEmpty ? name : rawName)),
@@ -311,6 +325,8 @@ class Skill {
           if (e.key.startsWith('metadata.') && !e.key.startsWith('metadata.junels.')) e.key.substring(9): e.value,
       },
     );
+    skill.flowExport = j('flow') ?? '';
+    return skill;
   }
 
   /// allowed-tools: Leerzeichen-getrennt (Standard), auch mit Komma; Klammern bleiben zusammen: Bash(git:*)
@@ -577,6 +593,58 @@ class SkillLibrary extends ChangeNotifier {
     _save();
   }
 
+  /// Jeder Ablauf ist auch ein Skill (/befehl, eine Liste für alles). Fehlt er, wird er angelegt; der Name folgt dem Ablauf.
+  void syncFlow(String flowId, String name, String description, {bool enabled = true}) {
+    final linked = _own.where((s) => s.flowId == flowId).toList();
+    if (linked.isEmpty) {
+      var slug = Skill.slugify(name);
+      if (slug.isEmpty) slug = 'ablauf';
+      final base = slug;
+      for (var i = 2; all.any((s) => s.command == slug); i++) {
+        slug = '$base-$i';
+      }
+      _own.add(Skill(
+          id: 'flow-$flowId',
+          name: name,
+          slug: slug,
+          when: description,
+          instructions: '',
+          flowId: flowId,
+          auto: false,
+          icon: 'flow',
+          enabled: enabled));
+      _save();
+      return;
+    }
+    var changed = false;
+    for (final s in linked.where((s) => s.runsFlow)) {
+      if (s.name != name || s.when != description || s.enabled != enabled) {
+        s
+          ..name = name
+          ..when = description
+          ..enabled = enabled;
+        changed = true;
+      }
+    }
+    if (changed) _save();
+  }
+
+  /// Ablauf gelöscht: reine Ablauf-Skills verschwinden mit, Anleitungs-Skills verlieren nur den Auslöser.
+  void flowRemoved(String flowId) {
+    _own.removeWhere((s) => s.flowId == flowId && s.runsFlow);
+    for (final s in _own.where((s) => s.flowId == flowId)) {
+      s.flowId = null;
+    }
+    for (final s in _overrides.values.where((s) => s.flowId == flowId)) {
+      s.flowId = null;
+    }
+    _save();
+  }
+
+  /// Skill zu einem Ablauf
+  Skill? forFlow(String flowId) =>
+      all.where((s) => s.flowId == flowId && !s.runsFlow).firstOrNull ?? all.where((s) => s.flowId == flowId).firstOrNull;
+
   void setEnabled(Skill s, bool v) {
     final copy = s.copy()..enabled = v;
     upsert(copy);
@@ -594,7 +662,7 @@ class SkillLibrary extends ChangeNotifier {
     final low = t.toLowerCase();
     Skill? best;
     var bestScore = 0;
-    for (final s in _own.where((s) => s.enabled && s.auto)) {
+    for (final s in _own.where((s) => s.enabled && s.auto && !s.runsFlow)) {
       final words = {
         for (final w in RegExp(r'[a-zäöüß]{5,}').allMatches('${s.name} ${s.when}'.toLowerCase()).map((m) => m.group(0)!))
           if (!_stop.contains(w)) w,

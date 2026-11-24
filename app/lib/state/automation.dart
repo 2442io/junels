@@ -521,6 +521,7 @@ class FlowService {
     }
     await save();
     await app.watchlist.syncFlow(wf);
+    app.skills.syncFlow(wf.id, wf.name, wf.description, enabled: wf.enabled);
     app.refreshUi();
   }
 
@@ -547,6 +548,7 @@ class FlowService {
     errors.remove(wf.id);
     final w = app.watchlist.forFlow(wf.id);
     if (w != null) await app.watchlist.remove(w);
+    app.skills.flowRemoved(wf.id);
     await save();
     app.refreshUi();
   }
@@ -1165,6 +1167,16 @@ class FlowService {
         if (skill == null) throw Exception('Skill „${n.str('skillName', n.str('skill'))}“ nicht gefunden');
         var task = Workflow.fill(n.str('prompt', '{{vorher}}'), vars);
         if (!n.str('prompt').contains('{{') && prevText.trim().isNotEmpty) task = '$task\n\nErgebnis des vorigen Schritts:\n$prevText';
+        // Skill ist selbst ein Ablauf: diesen als Unter-Ablauf ausführen
+        if (skill.runsFlow) {
+          final sub = flows.where((f) => f.id == skill.flowId).firstOrNull;
+          if (sub == null) throw Exception('Ablauf zu „${skill.name}“ nicht gefunden');
+          if (sub.id == wf.id || _running.contains(sub.id)) throw Exception('„${skill.name}“ würde sich selbst aufrufen');
+          live[wf.id] = '↪ Ablauf „${sub.name}“ läuft …';
+          app.refreshUi();
+          await run(sub, input: task, event: 'Ablauf ${wf.name}');
+          return app.routineConversation('flowrun-${sub.id}', '⚙ ${sub.name}').entries.lastOrNull?.text ?? '';
+        }
         final lines = <String>[];
         void progress(String line) {
           lines.add(line);

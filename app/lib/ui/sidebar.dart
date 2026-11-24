@@ -207,19 +207,20 @@ class _SidebarState extends State<Sidebar> {
               ],
 
               if (q.isEmpty) ...[
-                // ---- Automatisierung: Aufgaben, Prozesse und ihre Ergebnis-Chats (Routinen)
+                // ---- Skills & Abläufe: Anleitungen, Abläufe mit Auslöser, Beobachtungen und ihre Ergebnis-Chats
                 _GroupHeader(
-                  label: 'Automatisierung',
+                  label: 'Skills & Abläufe',
                   open: _open.contains('auto'),
                   dot: app.watchlist.unseen > 0 ? c.amber : null,
                   onTap: () => _toggle('auto'),
                 ),
                 if (_open.contains('auto')) ...[
-                  item(AppSection.tasks,
-                      count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
-                  item(AppSection.flows,
-                      count: app.watchlist.unseen > 0 || app.flows.flows.isEmpty ? null : '${app.flows.flows.length}',
+                  item(AppSection.skills,
+                      count: app.watchlist.unseen > 0 || app.skills.own.isEmpty ? null : '${app.skills.own.length}',
                       dot: app.watchlist.unseen > 0),
+                  if (scheduled.isNotEmpty)
+                    item(AppSection.tasks,
+                        count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
                   if (routines.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
@@ -233,15 +234,14 @@ class _SidebarState extends State<Sidebar> {
                       ),
                   ],
                 ],
-                // ---- Fähigkeiten & Wissen
+                // ---- Wissen
                 _GroupHeader(
-                  label: 'Fähigkeiten & Wissen',
+                  label: 'Wissen & Vorlagen',
                   open: _open.contains('skills'),
                   dot: app.memory.pending.isNotEmpty ? c.amber : null,
                   onTap: () => _toggle('skills'),
                 ),
                 if (_open.contains('skills')) ...[
-                  item(AppSection.skills, count: app.skills.own.isEmpty ? null : '${app.skills.own.length}'),
                   item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
                   item(AppSection.knowledge, dot: app.memory.pending.isNotEmpty),
                 ],
