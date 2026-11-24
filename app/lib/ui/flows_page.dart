@@ -19,6 +19,7 @@ import 'mcp_page.dart';
 import 'notify_style.dart';
 import 'theme.dart';
 import 'watchlist_page.dart';
+import 'monitor_page.dart';
 import 'quick_nav.dart';
 
 String _two(int v) => v.toString().padLeft(2, '0');
@@ -27,6 +28,8 @@ IconData flowIcon(FlowNodeType t) => switch (t) {
       FlowNodeType.trigger => Icons.play_circle_outline,
       FlowNodeType.agent => Icons.smart_toy_outlined,
       FlowNodeType.skill => Icons.auto_awesome,
+      FlowNodeType.team => Icons.groups_2_outlined,
+      FlowNodeType.platform => Icons.cable_outlined,
       FlowNodeType.tool => Icons.build_outlined,
       FlowNodeType.http => Icons.http,
       FlowNodeType.mcp => Icons.hub_outlined,
@@ -41,6 +44,8 @@ Color flowColor(BuildContext context, FlowNodeType t) {
     FlowNodeType.trigger => c.mint,
     FlowNodeType.agent => c.blue,
     FlowNodeType.skill => c.amber,
+    FlowNodeType.team => c.mint,
+    FlowNodeType.platform => c.violet,
     FlowNodeType.tool => c.violet,
     FlowNodeType.http => c.violet,
     FlowNodeType.mcp => c.blue,
@@ -54,6 +59,8 @@ String _nodeHint(FlowNodeType t) => switch (t) {
       FlowNodeType.trigger => 'Wann der Prozess startet',
       FlowNodeType.agent => 'Auftrag an den KI-Agenten',
       FlowNodeType.skill => 'Einen deiner Skills ausführen',
+      FlowNodeType.team => 'Mehrere Agenten mit Rollen, optional mit Prüfer',
+      FlowNodeType.platform => 'n8n, Dify, Flowise, Langflow oder Webhook',
       FlowNodeType.tool => 'Websuche, Wetter, Nachrichten …',
       FlowNodeType.http => 'REST-API aufrufen, mit Anmeldung',
       FlowNodeType.mcp => 'Tool eines MCP-Servers',
@@ -134,6 +141,10 @@ class _FlowsPageState extends State<FlowsPage> {
     final narrow = MediaQuery.sizeOf(context).width < 560;
     return Scaffold(
       appBar: JAppBar(title: const Text('Prozesse'), actions: [
+        IconButton(
+            tooltip: 'Überwachung',
+            icon: const Icon(Icons.insights_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage(source: 'flow')))),
         if (narrow)
           IconButton(tooltip: 'Beobachten', icon: const Icon(Icons.radar), onPressed: () => showWatchDialog(context))
         else
@@ -592,6 +603,8 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
         FlowNodeType.trigger => 'Start',
         FlowNodeType.agent => 'Agent-Auftrag',
         FlowNodeType.skill => 'Skill',
+        FlowNodeType.team => 'Team',
+        FlowNodeType.platform => 'n8n-Webhook',
         FlowNodeType.tool => 'Werkzeug',
         FlowNodeType.http => 'Web-API',
         FlowNodeType.mcp => 'MCP-Tool',
@@ -603,6 +616,16 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
         FlowNodeType.trigger => {'mode': 'manual'},
         FlowNodeType.agent => {'prompt': ''},
         FlowNodeType.skill => {'skill': '', 'skillName': '', 'skillCommand': '', 'prompt': '{{vorher}}'},
+        FlowNodeType.team => {
+            'prompt': '{{vorher}}',
+            'review': true,
+            'rounds': 1,
+            'members': [
+              {'id': 'm1', 'name': 'Entwurf', 'role': 'Erstellt das Ergebnis zum Auftrag.'},
+              {'id': 'm2', 'name': 'Prüfer', 'role': 'Prüft das Ergebnis und verlangt Verbesserungen, wenn nötig.'},
+            ]
+          },
+        FlowNodeType.platform => {'platform': 'n8n', 'url': '', 'input': '{{vorher}}'},
         FlowNodeType.tool => {'tool': 'weather', 'args': <String, dynamic>{}},
         FlowNodeType.http => {'method': 'GET', 'url': '', 'headers': '', 'body': ''},
         FlowNodeType.mcp => {
@@ -1784,6 +1807,28 @@ class _NodeInspectorState extends State<_NodeInspector> {
     widget.onChanged();
   }
 
+  /// Modellwahl je Baustein/Mitglied: Standard, lokales Modell oder ein eingerichteter Anbieter.
+  Widget _modelPicker(Map<String, dynamic> cfg, String key, Key? k) {
+    final provs = widget.app.providers.where((p) => p.enabled).toList();
+    final cur = '${cfg[key] ?? ''}';
+    return DropdownButtonFormField<String>(
+      key: k,
+      initialValue: cur == 'local' || provs.any((p) => p.id == cur) ? cur : '',
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Modell', isDense: true),
+      items: [
+        const DropdownMenuItem(value: '', child: Text('Standard (wie eingestellt)')),
+        const DropdownMenuItem(value: 'local', child: Text('Lokal auf dem Gerät')),
+        for (final p in provs)
+          DropdownMenuItem(value: p.id, child: Text('${p.name} · ${p.onPrem ? 'eigener Server' : 'Cloud'}', overflow: TextOverflow.ellipsis)),
+      ],
+      onChanged: (v) {
+        cfg[key] = v ?? '';
+        widget.onChanged();
+      },
+    );
+  }
+
   Widget _field(String key, String label, {String? hint, int lines = 1, String? helper, TextInputType? keyboard}) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: TextField(
@@ -2010,6 +2055,222 @@ class _NodeInspectorState extends State<_NodeInspector> {
           ],
           if (mode == 'manual') Text('Startet nur über „Ausführen“.', style: t.bodySmall),
         ]);
+      case FlowNodeType.team:
+        final list = (n.config['members'] as List?) ?? <dynamic>[];
+        n.config['members'] = list;
+        final skillsAll = app.skills.enabled;
+        void setTeam(List<Map<String, dynamic>> ms, {bool review = false}) => setState(() {
+              list
+                ..clear()
+                ..addAll([for (final m in ms) {...m, 'id': '${DateTime.now().microsecondsSinceEpoch}${m['name']}'}]);
+              n.config['review'] = review;
+              widget.onChanged();
+            });
+        children.add(_field('prompt', 'Auftrag ans Team',
+            lines: 3,
+            hint: 'z. B. Bericht über {{vorher}} schreiben',
+            helper: 'Jedes Mitglied bekommt den Auftrag und das Ergebnis des vorigen Mitglieds. {{vorher}}, {{datum}}.'));
+        children.add(const SizedBox(height: 4));
+        children.add(Wrap(spacing: 6, runSpacing: 6, children: [
+          ActionChip(
+            avatar: const Icon(Icons.auto_awesome_mosaic_outlined, size: 16),
+            label: const Text('Recherche → Autor → Prüfer'),
+            onPressed: () => setTeam([
+              {'name': 'Recherche', 'role': 'Sammelt die wichtigsten Fakten mit Quellen. Nur Fakten, kurz und belegt.'},
+              {'name': 'Autor', 'role': 'Schreibt aus den Fakten einen klaren, gut lesbaren Text auf Deutsch.'},
+              {'name': 'Prüfer', 'role': 'Prüft Richtigkeit, Vollständigkeit und Verständlichkeit. Streng, aber konkret.'},
+            ], review: true),
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.rate_review_outlined, size: 16),
+            label: const Text('Entwurf → Prüfer'),
+            onPressed: () => setTeam([
+              {'name': 'Entwurf', 'role': 'Erstellt das Ergebnis zum Auftrag.'},
+              {'name': 'Prüfer', 'role': 'Prüft das Ergebnis und verlangt Verbesserungen, wenn nötig.'},
+            ], review: true),
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.balance_outlined, size: 16),
+            label: const Text('Pro → Contra → Entscheidung'),
+            onPressed: () => setTeam([
+              {'name': 'Pro', 'role': 'Sammelt die stärksten Argumente dafür.'},
+              {'name': 'Contra', 'role': 'Sammelt die stärksten Argumente dagegen und ergänzt, was Pro übersehen hat.'},
+              {'name': 'Entscheidung', 'role': 'Wägt beide Seiten ab und gibt eine klare Empfehlung mit Begründung.'},
+            ]),
+          ),
+        ]));
+        children.add(const SizedBox(height: 12));
+        for (var i = 0; i < list.length; i++) {
+          final m = (list[i] as Map).cast<String, dynamic>();
+          final uid = '${m['id'] ?? i}';
+          final isReviewer = n.config['review'] == true && i == list.length - 1 && list.length >= 2;
+          children.add(Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 4, 12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  CircleAvatar(radius: 12, backgroundColor: color.withValues(alpha: 0.18), child: Text('${i + 1}', style: t.labelSmall)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      key: ValueKey('tm-n-$uid'),
+                      initialValue: '${m['name'] ?? ''}',
+                      decoration: InputDecoration(labelText: isReviewer ? 'Name (prüft am Ende)' : 'Name', isDense: true),
+                      onChanged: (v) {
+                        m['name'] = v;
+                        widget.onChanged();
+                      },
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Nach oben',
+                    onPressed: i == 0
+                        ? null
+                        : () => setState(() {
+                              list.insert(i - 1, list.removeAt(i));
+                              widget.onChanged();
+                            }),
+                    icon: const Icon(Icons.arrow_upward, size: 18),
+                  ),
+                  IconButton(
+                    tooltip: 'Entfernen',
+                    onPressed: () => setState(() {
+                      list.removeAt(i);
+                      widget.onChanged();
+                    }),
+                    icon: const Icon(Icons.close, size: 18),
+                  ),
+                ]),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8, top: 8),
+                  child: TextFormField(
+                    key: ValueKey('tm-r-$uid'),
+                    initialValue: '${m['role'] ?? ''}',
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(labelText: 'Rolle / Anweisung', isDense: true),
+                    onChanged: (v) {
+                      m['role'] = v;
+                      widget.onChanged();
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8, top: 8),
+                  child: Row(children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey('tm-s-$uid'),
+                        initialValue: skillsAll.any((s) => s.id == m['skill']) ? '${m['skill']}' : '',
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Skill', isDense: true),
+                        items: [
+                          const DropdownMenuItem(value: '', child: Text('kein Skill (alle Werkzeuge)')),
+                          for (final s in skillsAll) DropdownMenuItem(value: s.id, child: Text(s.name, overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (v) {
+                          m['skill'] = v ?? '';
+                          widget.onChanged();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: _modelPicker(m, 'provider', ValueKey('tm-m-$uid'))),
+                  ]),
+                ),
+              ]),
+            ),
+          ));
+        }
+        children.add(Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() {
+              list.add({'id': '${DateTime.now().microsecondsSinceEpoch}', 'name': 'Mitglied ${list.length + 1}', 'role': ''});
+              widget.onChanged();
+            }),
+            icon: const Icon(Icons.person_add_alt, size: 18),
+            label: const Text('Mitglied hinzufügen'),
+          ),
+        ));
+        children.add(SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: n.config['review'] == true,
+          title: const Text('Letztes Mitglied prüft'),
+          subtitle: const Text('Bei Rückmeldung überarbeitet das vorletzte Mitglied sein Ergebnis'),
+          onChanged: (v) => setState(() => _set('review', v)),
+        ));
+        if (n.config['review'] == true)
+          children.add(Row(children: [
+            const Text('Überarbeitungs-Runden'),
+            Expanded(
+              child: Slider(
+                value: (((n.config['rounds'] as num?)?.toInt() ?? 1).clamp(1, 3)).toDouble(),
+                min: 1,
+                max: 3,
+                divisions: 2,
+                label: '${((n.config['rounds'] as num?)?.toInt() ?? 1).clamp(1, 3)}',
+                onChanged: (v) => setState(() => _set('rounds', v.round())),
+              ),
+            ),
+          ]));
+      case FlowNodeType.platform:
+        final plat = AgentPlatform.parse(n.str('platform'));
+        final pConns = app.connections.items;
+        final pConnId = pConns.any((x) => x.id == n.str('connection')) ? n.str('connection') : '';
+        children.addAll([
+          DropdownButtonFormField<String>(
+            initialValue: plat.id,
+            decoration: const InputDecoration(labelText: 'Plattform'),
+            items: [for (final p in AgentPlatform.values) DropdownMenuItem(value: p.id, child: Text(p.label))],
+            onChanged: (v) => setState(() {
+              _set('platform', v ?? 'webhook');
+              if (n.title == 'Plattform' || AgentPlatform.values.any((p) => p.label == n.title)) n.title = AgentPlatform.parse(v).label;
+            }),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl('url', n.str('url')),
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            decoration: InputDecoration(labelText: 'Adresse', hintText: plat.example),
+            onChanged: (v) => _set('url', v),
+          ),
+          const SizedBox(height: 4),
+          Text(
+              switch (plat) {
+                AgentPlatform.n8n => 'In n8n einen „Webhook“-Knoten (POST) anlegen und dessen Production-URL hier eintragen. Junels schickt {"eingabe": …, "prozess": …}. Antwort mit „Respond to Webhook“ – Feld output/text wird übernommen.',
+                AgentPlatform.dify => 'Workflow-App: …/v1/workflows/run, Chat-App: …/v1/chat-messages. Zugang: „Bearer“ mit dem App-API-Schlüssel.',
+                AgentPlatform.flowise => 'Adresse des Chatflows: …/api/v1/prediction/<id>. Zugang nur, wenn der Flow geschützt ist (Bearer).',
+                AgentPlatform.langflow => 'Adresse: …/api/v1/run/<flow-id>. Zugang: API-Schlüssel im Header „x-api-key“.',
+                AgentPlatform.webhook => 'Junels schickt {"text": …} per POST. Antwortfelder output/text/result werden übernommen, sonst die ganze Antwort.',
+              },
+              style: t.bodySmall),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: pConnId,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Anmeldung (Zugang)'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('ohne Anmeldung')),
+              for (final x in pConns) DropdownMenuItem(value: x.id, child: Text('${x.name} · ${x.kind.label}', overflow: TextOverflow.ellipsis)),
+              const DropdownMenuItem(value: '__new__', child: Text('＋ Neuer Zugang (API-Schlüssel …)')),
+            ],
+            onChanged: (v) async {
+              if (v == '__new__') {
+                final id = await editConnection(context);
+                if (id != null) _set('connection', id);
+                if (mounted) setState(() {});
+                return;
+              }
+              setState(() => _set('connection', v ?? ''));
+            },
+          ),
+          const SizedBox(height: 12),
+          _field('input', 'Eingabe für die Plattform', lines: 3, hint: '{{vorher}}', helper: '{{vorher}} = Ergebnis des vorigen Bausteins, {{datum}}, {{uhrzeit}}.'),
+          if (plat == AgentPlatform.dify) _field('inputKey', 'Name des Eingabefelds (Dify-Workflow)', hint: 'query'),
+        ]);
       case FlowNodeType.skill:
         final skills = AppScope.read(context).skills.enabled;
         final cur = skills.where((s) => s.id == n.str('skill')).firstOrNull;
@@ -2037,6 +2298,7 @@ class _NodeInspectorState extends State<_NodeInspector> {
           ));
         }
         children.add(const SizedBox(height: 12));
+        children.add(Padding(padding: const EdgeInsets.only(bottom: 12), child: _modelPicker(n.config, 'provider', null)));
         children.add(_field('prompt', 'Aufgabe für den Skill',
             lines: 4,
             hint: 'z. B. {{vorher}} oder „November“',
@@ -2046,6 +2308,7 @@ class _NodeInspectorState extends State<_NodeInspector> {
             lines: 5,
             hint: 'z. B. Fasse {{vorher}} in 5 Punkten zusammen.',
             helper: 'Der Agent darf alle aktiven Werkzeuge benutzen. {{vorher}} = Ergebnis des vorigen Bausteins, {{datum}}, {{uhrzeit}}.'));
+        children.add(_modelPicker(n.config, 'provider', null));
       case FlowNodeType.tool:
         final tool = tools.where((x) => x.name == n.str('tool')).firstOrNull;
         children.add(DropdownButtonFormField<String>(

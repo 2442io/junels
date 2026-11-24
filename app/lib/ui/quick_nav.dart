@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../state/app_scope.dart';
 import 'nav.dart';
 import 'self_test_page.dart';
+import 'monitor_page.dart';
 import 'theme.dart';
 
 /// AppBar mit Schnellnavigation (⋯-Raster rechts), sobald man tiefer als die Startseite ist.
@@ -86,11 +87,18 @@ Future<void> showQuickNav(BuildContext context) async {
             ),
           ]),
           const SizedBox(height: 8),
-          TextButton.icon(
-            icon: const Icon(Icons.health_and_safety_outlined, size: 18),
-            label: const Text('Selbsttest'),
-            onPressed: () => Navigator.pop(ctx, 'selftest'),
-          ),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            TextButton.icon(
+              icon: const Icon(Icons.health_and_safety_outlined, size: 18),
+              label: const Text('Selbsttest'),
+              onPressed: () => Navigator.pop(ctx, 'selftest'),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.insights_outlined, size: 18),
+              label: const Text('Überwachung'),
+              onPressed: () => Navigator.pop(ctx, 'monitor'),
+            ),
+          ]),
           const SizedBox(height: 4),
           GridView.count(
             crossAxisCount: 4,
@@ -129,6 +137,10 @@ Future<void> showQuickNav(BuildContext context) async {
   if (picked == null || !rootContext.mounted) return;
   final navigator = Navigator.of(rootContext);
   navigator.popUntil((r) => r.isFirst);
+  if (picked == 'monitor') {
+    if (rootContext.mounted) Navigator.of(rootContext).push(MaterialPageRoute(builder: (_) => const MonitorPage()));
+    return;
+  }
   if (picked == 'selftest') {
     if (rootContext.mounted) Navigator.of(rootContext).push(MaterialPageRoute(builder: (_) => const SelfTestPage()));
     return;

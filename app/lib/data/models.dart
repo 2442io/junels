@@ -395,6 +395,9 @@ class AppSettings {
     this.fastModelId,
     this.strongModelId,
     this.hybridFirst = 'local',
+    this.mcpServe = false,
+    this.mcpServePort = 8765,
+    this.mcpServeInternet = false,
     this.hybridTarget = 'cloud',
     this.onPremId,
     this.cloudId,
@@ -500,6 +503,13 @@ class AppSettings {
   /// Bei hybrid: zuerst „local“ (Gerät) oder „onprem“ (eigener Server)
   String hybridFirst;
 
+  /// Junels als MCP-Server (nur auf diesem Gerät erreichbar, mit Schlüssel)
+  bool mcpServe;
+  int mcpServePort;
+
+  /// Darf ein externer Aufruf ins Internet (Websuche usw.)?
+  bool mcpServeInternet;
+
   /// Bei hybrid: danach „cloud“ (mit Freigabe) oder „onprem“ (eigener Server, ohne Freigabe)
   String hybridTarget;
   String? onPremId;
@@ -557,6 +567,9 @@ class AppSettings {
         if (fastModelId != null) 'fastModelId': fastModelId,
         if (strongModelId != null) 'strongModelId': strongModelId,
         'hybridFirst': hybridFirst,
+        'mcpServe': mcpServe,
+        'mcpServePort': mcpServePort,
+        'mcpServeInternet': mcpServeInternet,
         'hybridTarget': hybridTarget,
         if (onPremId != null) 'onPremId': onPremId,
         if (cloudId != null) 'cloudId': cloudId,
@@ -613,6 +626,9 @@ class AppSettings {
         fastModelId: j['fastModelId'] as String?,
         strongModelId: j['strongModelId'] as String?,
         hybridFirst: j['hybridFirst'] as String? ?? 'local',
+        mcpServe: j['mcpServe'] as bool? ?? false,
+        mcpServePort: (j['mcpServePort'] as num?)?.toInt() ?? 8765,
+        mcpServeInternet: j['mcpServeInternet'] as bool? ?? false,
         hybridTarget: j['hybridTarget'] as String? ?? 'cloud',
         onPremId: j['onPremId'] as String?,
         cloudId: j['cloudId'] as String?,

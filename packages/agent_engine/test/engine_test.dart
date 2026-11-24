@@ -43,6 +43,48 @@ Future<void> main() async {
   final envModel = Platform.environment['AE_TEST_MODEL'] ?? '';
   final modelPath = envModel.isEmpty ? null : envModel;
 
+  await group('Agent-Plattformen', () async {
+    final dify = jsonDecode(platformRequestBody(AgentPlatform.dify, Uri.parse('https://api.dify.ai/v1/workflows/run'), 'Hallo', inputKey: 'text')) as Map;
+    check(dify['inputs']['text'] == 'Hallo' && dify['response_mode'] == 'blocking', 'Dify-Workflow: inputs');
+    final difyChat = jsonDecode(platformRequestBody(AgentPlatform.dify, Uri.parse('https://api.dify.ai/v1/chat-messages'), 'Hi')) as Map;
+    check(difyChat['query'] == 'Hi', 'Dify-Chat: query');
+    check((jsonDecode(platformRequestBody(AgentPlatform.flowise, Uri.parse('https://x/api/v1/prediction/1'), 'F')) as Map)['question'] == 'F', 'Flowise: question');
+    check((jsonDecode(platformRequestBody(AgentPlatform.n8n, Uri.parse('https://x/webhook/a'), 'N', meta: {'prozess': 'P'})) as Map)['prozess'] == 'P', 'n8n: Zusatzangaben');
+    check(platformAnswer(AgentPlatform.dify, '{"data": {"outputs": {"result": "Fertig"}}}') == 'Fertig', 'Dify-Antwort');
+    check(platformAnswer(AgentPlatform.dify, '{"answer": "Chat-Antwort"}') == 'Chat-Antwort', 'Dify-Chat-Antwort');
+    check(platformAnswer(AgentPlatform.flowise, '{"text": "Flow"}') == 'Flow', 'Flowise-Antwort');
+    check(platformAnswer(AgentPlatform.langflow, '{"outputs":[{"outputs":[{"results":{"message":{"text":"LF"}}}]}]}') == 'LF', 'Langflow-Antwort');
+    check(platformAnswer(AgentPlatform.n8n, '[{"output": "aus n8n"}]') == 'aus n8n', 'n8n-Antwort in Liste');
+    check(platformAnswer(AgentPlatform.webhook, 'nur Text') == 'nur Text', 'Text bleibt Text');
+    check(platformAnswer(AgentPlatform.webhook, '{"a": 1, "b": 2}').contains('"b": 2'), 'unbekanntes JSON eingerückt');
+    check(teamVerdict('OK\nSieht gut aus').$1, 'Prüfer: OK');
+    check(teamVerdict('Freigegeben.').$1, 'Prüfer: freigegeben');
+    final v = teamVerdict('ÜBERARBEITEN: Quellen fehlen');
+    check(!v.$1 && v.$2 == 'Quellen fehlen', 'Prüfer: Rückmeldung');
+  });
+
+  await group('Junels als MCP-Server', () async {
+    final core = McpServeCore(name: 'junels', version: '1', tools: () => [
+          ServedTool('skill_bericht', 'Bericht schreiben', {'type': 'object'}, (a) async => 'Bericht zu ${a['aufgabe']}'),
+          ServedTool('kaputt', 'wirft', {'type': 'object'}, (a) async => throw Exception('geht nicht')),
+        ]);
+    final init = await core.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-03-26'}}) as Map;
+    check(init['result']['protocolVersion'] == '2025-03-26' && init['result']['capabilities']['tools'] != null, 'initialize');
+    check(await core.handle({'jsonrpc': '2.0', 'method': 'notifications/initialized'}) == null, 'Benachrichtigung ohne Antwort');
+    final list = await core.handle({'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'}) as Map;
+    check((list['result']['tools'] as List).length == 2, 'tools/list');
+    final call = await core.handle({'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'skill_bericht', 'arguments': {'aufgabe': 'Q3'}}}) as Map;
+    check(call['result']['content'][0]['text'] == 'Bericht zu Q3' && call['result']['isError'] == false, 'tools/call');
+    final bad = await core.handle({'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {'name': 'kaputt'}}) as Map;
+    check(bad['result']['isError'] == true && bad['result']['content'][0]['text'] == 'geht nicht', 'Fehler als isError');
+    final unk = await core.handle({'jsonrpc': '2.0', 'id': 5, 'method': 'gibtsnicht'}) as Map;
+    check(unk['error']['code'] == -32601, 'unbekannte Methode');
+    final batch = await core.handle([{'jsonrpc': '2.0', 'id': 6, 'method': 'ping'}, {'jsonrpc': '2.0', 'method': 'x'}]) as List;
+    check(batch.length == 1, 'Stapel');
+    check(McpServeCore.safeName('Tagesüberblick heute!') == 'tagesueberblick_heute', 'sichere Namen');
+    check(McpServeCore.originAllowed(null) && McpServeCore.originAllowed('http://localhost:3000') && !McpServeCore.originAllowed('https://evil.example'), 'Origin-Schutz');
+  });
+
   await group('Kalender-Abo (iCal)', () async {
     const ics = 'BEGIN:VCALENDAR\r\nX-WR-CALNAME:Christoph\r\n'
         'BEGIN:VEVENT\r\nDTSTART;TZID=Europe/Vienna:20261123T110000\r\nDTEND;TZID=Europe/Vienna:20261123T120000\r\n'
@@ -757,6 +799,8 @@ Future<void> main() async {
     final unknown = Workflow.fromModelJson('{"nodes": [{"type": "tool", "config": {"tool": "fax"}}]}', id: 'u', toolNames: {'news'});
     check(unknown!.trigger != null && unknown.nodes.last.type == FlowNodeType.agent, 'unbekanntes Werkzeug → Agent, Auslöser ergänzt');
     check(Workflow.fromModelJson('kein json', id: 'q') == null, 'ungültig → null');
+    check(FlowNodeType.parse('crew') == FlowNodeType.team && FlowNodeType.parse('n8n') == FlowNodeType.platform, 'Team/Plattform erkannt');
+    check(FlowNode(id: 't', type: FlowNodeType.team, title: 'T', config: {'members': [{'name': 'Recherche'}, {'name': 'Prüfer'}], 'review': true}).summary == 'Recherche → Prüfer ↺', 'Team-Zusammenfassung');
     check(FlowNodeType.parse('skill') == FlowNodeType.skill && FlowNodeType.parse('Fähigkeit') == FlowNodeType.skill, 'Skill-Baustein erkannt');
     check(FlowNode(id: 's', type: FlowNodeType.skill, title: 'S', config: {'skillName': 'Bericht', 'skillCommand': 'bericht', 'prompt': 'Nov'}).summary.contains('/bericht'), 'Skill-Zusammenfassung');
 

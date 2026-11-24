@@ -5,10 +5,14 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'platforms.dart';
+
 enum FlowNodeType {
   trigger('Auslöser'),
   agent('Agent'),
   skill('Skill'),
+  team('Team'),
+  platform('Plattform'),
   tool('Werkzeug'),
   http('Web-API'),
   mcp('MCP-Server'),
@@ -28,6 +32,8 @@ enum FlowNodeType {
       'start' || 'schedule' || 'zeitplan' || 'manual' || 'manuell' => trigger,
       'llm' || 'prompt' || 'ai' || 'ki' || 'aufgabe' || 'task' => agent,
       'fähigkeit' || 'skills' => skill,
+      'multiagent' || 'agenten' || 'crew' || 'gruppe' => team,
+      'n8n' || 'dify' || 'flowise' || 'langflow' || 'webhook' || 'plattform' => platform,
       'if' || 'filter' || 'wenn' || 'check' => condition,
       'push' || 'notification' || 'nachricht' || 'message' || 'benachrichtigen' => notify,
       'memory' || 'note' || 'notiz' || 'document' || 'dokument' => save,
@@ -51,6 +57,18 @@ class FlowNode {
 
   String str(String key, [String fallback = '']) => (config[key] ?? fallback).toString();
 
+  /// Team-Mitglieder: [{name, role, skill, provider}]
+  List<Map<String, dynamic>> get members => [
+        for (final m in (config['members'] as List?) ?? const [])
+          if (m is Map) m.cast<String, dynamic>()
+      ];
+
+  String _teamSummary() {
+    final names = [for (final m in members) '${m['name'] ?? ''}'.trim()].where((x) => x.isNotEmpty).toList();
+    if (names.isEmpty) return 'Mitglieder festlegen';
+    return '${names.join(' → ')}${config['review'] == true ? ' ↺' : ''}';
+  }
+
   static String _short(String s, int n) => s.length > n ? '${s.substring(0, n)}…' : s;
   static String _every(int m) => m < 60
       ? (m == 1 ? 'jede Minute' : 'alle $m min')
@@ -68,6 +86,8 @@ class FlowNode {
           },
         FlowNodeType.agent => str('prompt'),
         FlowNodeType.skill => str('skillName').isEmpty ? 'Skill wählen' : '/${str('skillCommand')} ${_short(str('prompt'), 60)}'.trim(),
+        FlowNodeType.team => _teamSummary(),
+        FlowNodeType.platform => '${AgentPlatform.parse(str('platform')).label} ${_short(Uri.tryParse(str('url'))?.host ?? '', 40)}'.trim(),
         FlowNodeType.tool => '${str('tool')} ${(config['args'] is Map && (config['args'] as Map).isNotEmpty) ? jsonEncode(config['args']) : ''}'.trim(),
         FlowNodeType.http => '${str('method', 'GET')} ${str('url')}'.trim(),
         FlowNodeType.mcp => str('tool').isEmpty ? 'Server und Tool wählen' : '${str('serverName', str('server'))} · ${str('tool')}',
@@ -365,6 +385,8 @@ Bausteintypen:
 - agent: Auftrag an den KI-Agenten (darf Werkzeuge benutzen). config: {"prompt": "…"} – mit {{vorher}} bekommt er das Ergebnis des vorigen Bausteins.
 - tool: ein Werkzeug direkt aufrufen. config: {"tool": "<name>", "args": {…}}
 - http: eine Web-API (REST) aufrufen. config: {"method": "GET" | "POST", "url": "https://…", "headers": {…}, "body": "…"}
+- team: mehrere Agenten mit Rollen arbeiten nacheinander, optional prüft der letzte. config: {"members": [{"name": "Recherche", "role": "…"}, {"name": "Autor", "role": "…"}, {"name": "Prüfer", "role": "…"}], "review": true, "prompt": "{{vorher}}"}
+- platform: Workflow auf n8n, Dify, Flowise oder Langflow aufrufen. config: {"platform": "n8n" | "dify" | "flowise" | "langflow" | "webhook", "url": "https://…", "input": "{{vorher}}"}
 - condition: weiter nur, wenn das vorige Ergebnis einen Text enthält. config: {"contains": "…", "negate": false}
 - notify: Push-Nachricht. config: {"title": "…", "text": "{{vorher}}"}
 - save: Ergebnis speichern. config: {"mode": "memory" | "document", "title": "…"}

@@ -164,6 +164,26 @@ class SelfTest {
       final r = await app.sync.serverHasSso();
       return r == null ? (CheckState.fail, '$url nicht erreichbar') : (CheckState.ok, '$url${r ? ' · SSO' : ''}');
     });
+    await _check('Sync', 'Junels als MCP-Server', () async {
+      if (!app.settings.mcpServe) return (CheckState.skip, 'ausgeschaltet');
+      if (!app.mcpServe.running) return (CheckState.fail, app.mcpServe.error ?? 'läuft nicht');
+      final r = await httpCall(
+          method: 'POST',
+          url: Uri.parse(app.mcpServe.url),
+          headers: {'Authorization': 'Bearer ${await app.mcpServe.token()}', 'Content-Type': 'application/json'},
+          body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+          timeout: const Duration(seconds: 8));
+      final n = RegExp('"name"').allMatches(r.body).length;
+      return (CheckState.ok, '${app.mcpServe.url} · $n Werkzeuge');
+    });
+    // ---- Überwachung
+    await _check('Logik', 'Fehlerquote der Prozesse (7 Tage)', () async {
+      final runs = [for (final r in app.runStats.since(DateTime.now().subtract(const Duration(days: 7)))) if (r.source == 'flow') r];
+      if (runs.isEmpty) return (CheckState.skip, 'keine Läufe');
+      final bad = runs.where((r) => r.status == 'error').length;
+      final rate = bad / runs.length;
+      return (rate > 0.2 ? CheckState.warn : CheckState.ok, '${runs.length} Läufe, $bad mit Fehler');
+    });
     tick();
     return results;
   }

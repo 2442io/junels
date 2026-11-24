@@ -29,6 +29,8 @@ import 'notifications.dart';
 import 'self_test.dart';
 import 'skill_tool.dart';
 import 'skills.dart';
+import 'run_stats.dart';
+import 'mcp_server.dart';
 import 'sync_service.dart';
 import 'update_service.dart';
 import '../tools/chart_render.dart';
@@ -266,6 +268,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await activity.load();
       await notifier.load();
       await skills.load();
+      await runStats.load();
       unawaited(_selfTestAfterUpdate());
       unawaited(notifier.syncNative());
       knowledge = KnowledgeBase(Directory('${storage.root.path}/knowledge'));
@@ -403,6 +406,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (!headless) unawaited(sync.init());
+      if (!headless && settings.mcpServe) unawaited(mcpServe.start());
       if (!headless) unawaited(updates.init());
       if (!headless) unawaited(_initDevice());
       McpOAuth.onTokens = (_) => unawaited(_saveMcp());
@@ -1385,6 +1389,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Skills: Anleitung + erlaubte Werkzeuge (Basis-Skills und eigene).
   late final SkillLibrary skills = SkillLibrary(File('${storage.root.path}/skills.json'))..addListener(notifyListeners);
+  late final RunStats runStats = RunStats(File('${storage.root.path}/runs.jsonl'));
+  late final JunelsMcpServer mcpServe = JunelsMcpServer(this);
 
   /// Benachrichtigungen: Postfach + Zustellung nach Art (Aktion, Warnung, Erinnerung, Ergebnis, Info).
   late final Notifier notifier =
@@ -3531,10 +3537,25 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       required ChatEntry entry,
       void Function(String line)? onProgress,
       Future<void>? cancel,
-      Skill? skill}) async {
+      Skill? skill,
+      String provider = '',
+      RunMeter? meter}) async {
     onProgress?.call(skill == null ? 'Modell wird vorbereitet …' : 'Skill „${skill.name}“: Modell wird vorbereitet …');
-    final eng = await _automationBackend();
+    final AgentBackend? picked;
+    if (provider.isEmpty) {
+      picked = await _automationBackend();
+    } else if (provider == 'local') {
+      picked = await _ensureEngine() ? engine : null;
+    } else {
+      final p = providerById(provider);
+      if (p == null) throw Exception('Gewähltes Modell gibt es nicht mehr – im Baustein neu wählen.');
+      if (!p.onPrem && !allowInternet) throw Exception('„${p.name}“ ist ein Cloud-Modell – der Prozess darf nicht ins Internet.');
+      picked = await remoteBackend(p);
+    }
+    final eng = picked;
     if (eng == null) throw Exception('Kein Modell bereit (Systemcheck oder KI-Anbieter einrichten).');
+    final AgentBackend be = eng;
+    meter?.models.add(eng is RemoteBackend ? eng.config.name : 'Lokal');
     if (running) onProgress?.call('Wartet, bis die laufende Antwort im Chat fertig ist …');
     return _exclusive(conv.id, () async {
       var tools = skill != null
@@ -3548,7 +3569,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             '„Begleite mich: <Link>“ schreiben.“]';
       }
       final req = skill == null || skill.requiredTool.isEmpty || !tools.any((t) => t.name == skill.requiredTool) ? null : skill.requiredTool;
-      final runner = _makeRunner(eng, _systemText(voice: false, tools: tools), tools: tools, requiredTool: req);
+      final runner = _makeRunner(be, _systemText(voice: false, tools: tools), tools: tools, requiredTool: req);
       var answer = '';
       String? error;
       final ctx = ToolContext(
@@ -3576,7 +3597,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             case FinalAnswer(:final text):
               answer = text;
               onProgress?.call('✓ Antwort fertig');
+            case MetricsUpdate(:final stats):
+              meter?.metrics(stats);
             case ToolResult(:final output, :final isError, :final tool, :final duration):
+              meter?.tool(isError);
               onProgress?.call('${isError ? '✗' : '✓'} ${toolTitles[tool] ?? tool} (${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s)'
                   '${isError ? ': ${output.length > 100 ? '${output.substring(0, 100)}…' : output}' : ''}');
               if (!isError) {
@@ -3590,7 +3614,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           }
         }
       } finally {
-        if (eng is RemoteBackend) eng.close();
+        if (be is RemoteBackend) be.close();
       }
       if (answer.trim().isEmpty && error != null) throw Exception(error);
       return stripAnswerPreamble(cleanModelText(answer), prompt) ?? cleanModelText(answer);

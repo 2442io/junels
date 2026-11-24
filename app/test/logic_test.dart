@@ -8,6 +8,7 @@ import 'package:offline_agent/state/automation.dart';
 import 'package:offline_agent/state/guide.dart';
 import 'package:offline_agent/state/notifications.dart';
 import 'package:offline_agent/state/skills.dart';
+import 'package:offline_agent/state/run_stats.dart';
 import 'dart:io';
 
 void main() {
@@ -72,6 +73,31 @@ void main() {
     test('Täglicher Prompt hat nächsten Lauf', () {
       final p = SavedPrompt(id: 'p', title: 'T', text: 'x', schedule: ScheduleKind.daily);
       expect(p.nextAfter(DateTime(2026, 1, 1, 12)), isNotNull);
+    });
+  });
+
+  group('Überwachung', () {
+    test('Laufstatistik: Quote, Dauer, Bausteine, Speichern', () async {
+      final dir = await Directory.systemTemp.createTemp('runs');
+      final st = RunStats(File('${dir.path}/runs.jsonl'));
+      final now = DateTime.now();
+      await st.add(RunRecord(source: 'flow', refId: 'a', name: 'A', start: now, ms: 2000, status: 'ok', tokensIn: 100, tokensOut: 50,
+          nodes: [NodeStat('Suche', 'agent', 1500, 'done'), NodeStat('Push', 'notify', 500, 'done')]));
+      await st.add(RunRecord(source: 'flow', refId: 'a', name: 'A', start: now, ms: 4000, status: 'error', error: 'x',
+          nodes: [NodeStat('Suche', 'agent', 3500, 'error')]));
+      await st.add(RunRecord(source: 'mcp', refId: 'skill_x', name: 'X', start: now.subtract(const Duration(days: 40)), ms: 1, status: 'ok'));
+      final sums = st.summaries(now.subtract(const Duration(days: 7)));
+      expect(sums.length, 1);
+      expect(sums.first.rate, 0.5);
+      expect(sums.first.avgMs, 3000);
+      expect(sums.first.tokens, 150);
+      expect(sums.first.nodeStats.first.title, 'Suche');
+      expect(sums.first.nodeStats.first.errors, 1);
+      final again = RunStats(File('${dir.path}/runs.jsonl'));
+      await again.load();
+      expect(again.records.length, 3);
+      expect(again.records.first.nodes.length, 2);
+      await dir.delete(recursive: true);
     });
   });
 }

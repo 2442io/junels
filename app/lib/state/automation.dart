@@ -13,6 +13,7 @@ import 'package:agent_engine/agent_engine.dart';
 import '../data/models.dart';
 import 'activity_log.dart';
 import 'app_controller.dart';
+import 'run_stats.dart';
 import 'notifications.dart';
 import 'connections.dart';
 import 'voice_service.dart' show appLog;
@@ -400,6 +401,7 @@ class FlowService {
   final Map<String, String> live = {};
 
   final Set<String> _running = {};
+  final Map<String, RunMeter> _meters = {};
   final Map<String, Completer<void>> _cancel = {};
 
   bool isRunning(String id) => _running.contains(id);
@@ -594,7 +596,7 @@ class FlowService {
       }
     }
     final order = wf.order();
-    final needsModel = order.any((n) => n.type == FlowNodeType.agent || n.type == FlowNodeType.skill);
+    final needsModel = order.any((n) => n.type == FlowNodeType.agent || n.type == FlowNodeType.skill || n.type == FlowNodeType.team);
     if (needsModel) {
       if (app.canChat) {
         yield PreflightCheck('Sprachmodell bereit', detail: app.loadedModel?.displayName ?? 'KI-Anbieter');
@@ -649,6 +651,24 @@ class FlowService {
               detail: s == null ? 'Kein Skill gewählt oder gelöscht' : (s.enabled ? '/${s.command}' : 'Skill ist ausgeschaltet'),
               nodeId: n.id,
               fix: s == null || !s.enabled ? 'node' : null);
+        case FlowNodeType.team:
+          final ms = n.members;
+          final missing = [
+            for (final m in ms)
+              if ('${m['skill'] ?? ''}'.isNotEmpty && app.skills.byId('${m['skill']}') == null) '${m['name']}'
+          ];
+          yield PreflightCheck('„${n.title}“: Team',
+              ok: ms.isNotEmpty && missing.isEmpty,
+              warn: n.config['review'] == true && ms.length < 2,
+              detail: ms.isEmpty
+                  ? 'Keine Mitglieder'
+                  : missing.isNotEmpty
+                      ? 'Skill fehlt bei: ${missing.join(', ')}'
+                      : '${ms.length} Mitglieder${n.config['review'] == true ? ' · mit Prüfer' : ''}',
+              nodeId: n.id,
+              fix: ms.isEmpty || missing.isNotEmpty ? 'node' : null);
+        case FlowNodeType.platform:
+          yield await _checkHttp(n, label: '„${n.title}“: ${AgentPlatform.parse(n.str('platform')).label}');
         case FlowNodeType.agent:
         case FlowNodeType.condition:
         case FlowNodeType.notify:
@@ -658,8 +678,8 @@ class FlowService {
     }
   }
 
-  Future<PreflightCheck> _checkHttp(FlowNode n) async {
-    final label = '„${n.title}“: Web-API';
+  Future<PreflightCheck> _checkHttp(FlowNode n, {String? label}) async {
+    label ??= '„${n.title}“: Web-API';
     final connId = n.str('connection');
     final conn = connId.isEmpty ? null : app.connections.byId(connId);
     if (connId.isNotEmpty && conn == null) {
@@ -750,6 +770,9 @@ class FlowService {
       FlowNodeType.tool => 'Werkzeug-Angaben prüfen.',
       FlowNodeType.mcp => 'Server, Tool und Angaben prüfen.',
       FlowNodeType.http => 'Adresse, Methode und Zugang prüfen.',
+      FlowNodeType.platform => 'Adresse und Zugang (API-Schlüssel) der Plattform prüfen.',
+      FlowNodeType.team => 'Rollen klarer formulieren oder ein anderes Modell fürs Mitglied wählen.',
+      FlowNodeType.skill => 'Skill und Aufgabe prüfen.',
       _ => 'Einstellungen des Bausteins prüfen.',
     });
   }
@@ -801,6 +824,8 @@ class FlowService {
     if (conv.entries.length > 40) conv.entries.removeRange(0, conv.entries.length - 40);
     app.refreshUi();
     final sw = Stopwatch()..start();
+    final meter = _meters[wf.id] = RunMeter();
+    final nodeStats = <NodeStat>[];
     var failed = false;
     var stopped = false;
     String last = input;
@@ -876,6 +901,7 @@ class FlowService {
           skipped.add(n.id);
         } finally {
           step.durationMs = t0.elapsedMilliseconds;
+          nodeStats.add(NodeStat(n.title, n.type.name, t0.elapsedMilliseconds, state[wf.id]?[n.id] ?? ''));
         }
       }
     } finally {
@@ -885,6 +911,23 @@ class FlowService {
       startedAt.remove(wf.id);
       live.remove(wf.id);
       wf.lastStatus = stopped ? 'Gestoppt' : (failed ? 'Fehler' : 'Erfolgreich');
+      _meters.remove(wf.id);
+      unawaited(app.runStats.add(RunRecord(
+          source: 'flow',
+          refId: wf.id,
+          name: wf.name,
+          start: now,
+          ms: sw.elapsedMilliseconds,
+          status: stopped ? 'stopped' : (failed ? 'error' : 'ok'),
+          error: failed ? (errors[wf.id]?.values.firstOrNull?.message ?? '') : '',
+          trigger: event.isNotEmpty ? event : (input.isEmpty ? 'manuell/Zeitplan' : 'Eingabe'),
+          calls: meter.calls,
+          tokensIn: meter.tokensIn,
+          tokensOut: meter.tokensOut,
+          tools: meter.tools,
+          toolErrors: meter.toolErrors,
+          models: meter.models.toList(),
+          nodes: nodeStats)));
       _event.remove(wf.id);
       if (failed && !stopped) {
         final fe = errors[wf.id]?.values.firstOrNull;
@@ -913,6 +956,87 @@ class FlowService {
   }
 
   /// Einen Baustein ausführen. null = Bedingung nicht erfüllt (Rest überspringen).
+  /// Team: Mitglieder arbeiten nacheinander, jedes bekommt Auftrag und das Ergebnis davor.
+  /// Mit Prüfer: der letzte prüft, bei Rückmeldung überarbeitet das vorletzte Mitglied (max. [rounds]).
+  Future<String> _runTeam(Workflow wf, FlowNode n, Map<String, String> vars, String prevText, Conversation conv, ChatEntry log, StepLog step) async {
+    final members = n.members;
+    if (members.isEmpty) throw Exception('Das Team hat keine Mitglieder');
+    final review = n.config['review'] == true && members.length >= 2;
+    final rounds = ((n.config['rounds'] as num?)?.toInt() ?? 1).clamp(1, 3);
+    var task = Workflow.fill(n.str('prompt', '{{vorher}}'), vars).trim();
+    if (task.isEmpty) task = prevText;
+    final transcript = <String>[];
+    final lines = <String>[];
+    String who = '';
+    void progress(String line) {
+      lines.add('$who $line');
+      if (lines.length > 10) lines.removeAt(0);
+      live[wf.id] = '$who $line';
+      step.observation = [...transcript, if (lines.isNotEmpty) '— gerade —\n${lines.join('\n')}'].join('\n\n');
+      app.refreshUi();
+    }
+
+    Future<String> ask(Map<String, dynamic> m, String prompt) async {
+      final name = '${m['name'] ?? 'Mitglied'}'.trim();
+      who = '👤 $name:';
+      lines.clear();
+      progress('übernimmt …');
+      final skill = '${m['skill'] ?? ''}'.isEmpty ? null : app.skills.byId('${m['skill']}');
+      final role = '${m['role'] ?? ''}'.trim();
+      final full = 'Du bist „$name“ in einem Team aus mehreren KI-Agenten (${[for (final x in members) x['name']].join(', ')}).'
+          '${role.isEmpty ? '' : '\nDeine Rolle: $role'}\n\n$prompt';
+      final out = await app
+          .automationAgent(full,
+              allowInternet: wf.allowInternet,
+              conv: conv,
+              entry: log,
+              onProgress: progress,
+              cancel: _cancel[wf.id]?.future,
+              skill: skill,
+              provider: '${m['provider'] ?? ''}',
+              meter: _meters[wf.id])
+          .timeout(const Duration(minutes: 10), onTimeout: () => throw Exception('Zeitüberschreitung bei „$name“ (über 10 Minuten).'));
+      transcript.add('👤 $name\n${out.length > 1200 ? '${out.substring(0, 1200)} …' : out}');
+      lines.clear();
+      step.observation = transcript.join('\n\n');
+      app.refreshUi();
+      return out;
+    }
+
+    final workers = review ? members.sublist(0, members.length - 1) : members;
+    var draft = '';
+    String prevName = '';
+    for (final m in workers) {
+      draft = await ask(
+          m,
+          'Gesamtauftrag des Teams:\n$task'
+          '${draft.isEmpty ? '' : '\n\nErgebnis von „$prevName“ – arbeite damit weiter:\n$draft'}'
+          '\n\nLiefere nur dein Ergebnis, ohne Vorrede.');
+      prevName = '${m['name'] ?? ''}';
+    }
+    if (review) {
+      final reviewer = members.last;
+      final last = workers.last;
+      for (var r = 0; r < rounds; r++) {
+        final verdict = await ask(
+            reviewer,
+            'Gesamtauftrag:\n$task\n\nErgebnis zur Prüfung:\n$draft\n\n'
+            'Prüfe auf Richtigkeit, Vollständigkeit und ob der Auftrag erfüllt ist. '
+            'Wenn es passt, antworte in der ersten Zeile nur mit „OK“. '
+            'Sonst schreib in der ersten Zeile „ÜBERARBEITEN“ und darunter konkret, was zu ändern ist.');
+        final (ok, feedback) = teamVerdict(verdict);
+        if (ok) break;
+        if (r == rounds - 1) {
+          transcript.add('↺ Prüfer nach $rounds Runde(n) noch nicht zufrieden – letztes Ergebnis wird weitergegeben.');
+          break;
+        }
+        draft = await ask(last, 'Gesamtauftrag:\n$task\n\nDein bisheriges Ergebnis:\n$draft\n\nRückmeldung des Prüfers:\n$feedback\n\nÜberarbeite dein Ergebnis entsprechend. Liefere nur das neue Ergebnis.');
+      }
+    }
+    step.observation = transcript.join('\n\n');
+    return draft;
+  }
+
   Future<String?> _exec(Workflow wf, FlowNode n, Map<String, String> vars, String prevText, String input, Conversation conv,
       ChatEntry log, StepLog step) async {
     switch (n.type) {
@@ -938,7 +1062,9 @@ class FlowService {
                 conv: conv,
                 entry: log,
                 onProgress: progress,
-                cancel: _cancel[wf.id]?.future)
+                cancel: _cancel[wf.id]?.future,
+                provider: n.str('provider'),
+                meter: _meters[wf.id])
             .timeout(const Duration(minutes: 10),
                 onTimeout: () => throw Exception('Zeitüberschreitung: Der Agent-Schritt lief über 10 Minuten.'));
       case FlowNodeType.skill:
@@ -957,9 +1083,34 @@ class FlowService {
 
         return app
             .automationAgent(task,
-                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill)
+                allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill, provider: n.str('provider'), meter: _meters[wf.id])
             .timeout(const Duration(minutes: 10),
                 onTimeout: () => throw Exception('Zeitüberschreitung: Der Skill lief über 10 Minuten.'));
+      case FlowNodeType.team:
+        return _runTeam(wf, n, vars, prevText, conv, log, step);
+      case FlowNodeType.platform:
+        if (!wf.allowInternet) throw Exception('Internet nicht erlaubt (Plattform)');
+        final plat = AgentPlatform.parse(n.str('platform'));
+        final connId = n.str('connection');
+        final conn = connId.isEmpty ? null : app.connections.byId(connId);
+        if (connId.isNotEmpty && conn == null) throw Exception('Zugang nicht gefunden – im Baustein neu wählen');
+        var uri = _resolveUrl(Workflow.fill(n.str('url'), vars), conn);
+        if (uri == null || uri.host.isEmpty) throw Exception('Ungültige Adresse „${n.str('url')}“');
+        final headers = <String, String>{'Content-Type': 'application/json', 'Accept': 'application/json'};
+        if (conn != null) {
+          final (h, q) = await app.connections.authFor(conn);
+          headers.addAll(h);
+          if (q.isNotEmpty) uri = uri.replace(queryParameters: {...uri.queryParameters, ...q});
+        }
+        final text = Workflow.fill(n.str('input', '{{vorher}}'), vars);
+        final body = platformRequestBody(plat, uri, text,
+            inputKey: n.str('inputKey', 'query'), meta: {'prozess': wf.name, 'datum': vars['datum'] ?? '', 'uhrzeit': vars['uhrzeit'] ?? ''});
+        step.args = {'plattform': plat.label, 'url': uri.replace(query: '').toString()};
+        live[wf.id] = '🔌 ${plat.label} läuft …';
+        app.refreshUi();
+        final r = await httpCall(method: 'POST', url: uri, headers: headers, body: body, timeout: const Duration(minutes: 5));
+        _meters[wf.id]?.tool(false);
+        return platformAnswer(plat, r.body);
       case FlowNodeType.tool:
         final tool = [...app.tools, ...app.mcpTools].where((t) => t.name == n.str('tool')).firstOrNull;
         if (tool == null) throw Exception('Werkzeug „${n.str('tool')}“ nicht gefunden');

@@ -49,3 +49,5 @@ export 'src/agent/mail_inbox.dart';
 export 'src/agent/language.dart';
 export 'src/model_router.dart';
 export 'src/http_call.dart';
+export 'src/platforms.dart';
+export 'src/mcp_serve.dart';

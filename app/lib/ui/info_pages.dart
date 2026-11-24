@@ -14,6 +14,14 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.50.0', [
+    'Prozesse: neuer Baustein „Team“ – mehrere Agenten mit Rollen arbeiten nacheinander (z. B. Recherche → Autor → Prüfer); der Prüfer kann Überarbeitungen verlangen. Je Mitglied eigener Skill und eigenes Modell',
+    'Modellwahl je Baustein: Agent, Skill und Team-Mitglieder können lokal, auf deinem Server oder in der Cloud laufen',
+    'Prozesse: neuer Baustein „Plattform“ – Workflows auf n8n, Dify, Flowise, Langflow oder einem eigenen Webhook aufrufen, Antwort wird übernommen',
+    'Junels als MCP-Server: Claude Desktop, Cursor, n8n, Dify … können deine Skills und Prozesse als Werkzeuge nutzen – nur auf diesem Gerät, mit Schlüssel, Aktionen warten auf deine Freigabe (Einstellungen → MCP-Server)',
+    'Überwachung: Läufe, Erfolgsquote, Dauer, Tokens und langsamste Bausteine je Prozess und externem Aufruf (Schnellnavigation oder Prozesse → Überwachung)',
+    'Selbsttest prüft den MCP-Server und die Fehlerquote der Prozesse',
+  ]),
   ('1.49.0', [
     'Prozesse: neuer Baustein „Skill“ – führt einen deiner Skills mit seinen Werkzeugen aus, Ergebnis geht an den nächsten Baustein',
     'Vorabprüfung erkennt gelöschte oder ausgeschaltete Skills',

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
+import 'mcp_serve_page.dart';
 import 'mcp_store_page.dart';
 import 'quick_nav.dart';
 
@@ -48,6 +49,18 @@ class McpPage extends StatelessWidget {
                       style: TextStyle(color: scheme.onPrimaryContainer)),
                   trailing: Icon(Icons.chevron_right, color: scheme.onPrimaryContainer),
                   onTap: () => openMcpStore(context),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.cable_outlined),
+                  title: const Text('Junels als MCP-Server'),
+                  subtitle: Text(app.mcpServe.running
+                      ? 'An · ${app.mcpServe.url} – andere Programme nutzen deine Skills'
+                      : 'Aus · Claude Desktop, n8n, Dify … deine Skills und Prozesse nutzen lassen'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const McpServePage())),
                 ),
               ),
               const SizedBox(height: 8),
