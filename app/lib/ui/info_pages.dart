@@ -14,6 +14,11 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.54.1', [
+    'Fragen zu deinen eigenen Daten (Kalender, Mails, Kontakte) und zu Dingen, die sich ändern („Wer ist der aktuelle …“): Junels sieht jetzt immer nach, statt zu raten – vom Test-Satz gefunden',
+    'Spotify-Steuerung nur noch bei Musik-/App-Wünschen – „Such mir einen Flug“ oder „Beispiel“ lösen sie nicht mehr aus',
+    'Prüfen & Nachbessern nur noch bei Informations-Aufträgen: Nach einer Aktion (Mail-Entwurf, Datei, Spotify) wird nichts wiederholt – keine doppelten Entwürfe',
+  ]),
   ('1.54.0', [
     'Agent-Test-Satz: 34 typische Aufträge (Wetter, Kalender, Mail, Spotify, Präsentation, Rechnen …). Die Werkzeug-Auswahl wird bei jedem Build geprüft; mit deinem Modell unter Selbsttest → Agent-Test-Satz (Werkzeuge sind Attrappen, es wird nichts gesendet) – mit Vergleich zum letzten Lauf',
     'Agent-Harness: Chat, Prozesse, Team und externe Aufrufe laufen jetzt durch dieselbe Schicht – gleiche Regeln für Werkzeuge, Internet und Protokoll',

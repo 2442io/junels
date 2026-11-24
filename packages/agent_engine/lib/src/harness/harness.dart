@@ -81,6 +81,17 @@ class AgentHarness {
     return (tools: tools, requiredTool: (req ?? '').isEmpty ? null : req);
   }
 
+  /// Werkzeuge mit Wirkung (erstellen, senden, steuern, merken). Wurde eines davon benutzt, wird nicht
+  /// nachgebessert – sonst entstehen doppelte Entwürfe, Dateien oder Befehle (im Test-Satz gesehen).
+  static bool isAction(String tool) =>
+      tool.startsWith('create_') ||
+      tool.startsWith('compose_') ||
+      tool.contains('__') ||
+      const {
+        'calendar_add', 'call_phone', 'send_notification', 'control_app', 'remember', 'skill_erstellen', 'edit_file',
+        'generate_image', 'save_prompt', 'file_rename', 'file_move', 'write_artifact', 'browser', 'begleiten',
+      }.contains(tool);
+
   /// Klingt der Auftrag nach mehreren Schritten?
   static bool looksComplex(String input) {
     final t = input.toLowerCase();
@@ -168,16 +179,18 @@ class AgentHarness {
             budgetHit == null &&
             finished?.reason == AgentStopReason.answered &&
             answer.trim().isNotEmpty &&
+            !called.any(isAction) &&
             (options.verify == CheckMode.always ||
-                (options.verify == CheckMode.auto && (first.requiredTool != null || called.length >= 2 || (planOn && called.isNotEmpty))));
+                (options.verify == CheckMode.auto && (called.length >= 2 || (planOn && called.isNotEmpty))));
         if (verifyOn) {
           final (ok, feedback) = await _check(input, answer, called);
           out.add(AnswerChecked(ok, feedback));
           if (!ok && feedback.isNotEmpty && !_stopped && sw.elapsed < options.budget.maxTime * 0.8) {
             finished = null;
             await pass(again(), [...history, ChatMessage('user', input), ChatMessage('assistant', answer)],
-                'Prüfung deiner Antwort: Es fehlt noch: $feedback\nErgänze oder korrigiere das. Nutze Werkzeuge, wenn nötig, '
-                'und gib dann die vollständige, verbesserte Antwort.');
+                'Prüfung deiner Antwort: Es fehlt noch: $feedback\nErgänze oder korrigiere das. Nutze Werkzeuge nur, um fehlende '
+                'Informationen zu holen – wiederhole keine Abfrage und keine Aktion, die schon erledigt ist. '
+                'Gib dann die vollständige, verbesserte Antwort.');
           }
         }
         if (budgetHit != null) out.add(BudgetHit(budgetHit!));

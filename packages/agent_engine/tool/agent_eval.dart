@@ -25,7 +25,7 @@ Future<void> main(List<String> args) async {
     if (r == null) return;
     stdout.writeln('[$done/$total] ${r.passed ? 'OK  ' : (r.skipped ? 'SKIP' : 'FAIL')} ${r.c.id} '
         '(${(r.ms / 1000).toStringAsFixed(1)} s, ${r.called.isEmpty ? 'keine Werkzeuge' : r.called.join(', ')})'
-        '${r.problems.isEmpty ? '' : ' – ${r.problems.join('; ')}'}');
+        '${r.problems.isEmpty ? '' : ' – ${r.problems.join('; ')}\n      Antwort: ${r.answer.replaceAll('\n', ' ')}'}');
   });
   final md = rep.toMarkdown();
   stdout.writeln('\n$md');

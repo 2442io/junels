@@ -578,6 +578,10 @@ class AgentRunner {
           'vollständigen Inhalt in Markdown auf.',
       'edit_file' => 'Der Nutzer will die erstellte Datei ändern – nicht beschreiben, sondern ändern. Rufe JETZT edit_file auf '
           '(erst aktion "anzeigen" für den aktuellen Inhalt, dann "ersetzen"/"einfuegen"/"loeschen").',
+      'calendar_list' || 'mail_inbox' || 'contacts_search' => 'Der Nutzer fragt nach seinen eigenen Daten – nicht raten oder erfinden. '
+          'Rufe JETZT $tool auf und antworte dann mit dem Ergebnis.',
+      'remember' => 'Der Nutzer will, dass du dir das merkst. Rufe JETZT remember auf.',
+      'web_search' => 'Das ändert sich laufend – dein Wissen kann veraltet sein. Rufe JETZT web_search auf und antworte mit dem Ergebnis.',
       _ => 'Der Nutzer will ein Ergebnis als Datei. Rufe JETZT $tool auf.',
     };
   }

@@ -3881,7 +3881,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // Design-Vorschläge/Links zur vorigen Präsentation („hier sind Design-Vorschläge …“) gehören dazu
     final designFollowUp = (designReferencesIn(input).isNotEmpty || wantsDesign(input)) &&
         !ToolRouter.deckWord.hasMatch(input) &&
-        requiredToolFor(prevUser) != null;
+        (requiredToolFor(prevUser)?.contains(RegExp('create_|edit_file')) ?? false);
     final gateText = looksLikeFollowUp(input) || designFollowUp ? '$prevUser $input' : input;
     var requiredTool = requiredToolFor(gateText,
         hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf'}.contains(a['kind'])));

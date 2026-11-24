@@ -26,7 +26,11 @@ class AgentCase {
     this.noCall = false,
     this.answerAny = const [],
     this.answerNot = const [],
+    this.obs = const {},
   });
+
+  /// Testdaten nur für diesen Fall (überschreibt [evalObservations])
+  final Map<String, String> obs;
 
   final String id;
   final String area;
@@ -73,33 +77,35 @@ const agentCases = <AgentCase>[
   AgentCase('news', 'Wetter & Web', 'Was gibt es Neues aus Österreich?',
       tools: {'news'}, call: {'news', 'web_search'}, answerAny: ['budget', 'u5', 'u-bahn']),
   AgentCase('aktuell', 'Wetter & Web', 'Wer ist der aktuelle Bundeskanzler von Österreich?',
-      tools: {'web_search'}, call: {'web_search'}, answerAny: ['testfrau']),
+      tools: {'web_search'}, required: 'web_search', call: {'web_search'}, answerAny: ['testfrau']),
   AgentCase('url', 'Wetter & Web', 'Fass mir https://example.com/artikel kurz zusammen',
       tools: {'web_fetch'}, call: {'web_fetch', 'browser'}, answerAny: ['radweg']),
   AgentCase('amazon', 'Wetter & Web', 'Such auf Amazon nach einer Laufjacke unter 80 Euro',
       tools: {'site_search'}, call: {'site_search', 'web_search', 'browser'}, answerAny: ['runfast', 'aerorun']),
   AgentCase('flug', 'Wetter & Web', 'Such mir einen günstigen Flug von Wien nach Lissabon im März',
-      tools: {'browser', 'web_search'}, call: {'browser', 'web_search'}, answerAny: ['89']),
+      tools: {'browser', 'web_search'}, notTools: {'control_app'}, call: {'browser', 'web_search'}, answerAny: ['89'],
+      obs: {'web_search': '1. skyscanner.at (Testdaten): Flüge Wien → Lissabon im März ab 89 € (Direktflug, 3 h 20 min). 2. austrian.com: ab 129 €.'}),
   // ---- Kalender, Erinnerungen, Kontakte
   AgentCase('kalender', 'Kalender & Kontakte', 'Was steht heute in meinem Kalender?',
-      tools: {'calendar_list'}, call: {'calendar_list'}, answerAny: ['zahnarzt']),
+      tools: {'calendar_list'}, required: 'calendar_list', call: {'calendar_list'}, answerAny: ['zahnarzt']),
   AgentCase('termin', 'Kalender & Kontakte', 'Trag mir für Freitag 10 Uhr einen Termin beim Friseur ein',
       tools: {'calendar_add'}, call: {'calendar_add'}),
   AgentCase('erinnerung', 'Kalender & Kontakte', 'Erinnere mich in 20 Minuten an den Herd',
       tools: {'send_notification'}, call: {'send_notification'}),
   AgentCase('nummer', 'Kalender & Kontakte', 'Wie ist die Telefonnummer von Anna?',
-      tools: {'contacts_search'}, call: {'contacts_search'}, answerAny: ['660']),
+      tools: {'contacts_search'}, required: 'contacts_search', call: {'contacts_search'}, answerAny: ['660']),
   AgentCase('anruf', 'Kalender & Kontakte', 'Ruf Anna an', tools: {'call_phone'}, call: {'call_phone', 'contacts_search'}),
   AgentCase('mail', 'Kalender & Kontakte', 'Schreib eine E-Mail an Peter, dass ich mich um 10 Minuten verspäte',
       tools: {'compose_email'}, call: {'compose_email'}),
   AgentCase('whatsapp', 'Kalender & Kontakte', 'Schick Lisa per WhatsApp: Bin in 10 Minuten da',
       tools: {'compose_whatsapp'}, call: {'compose_whatsapp'}),
   AgentCase('posteingang', 'Kalender & Kontakte', 'Habe ich ungelesene Mails?',
-      tools: {'mail_inbox'}, call: {'mail_inbox'}, answerAny: ['steuerberater', 'vermieter']),
+      tools: {'mail_inbox'}, required: 'mail_inbox', call: {'mail_inbox'}, answerAny: ['steuerberater', 'vermieter']),
   AgentCase('offen', 'Kalender & Kontakte', 'Was ist bei mir liegengeblieben?',
       tools: {'find_loose_ends', 'calendar_list'}, call: {'find_loose_ends', 'mail_inbox', 'calendar_list'}),
   // ---- Musik & Apps
   AgentCase('jazz', 'Musik & Apps', 'Spiel Jazz auf Spotify', tools: {'control_app'}, call: {'control_app'}),
+  AgentCase('beispiel', 'Musik & Apps', 'Gib mir ein Beispiel für eine höfliche Absage', notTools: {'control_app'}, noCall: true),
   AgentCase('weiter', 'Musik & Apps', 'Nächstes Lied bitte', tools: {'control_app'}, call: {'control_app'}),
   // ---- Erstellen
   AgentCase('praesentation', 'Erstellen', 'Erstelle mir eine Präsentation über Peru mit 5 Folien',
@@ -118,13 +124,13 @@ const agentCases = <AgentCase>[
   AgentCase('prozent', 'Rechnen & Wissen', 'Was sind 17,5 % von 2.340 Euro?',
       tools: {'calculator'}, call: {'calculator'}, answerAny: ['409,5', '409.5', '409,50']),
   AgentCase('wochentag', 'Rechnen & Wissen', 'Welcher Wochentag ist der 24.12.2026?', tools: {'datetime'}, answerAny: ['donnerstag']),
-  AgentCase('merken', 'Rechnen & Wissen', 'Merk dir, dass ich vegetarisch esse', tools: {'remember'}, call: {'remember'}),
+  AgentCase('merken', 'Rechnen & Wissen', 'Merk dir, dass ich vegetarisch esse', tools: {'remember'}, required: 'remember', call: {'remember'}),
   AgentCase('unterlagen', 'Rechnen & Wissen', 'Was steht in meinen Unterlagen zur Kündigungsfrist?',
       tools: {'knowledge_search'}, hasDocs: true, call: {'knowledge_search', 'read_file'}, answerAny: ['drei monate', '3 monate']),
   AgentCase('verlauf', 'Rechnen & Wissen', 'Was hatte ich dich letztes Mal zu Peru gefragt?',
       tools: {'search_history'}, call: {'search_history'}, answerAny: ['impf']),
   AgentCase('datei', 'Rechnen & Wissen', 'Finde die Datei Rechnung März in meinen Downloads',
-      tools: {'file_search'}, call: {'file_search'}, answerAny: ['rechnung_maerz']),
+      tools: {'file_search'}, call: {'file_search'}, answerAny: ['rechnung_maerz', 'rechnung märz', 'rechnung_märz', 'downloads']),
 ];
 
 /// Werkzeug-Beschreibungen für den Live-Test ohne App (CI). In der App werden die echten
@@ -229,9 +235,12 @@ class EvalStubTool extends AgentTool {
   @override
   bool get requiresNetwork => _network;
 
+  /// Testdaten des gerade laufenden Falls
+  static Map<String, String> caseObs = const {};
+
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async =>
-      evalObservations[name] ?? 'Erledigt (Testdaten für $name).';
+      caseObs[name] ?? evalObservations[name] ?? 'Erledigt (Testdaten für $name).';
 }
 
 class CaseResult {
@@ -287,6 +296,15 @@ class EvalReport {
     for (final r in results) {
       b.writeln('| ${r.c.id} | ${r.skipped ? '–' : (r.passed ? '✅' : '❌')} | ${r.called.isEmpty ? '–' : r.called.join(', ')} | '
           '${(r.ms / 1000).toStringAsFixed(1)} s | ${r.problems.join('; ').replaceAll('|', '/')} |');
+    }
+    final bad = results.where((r) => !r.passed && !r.skipped).toList();
+    if (bad.isNotEmpty) {
+      b
+        ..writeln()
+        ..writeln('### Antworten der nicht bestandenen Fälle');
+      for (final r in bad) {
+        b.writeln('- **${r.c.id}** („${r.c.prompt}“): ${r.answer.replaceAll('\n', ' ')}');
+      }
     }
     return b.toString();
   }
@@ -361,6 +379,7 @@ class AgentEvaluator {
     final offered = ToolRouter.select(tools, (t) => (name: t.name, title: t.title, description: t.description), c.prompt, hasDocs: c.hasDocs);
     var req = ToolRouter.requiredToolFor(c.prompt, hasFiles: c.hasFiles);
     if (req != null && !req.split('|').any((x) => offered.any((t) => t.name == x))) req = null;
+    EvalStubTool.caseObs = c.obs;
     final sys = systemPrompt(offered);
     AgentRunner mk() => AgentRunner(
           engine: backend,

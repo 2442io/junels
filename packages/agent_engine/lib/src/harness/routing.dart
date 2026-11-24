@@ -22,11 +22,30 @@ class ToolRouter {
     if (hasFiles && _editIntent.hasMatch(text) && !RegExp(r'neue (präsentation|powerpoint|datei|pdf)', caseSensitive: false).hasMatch(text)) {
       return 'edit_file|create_presentation|create_document';
     }
-    if (!_makeVerb.hasMatch(text)) return null;
-    if (deckWord.hasMatch(text)) return 'create_presentation';
-    if (_docWord.hasMatch(text)) return 'create_document';
+    if (_makeVerb.hasMatch(text)) {
+      if (deckWord.hasMatch(text)) return 'create_presentation';
+      if (_docWord.hasMatch(text)) return 'create_document';
+    }
+    // Fragen zu den eigenen Daten: nachsehen statt raten
+    for (final e in _ownData.entries) {
+      if (e.value.hasMatch(text)) return e.key;
+    }
     return null;
   }
+
+  /// Eigene Daten des Nutzers – ohne Werkzeug kann das Modell nur raten (erfundene Termine o. Ä.)
+  static final _ownData = <String, RegExp>{
+    'calendar_list': RegExp(
+        r'(was steht|was hab ich|was habe ich|hab ich|habe ich)\b.*\b(heute|morgen|übermorgen|termin|kalender)|'
+        r'mein(em|en)? (kalender|terminen?)\b|meine termine|wann ist mein(e|en)? |bin ich .*(frei|verfügbar)',
+        caseSensitive: false),
+    'mail_inbox': RegExp(r'ungelesene? (mails?|e-?mails?)|meine (mails|e-?mails)|posteingang|neue (mails|e-?mails)', caseSensitive: false),
+    'contacts_search': RegExp(r'(telefon|handy)?nummer von|e-?mail-?adresse von', caseSensitive: false),
+    'remember': RegExp(r'\bmerk(e)? dir\b', caseSensitive: false),
+    // Fakten, die sich ändern: nachsehen statt aus dem (veralteten) Wissen antworten
+    'web_search': RegExp(r'wer ist (der|die|das) (aktuelle|derzeitige|jetzige|neue)|aktuelle[rn]? (preis|kurs|wechselkurs|stand)|wie steht (der|die) (kurs|aktie)',
+        caseSensitive: false),
+  };
 
   /// Auslöser je Werkzeug: Nur wenn die Nachricht danach klingt, bekommt das Modell
   /// das Werkzeug zu sehen. Für „Hi“ oder normale Fragen gibt es gar keine Werkzeuge –
@@ -64,7 +83,9 @@ class ToolRouter {
     'save_prompt': RegExp(r'prompt|vorlage|als (prompt|vorlage)|jeden (morgen|tag|montag)|täglich'),
     'create_document': RegExp(r'\bpdf\b|dokument|bericht|report|handout|word'),
     'create_presentation': RegExp(r'präsentation|folien|powerpoint|pptx|slides'),
-    'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|spiel|abspielen|play|pause|nächste[rn]? (lied|titel|song)|weiter|lauter|musik|playlist|podcast|youtube|\bsuch|\bfind|\bhör|jazz|song|lied|album|künstler|band\b'),
+    // Nur bei App-/Musik-Wunsch – nicht bei jedem „such“ (Flugsuche!) oder „Beispiel“
+    'control_app': RegExp(r'spotify|\bapp\b|öffne|starte|\bspiel(e|en)?\b|abspielen|\bplay\b|pause|nächste[rns]? (lied|titel|song)|lauter|leiser|'
+        r'musik|playlist|podcast|youtube|\bhör\w* (mir|mal|musik|was)|jazz|\bsong|\blied\b|album|künstler|\bband\b'),
     'mail_inbox': RegExp(r'\bmails?\b|e-?mails?|posteingang|inbox|unbeantwortet|ungelesen|nachrichten von|hat .* geschrieben|liegengeblieben|unerledigt'),
     'find_loose_ends': RegExp(r'liegengeblieben|liegen geblieben|unerledigt|was (ist|hab ich|habe ich) (noch )?(offen|vergessen)|offene (punkte|aufgaben|sachen|dinge|themen)|nachfassen|was steht (noch )?aus'),
     'edit_file': RegExp(r'folie\s*\d|abschnitt|kapitel|überarbeit|änder|ersetz|lösch|einfüg|füg .* (ein|hinzu)|korrigier|tausch|umschreib|kürz|ergänz'),

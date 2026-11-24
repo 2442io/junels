@@ -102,31 +102,45 @@ Future<void> main() async {
         'mehrteiliger Auftrag erkannt');
     check(!AgentHarness.looksComplex('Wie wird das Wetter?'), 'einfache Frage nicht mehrteilig');
 
-    // Plan → Ausführen → Prüfen → Nachbessern
+    // Plan → Ausführen → Prüfen → Nachbessern (nur Informations-Werkzeuge)
+    const job = 'Such die günstigsten Flüge nach Rom und dann vergleiche sie mit den Zugpreisen';
     final be = ScriptedBackend([
-      '1. Flüge suchen (web_search)\n2. Mail schreiben (compose_email)',
-      '{"thought": "suchen", "action": "web_search", "args": {"query": "Flug Rom"}}',
-      '{"thought": "mail", "action": "compose_email", "args": {"an": "Anna", "betreff": "Flug", "text": "Bester Flug"}}',
-      '{"thought": "fertig", "final_answer": "Mail an Anna ist vorbereitet."}',
-      'FEHLT: Der Preis des besten Fluges fehlt in der Antwort.',
-      '{"thought": "", "final_answer": "Mail an Anna ist vorbereitet. Bester Flug: 89 €."}',
+      '1. Flüge suchen (web_search)\n2. Zugpreise suchen (web_search)',
+      '{"thought": "flüge", "action": "web_search", "args": {"query": "Flug Rom"}}',
+      '{"thought": "zug", "action": "web_search", "args": {"query": "Zug Rom"}}',
+      '{"thought": "fertig", "final_answer": "Der Zug ist bequemer."}',
+      'FEHLT: Die Preise fehlen in der Antwort.',
+      '{"thought": "", "final_answer": "Flug ab 89 €, Zug ab 120 € – der Flug ist günstiger."}',
     ]);
-    final tools = AgentHarness.prepare(
-            available: all, input: 'Such die günstigsten Flüge nach Rom und dann schreib eine Mail an Anna mit dem besten Angebot')
-        .tools;
+    final tools = AgentHarness.prepare(available: all, input: job).tools;
     AgentRunner mk() => AgentRunner(engine: be, systemPrompt: 'Test', tools: tools, maxSteps: 6);
     final h = AgentHarness(backend: be);
     final evs = await h
-        .run(first: mk(), again: mk, history: const [], input: 'Such die günstigsten Flüge nach Rom und dann schreib eine Mail an Anna mit dem besten Angebot',
-            context: ToolContext(requestNetwork: (_) async => true))
+        .run(first: mk(), again: mk, history: const [], input: job, context: ToolContext(requestNetwork: (_) async => true))
         .toList();
     final plan = evs.whereType<PlanMade>().firstOrNull;
     check(plan != null && plan.steps.length == 2, 'Plan mit 2 Schritten');
     final chk = evs.whereType<AnswerChecked>().firstOrNull;
-    check(chk != null && !chk.ok && chk.feedback.contains('Preis'), 'Prüfung findet fehlenden Preis');
-    check(evs.whereType<FinalAnswer>().last.text.contains('89'), 'Nachbesserung liefert den Preis');
+    check(chk != null && !chk.ok && chk.feedback.contains('Preise'), 'Prüfung findet fehlende Preise');
+    check(evs.whereType<FinalAnswer>().last.text.contains('89'), 'Nachbesserung liefert die Preise');
     check(evs.whereType<AgentFinished>().length == 1, 'genau ein Ende-Ereignis');
     check(be.prompts.any((x) => x.contains('Dein Plan')), 'Plan geht an den Agenten');
+    check(be.prompts.last.contains('wiederhole keine'), 'Nachbesserung wiederholt keine Aktionen');
+
+    // Nach einer Aktion (Mail-Entwurf) wird nicht nachgebessert – sonst doppelte Entwürfe
+    final beA = ScriptedBackend([
+      '{"thought": "", "action": "web_search", "args": {"query": "Flug Rom"}}',
+      '{"thought": "", "action": "compose_email", "args": {"an": "Anna", "betreff": "Flug", "text": "89 €"}}',
+      '{"thought": "", "final_answer": "Mail an Anna ist vorbereitet."}',
+    ]);
+    final tA = AgentHarness.prepare(available: all, input: 'Such einen Flug nach Rom und schreib eine Mail an Anna').tools;
+    AgentRunner mkA() => AgentRunner(engine: beA, systemPrompt: 'T', tools: tA);
+    final eA = await AgentHarness(backend: beA)
+        .run(first: mkA(), again: mkA, history: const [], input: 'Such einen Flug nach Rom und schreib eine Mail an Anna',
+            context: ToolContext(requestNetwork: (_) async => true), options: const HarnessOptions(plan: CheckMode.off))
+        .toList();
+    check(eA.whereType<AnswerChecked>().isEmpty && eA.whereType<ToolCalled>().where((e) => e.tool == 'compose_email').length == 1,
+        'nach Aktion keine Nachbesserung (nur ein Mail-Entwurf)');
 
     // Prüfung OK → keine Nachbesserung
     final be2 = ScriptedBackend([
@@ -139,7 +153,7 @@ Future<void> main() async {
     final e2 = await AgentHarness(backend: be2)
         .run(first: mk2(), again: mk2, history: const [], input: 'Erstelle eine Präsentation über Peru', context: ToolContext())
         .toList();
-    check(e2.whereType<AnswerChecked>().single.ok && e2.whereType<FinalAnswer>().length == 1, 'OK → keine zweite Runde');
+    check(e2.whereType<AnswerChecked>().isEmpty && e2.whereType<FinalAnswer>().length == 1, 'Datei erstellt → keine Prüfrunde');
 
     // Budget
     final be3 = ScriptedBackend(List.filled(8, '{"thought": "", "action": "calculator", "args": {"ausdruck": "1+1"}}'));
