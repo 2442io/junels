@@ -15,6 +15,7 @@ import 'package:offline_agent/state/app_scope.dart';
 import 'package:offline_agent/ui/inbox_page.dart';
 import 'package:offline_agent/ui/sidebar.dart';
 import 'package:offline_agent/ui/skills_page.dart';
+import 'package:offline_agent/state/skills.dart';
 import 'package:offline_agent/ui/device_page.dart';
 import 'package:offline_agent/ui/sync_page.dart';
 import 'package:offline_agent/ui/notify_settings_page.dart';
@@ -183,6 +184,38 @@ Future<void> _demo() async {
   wf2.connect('n2', 'n3');
   wf2.connect('n3', 'n4');
   app.flows.flows.addAll([wf, wf2]);
+  for (final f in [wf, wf2]) {
+    app.skills.syncFlow(f.id, f.name, f.description);
+  }
+  app.skills.upsert(Skill(
+      id: 'u-amazon',
+      name: 'Amazon Suche',
+      when: 'Produkte auf Amazon suchen und vergleichen',
+      instructions: '1. Auf amazon.de suchen\n2. Die besten 5 mit Preis und Link nennen',
+      tools: ['site_search', 'web_search'],
+      icon: 'shopping',
+      internet: 'allow',
+      output: 'cards'));
+  final views = Conversation(id: 'c5', title: 'Ansichten')
+    ..updated = now
+    ..entries.addAll([
+      ChatEntry(role: 'user', text: '/amazon ski unterwäsche merino für männer'),
+      ChatEntry(role: 'assistant', skill: 'Amazon Suche', view: 'cards', durationMs: 35000, via: 'Lokal · Gemma 4 12B',
+          text: 'Drei gute Merino-Sets für den Skitag:\n\n- **Merino-tech Set** – 49,99 € – warm, weich – https://www.amazon.de/dp/B01\n'
+              '- **DANISH ENDURANCE Thermo** – 39,95 € – mit Reißverschluss – https://www.amazon.de/dp/B02\n- **Icebreaker 200 Oasis** – 89,90 € – sehr langlebig – https://www.amazon.de/dp/B03'),
+      ChatEntry(role: 'user', text: 'Vergleich die drei als Tabelle'),
+      ChatEntry(role: 'assistant', view: 'table', durationMs: 4000,
+          text: 'Im Vergleich:\n\n| Set | Preis | Merino | Besonderheit |\n|---|---|---|---|\n| Merino-tech | 49,99 € | 100 % | weich |\n'
+              '| DANISH ENDURANCE | 39,95 € | 80 % | Reißverschluss |\n| Icebreaker 200 | 89,90 € | 100 % | langlebig |'),
+      ChatEntry(role: 'user', text: 'Was muss ich für den Skiurlaub packen? Als Checkliste'),
+      ChatEntry(role: 'assistant', view: 'list', checked: [0, 2], durationMs: 3000,
+          text: 'Deine Packliste:\n\n- [ ] Skipass und Ausweis\n- [ ] Helm und Brille\n- [ ] Merino-Unterwäsche\n- [ ] Sonnencreme\n- [ ] Ladegerät'),
+      ChatEntry(role: 'user', text: 'Wie wachse ich meine Ski? Schritt für Schritt'),
+      ChatEntry(role: 'assistant', view: 'steps', durationMs: 3500,
+          text: 'So geht es:\n\n1. **Reinigen** – Belag mit Base Cleaner säubern\n2. **Wachs auftragen** – Bügeleisen auf 120 °C, Wachs auftropfen\n'
+              '3. **Abkühlen** – mindestens 30 Minuten\n4. **Abziehen** – mit der Plexiklinge von vorne nach hinten\n5. **Ausbürsten** – Struktur freilegen'),
+    ]);
+  app.conversations.add(views);
   app.flows.state['f1'] = {'n1': 'done', 'n2': 'done', 'n3': 'done', 'n4': 'running', 'n5': 'pending', 'n6': 'done'};
 
   await app.memory.add('Arbeitet in Wien als Solution Manager für KI.', category: 'person');
@@ -287,6 +320,11 @@ void main() {
       'home_phone': (const Size(412, 900), const HomeShell()),
       'desktop': (const Size(1440, 900), const HomeShell()),
       'desktop_settings': (const Size(1280, 900), const SettingsPage()),
+      'skill_editor': (const Size(412, 2200), SkillEditor(skill: app.skills.byId('u-amazon'))),
+      'views': (const Size(412, 2400), Builder(builder: (_) {
+        app.current = app.conversations.firstWhere((c) => c.id == 'c5');
+        return const HomeShell();
+      })),
     };
     final failed = <String>[];
     for (final e in shots.entries) {
