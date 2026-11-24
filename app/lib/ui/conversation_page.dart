@@ -326,7 +326,7 @@ class _ConversationPageState extends State<ConversationPage> {
 }
 
 void _showVoiceSettings(BuildContext context) {
-  showModalBottomSheet<void>(
+  showSheet<void>(
     context: context,
     showDragHandle: true,
     builder: (ctx) {

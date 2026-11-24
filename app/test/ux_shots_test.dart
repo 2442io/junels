@@ -284,6 +284,7 @@ void main() {
       'updates': (const Size(412, 1700), const UpdatePage()),
       'selftest': (const Size(412, 1700), const SelfTestPage()),
       'help': (const Size(412, 1700), const HelpPage()),
+      'home_phone': (const Size(412, 900), const HomeShell()),
       'desktop': (const Size(1440, 900), const HomeShell()),
       'desktop_settings': (const Size(1280, 900), const SettingsPage()),
     };

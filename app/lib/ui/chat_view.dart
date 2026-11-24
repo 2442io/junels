@@ -21,6 +21,8 @@ import 'conversation_page.dart';
 import 'file_views.dart';
 import 'markdown_lite.dart';
 import 'skills_page.dart';
+import 'internet_menu.dart';
+import 'quick_nav.dart';
 import 'theme.dart';
 import 'prompt_editor.dart';
 import 'system_check.dart';
@@ -1284,6 +1286,24 @@ class _InputBarState extends State<_InputBar> {
                         ],
                       ),
                     ),
+                  // KI-Weiche, Internet und Schnellmenü direkt über der Eingabe
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(children: [
+                      Flexible(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(children: const [
+                            AiModeMenu(),
+                            SizedBox(width: 6),
+                            InternetMenu(),
+                          ]),
+                        ),
+                      ),
+                      const Spacer(),
+                      PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnellmenü', onPressed: () => showQuickNav(context)),
+                    ]),
+                  ),
                   LayoutBuilder(builder: (context, box) {
                     final tools = <Widget>[
                       if (Platform.isAndroid)

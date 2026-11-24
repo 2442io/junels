@@ -673,3 +673,29 @@ class AiGeneratedBadge extends StatelessWidget {
             height: height, filterQuality: FilterQuality.medium, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
       );
 }
+
+
+/// Bottom-Sheet mit sichtbarem ✕ zum Schließen (Android: nicht nur durch Tippen daneben).
+Future<T?> showSheet<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool isScrollControlled = false,
+  bool showDragHandle = true,
+  String? title,
+}) =>
+    showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: isScrollControlled,
+      showDragHandle: false,
+      useSafeArea: true,
+      builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 6, 0),
+          child: Row(children: [
+            Expanded(child: title == null ? const SizedBox() : Text(title, style: Theme.of(ctx).textTheme.titleMedium)),
+            IconButton(tooltip: 'Schließen', icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop()),
+          ]),
+        ),
+        Flexible(child: builder(ctx)),
+      ]),
+    );

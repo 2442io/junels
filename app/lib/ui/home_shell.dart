@@ -12,15 +12,15 @@ import 'chat_view.dart';
 import 'guide_card.dart';
 import 'inspector.dart';
 import 'prompt_editor.dart';
-import 'internet_menu.dart';
 import 'conversation_page.dart';
 import 'sidebar.dart';
 import 'system_check.dart';
 import 'nav.dart';
-import 'quick_nav.dart';
 import 'self_test_page.dart';
 import 'watchlist_page.dart';
 import 'flows_page.dart';
+import '../state/notifications.dart';
+import 'notify_style.dart';
 import 'theme.dart';
 
 /// Fragt, ob der Agent ins Internet darf.
@@ -215,31 +215,26 @@ class _HomeShellState extends State<HomeShell> {
 
       final actions = <Widget>[
         if (!_focus) ...[
-          AiModeMenu(compact: compact),
+          // Glocke: Punkt in der Farbe der wichtigsten neuen Mitteilung (Warnung rot, Aktion violett, Erinnerung gelb …)
+          Builder(builder: (context) {
+            final top = app.notifier.topUnread ?? (app.todoCount > 0 ? NotifyKind.aktion : null);
+            return PillIconButton(
+              icon: top != null ? Icons.notifications_active : Icons.notifications_none,
+              tooltip: top == null ? 'Mitteilungen' : 'Mitteilungen – neu: ${top.label}',
+              badge: top != null,
+              badgeColor: top?.colors(context).$1,
+              onPressed: () => openSection(context, AppSection.inbox),
+            );
+          }),
           const SizedBox(width: 6),
-          InternetMenu(compact: compact),
-          const SizedBox(width: 6),
-          PillIconButton(
-            icon: app.todoCount > 0 ? Icons.notifications_active : Icons.notifications_none,
-            tooltip: 'Mitteilungen',
-            badge: app.todoCount > 0 || app.notifier.hasWarning,
-            badgeColor: app.todoCount > 0 ? colors.violet : colors.red,
-            onPressed: () => openSection(context, AppSection.inbox),
-          ),
-          const SizedBox(width: 6),
-          // Handy: Gesprächsmodus gibt es unten im Eingabefeld – hier die Schnellnavigation wie auf allen Seiten
-          if (compact)
-            PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnell wechseln', onPressed: () => showQuickNav(context))
-          else ...[
+          if (!compact) ...[
             PillIconButton(
               icon: Icons.graphic_eq,
               tooltip: 'Gesprächsmodus',
               onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
             ),
             const SizedBox(width: 6),
-            PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnell wechseln', onPressed: () => showQuickNav(context)),
           ],
-          const SizedBox(width: 6),
           if (!compact) ...[
             PillIconButton(icon: Icons.add, tooltip: 'Neuer Chat', onPressed: app.newConversation),
             const SizedBox(width: 6),
@@ -319,7 +314,22 @@ class _HomeShellState extends State<HomeShell> {
               ? null
               : Drawer(width: drawerWidth, child: const SafeArea(child: Sidebar(inDrawer: true))),
           endDrawer: compact && !_focus
-              ? Drawer(width: (w * 0.92).clamp(280.0, 420.0), child: const SafeArea(child: InspectorPanel()))
+              ? Drawer(
+                  width: (w * 0.92).clamp(280.0, 420.0),
+                  child: SafeArea(
+                    child: Column(children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          tooltip: 'Schließen',
+                          icon: const Icon(Icons.close),
+                          onPressed: () => _scaffold.currentState?.closeEndDrawer(),
+                        ),
+                      ),
+                      const Expanded(child: InspectorPanel()),
+                    ]),
+                  ),
+                )
               : null,
           body: Row(
             children: [

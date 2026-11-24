@@ -28,6 +28,10 @@ class _SidebarState extends State<Sidebar> {
   bool _showAll = false;
   bool _showAllRoutines = false;
 
+  /// Aufgeklappte Gruppen – bleiben für die Sitzung gemerkt (Standard: alles zu, nur Chats offen)
+  static final Set<String> _open = {'chats'};
+  void _toggle(String g) => setState(() => _open.contains(g) ? _open.remove(g) : _open.add(g));
+
   @override
   void dispose() {
     _search.dispose();
@@ -60,7 +64,7 @@ class _SidebarState extends State<Sidebar> {
     final pinned = normal.where((c) => c.pinned).toList();
     final folders = app.chatFolders;
     final looseAll = normal.where((c) => !c.pinned && c.folder == null).toList();
-    final loose = _showAll ? looseAll.take(200).toList() : looseAll.take(12).toList();
+    final loose = _showAll ? looseAll.take(200).toList() : looseAll.take(5).toList();
     Widget row(Conversation conv) => _ChatRow(
           key: ValueKey(conv.id),
           conv: conv,
@@ -106,6 +110,14 @@ class _SidebarState extends State<Sidebar> {
                     child: Text('v$appVersion',
                         style: TextStyle(fontFamily: Ui.mono, fontSize: 10.5, color: c.amber, fontWeight: FontWeight.w500)),
                   ),
+                  if (widget.inDrawer) ...[
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Menü schließen',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Scaffold.maybeOf(context)?.closeDrawer(),
+                    ),
+                  ],
                 ]),
               ),
               const UpdateBanner(),
@@ -119,6 +131,7 @@ class _SidebarState extends State<Sidebar> {
                     onPressed: () {
                       app.newConversation();
                       _go(AppSection.chat);
+                      if (widget.inDrawer) Scaffold.maybeOf(context)?.closeDrawer();
                     },
                   ),
                 ),
@@ -155,78 +168,92 @@ class _SidebarState extends State<Sidebar> {
                 ),
               ),
 
-              // ---- Benachrichtigungen & To-dos
-              const SectionLabel('Heute'),
-              item(AppSection.inbox, count: app.todoCount == 0 ? null : '${app.todoCount}', dot: app.notifier.hasWarning),
-              // ---- Was Junels selbständig erledigt
-              const SectionLabel('Automatisch erledigen'),
-              item(AppSection.tasks,
-                  count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
-              // Watchlist ist Teil der Prozesse (Beobachten-Auslöser im Canvas)
-              item(AppSection.flows,
-                  count: app.watchlist.unseen > 0 || app.flows.flows.isEmpty ? null : '${app.flows.flows.length}',
-                  dot: app.watchlist.unseen > 0),
-              const SectionLabel('Fähigkeiten & Wissen'),
-              item(AppSection.skills, count: app.skills.own.isEmpty ? null : '${app.skills.own.length}'),
-              item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
-              item(AppSection.knowledge, dot: app.memory.pending.isNotEmpty),
-              const SectionLabel('Kontrolle'),
-              item(AppSection.activity, dot: app.runStats.records.isNotEmpty && app.runStats.records.last.status == 'error'),
-
-              // ---- Routinen: je Aufgabe bzw. Prozess ein Chat mit allen Ergebnissen
-              if (q.isEmpty && routines.isNotEmpty) ...[
-                SectionLabel('Routinen', trailing: MonoText('${routines.length}', size: 11, color: c.faint)),
-                for (final conv in routines.take(_showAllRoutines ? 50 : 5))
-                  _ChatRow(
-                    conv: conv,
-                    selected: app.current?.id == conv.id && (active == null || active == AppSection.chat),
-                    running: app.running && app.runningConvId == conv.id,
-                    onTap: () {
-                      app.selectConversation(conv);
-                      _go(AppSection.chat);
-                    },
-                    onDelete: () => app.deleteConversation(conv),
-                  ),
-                if (routines.length > 5)
-                  TextButton(
-                    onPressed: () => setState(() => _showAllRoutines = !_showAllRoutines),
-                    child: Text(_showAllRoutines ? 'Weniger anzeigen' : 'Alle ${routines.length} Routinen'),
-                  ),
-              ],
-
-              // ---- Chats
-              SectionLabel(
-                q.isEmpty ? 'Chats' : 'Treffer',
-                trailing: MonoText('${chats.length}', size: 11, color: c.faint),
+              // ---- Chats gleich unter der Suche
+              _GroupHeader(
+                label: q.isEmpty ? 'Chats' : 'Treffer',
+                count: '${chats.length}',
+                open: q.isNotEmpty || _open.contains('chats'),
+                onTap: q.isNotEmpty ? null : () => _toggle('chats'),
               ),
-              if (chats.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                  child: Text(q.isEmpty ? 'Noch keine Chats.' : 'Nichts gefunden.', style: t.bodySmall),
-                ),
-              if (q.isNotEmpty)
-                for (final conv in visible) row(conv)
-              else ...[
-                // angeheftet
-                for (final conv in pinned) row(conv),
-                if (pinned.isNotEmpty) const SizedBox(height: 4),
-                // Ordner / Projekte
-                for (final f in folders)
-                  _FolderGroup(
-                    name: f,
-                    count: normal.where((c) => c.folder == f).length,
-                    open: _openFolders.contains(f) || normal.any((c) => c.folder == f && c.id == app.current?.id),
-                    onToggle: () => setState(() => _openFolders.contains(f) ? _openFolders.remove(f) : _openFolders.add(f)),
-                    onRename: (to) => app.renameFolder(f, to),
-                    children: [for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv)],
+              if (q.isNotEmpty || _open.contains('chats')) ...[
+                if (chats.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Text(q.isEmpty ? 'Noch keine Chats.' : 'Nichts gefunden.', style: t.bodySmall),
                   ),
-                for (final conv in loose) row(conv),
+                if (q.isNotEmpty)
+                  for (final conv in visible) row(conv)
+                else ...[
+                  // angeheftet
+                  for (final conv in pinned) row(conv),
+                  if (pinned.isNotEmpty) const SizedBox(height: 4),
+                  // Ordner / Projekte
+                  for (final f in folders)
+                    _FolderGroup(
+                      name: f,
+                      count: normal.where((c) => c.folder == f).length,
+                      open: _openFolders.contains(f) || normal.any((c) => c.folder == f && c.id == app.current?.id),
+                      onToggle: () => setState(() => _openFolders.contains(f) ? _openFolders.remove(f) : _openFolders.add(f)),
+                      onRename: (to) => app.renameFolder(f, to),
+                      children: [for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv)],
+                    ),
+                  for (final conv in loose) row(conv),
+                ],
+                if (q.isEmpty && looseAll.length > 5)
+                  TextButton(
+                    onPressed: () => setState(() => _showAll = !_showAll),
+                    child: Text(_showAll ? 'Weniger anzeigen' : 'Alle ${looseAll.length} Chats anzeigen'),
+                  ),
               ],
-              if (q.isEmpty && looseAll.length > 12)
-                TextButton(
-                  onPressed: () => setState(() => _showAll = !_showAll),
-                  child: Text(_showAll ? 'Weniger anzeigen' : 'Alle ${looseAll.length} Chats anzeigen'),
+
+              if (q.isEmpty) ...[
+                // ---- Automatisierung: Aufgaben, Prozesse und ihre Ergebnis-Chats (Routinen)
+                _GroupHeader(
+                  label: 'Automatisierung',
+                  open: _open.contains('auto'),
+                  dot: app.watchlist.unseen > 0 ? c.amber : null,
+                  onTap: () => _toggle('auto'),
                 ),
+                if (_open.contains('auto')) ...[
+                  item(AppSection.tasks,
+                      count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
+                  item(AppSection.flows,
+                      count: app.watchlist.unseen > 0 || app.flows.flows.isEmpty ? null : '${app.flows.flows.length}',
+                      dot: app.watchlist.unseen > 0),
+                  if (routines.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
+                      child: Text('Ergebnisse', style: t.labelSmall?.copyWith(color: c.faint)),
+                    ),
+                    for (final conv in routines.take(_showAllRoutines ? 50 : 5)) row(conv),
+                    if (routines.length > 5)
+                      TextButton(
+                        onPressed: () => setState(() => _showAllRoutines = !_showAllRoutines),
+                        child: Text(_showAllRoutines ? 'Weniger anzeigen' : 'Alle ${routines.length} anzeigen'),
+                      ),
+                  ],
+                ],
+                // ---- Fähigkeiten & Wissen
+                _GroupHeader(
+                  label: 'Fähigkeiten & Wissen',
+                  open: _open.contains('skills'),
+                  dot: app.memory.pending.isNotEmpty ? c.amber : null,
+                  onTap: () => _toggle('skills'),
+                ),
+                if (_open.contains('skills')) ...[
+                  item(AppSection.skills, count: app.skills.own.isEmpty ? null : '${app.skills.own.length}'),
+                  item(AppSection.prompts, count: templates == 0 ? null : '$templates'),
+                  item(AppSection.knowledge, dot: app.memory.pending.isNotEmpty),
+                ],
+                // ---- Kontrolle
+                _GroupHeader(
+                  label: 'Kontrolle',
+                  open: _open.contains('control'),
+                  dot: app.runStats.records.isNotEmpty && app.runStats.records.last.status == 'error' ? c.red : null,
+                  onTap: () => _toggle('control'),
+                ),
+                if (_open.contains('control')) item(AppSection.activity),
+              ],
             ],
           ),
         ),
@@ -444,7 +471,7 @@ class _ChatRowState extends State<_ChatRow> {
   Future<void> _menu(BuildContext context) async {
     final app = AppScope.read(context);
     final conv = widget.conv;
-    final r = await showModalBottomSheet<String>(
+    final r = await showSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -570,5 +597,42 @@ class _FolderGroup extends StatelessWidget {
       ),
       if (open) Padding(padding: const EdgeInsets.only(left: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)),
     ]);
+  }
+}
+
+
+/// Aufklappbare Gruppen-Überschrift im Seitenmenü.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({required this.label, required this.open, this.onTap, this.count, this.dot});
+  final String label;
+  final bool open;
+  final VoidCallback? onTap;
+  final String? count;
+  final Color? dot;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+          child: Row(children: [
+            Text(label.toUpperCase(),
+                style: TextStyle(fontSize: 11, letterSpacing: 0.9, fontWeight: FontWeight.w600, color: c.faint)),
+            if (dot != null && !open) ...[
+              const SizedBox(width: 8),
+              Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+            ],
+            const Spacer(),
+            if (count != null) MonoText(count!, size: 11, color: c.faint),
+            if (onTap != null) Icon(open ? Icons.expand_less : Icons.expand_more, size: 18, color: c.faint),
+          ]),
+        ),
+      ),
+    );
   }
 }

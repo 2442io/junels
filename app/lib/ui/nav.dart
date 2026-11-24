@@ -60,6 +60,11 @@ class ShellNav extends InheritedWidget {
 
 /// Wechselt in einen Bereich: eingebettet (Desktop) oder als neue Seite (Handy).
 void openSection(BuildContext context, AppSection s, {bool fromDrawer = false}) {
+  // Aus dem Seitenmenü (Handy): Menü immer schließen – sonst bleibt es über dem neuen Inhalt offen
+  if (fromDrawer) {
+    final sc = Scaffold.maybeOf(context);
+    if (sc?.isDrawerOpen ?? false) sc!.closeDrawer();
+  }
   final nav = context.getInheritedWidgetOfExactType<ShellNav>();
   if (nav != null && nav.embedded) {
     nav.go(s);

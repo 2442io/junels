@@ -70,7 +70,7 @@ class DesignsPage extends StatelessWidget {
     return Scaffold(
       appBar: JAppBar(title: const Text('Eigene Designs')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet(
+        onPressed: () => showSheet(
           context: context,
           builder: (ctx) => SafeArea(
             child: Column(mainAxisSize: MainAxisSize.min, children: [

@@ -125,7 +125,7 @@ class _FlowsPageState extends State<FlowsPage> {
   /// Ablauf in eigenen Worten beschreiben – Junels baut daraus den Prozess.
   Future<void> _describe() async {
     final ctrl = TextEditingController();
-    final text = await showModalBottomSheet<String>(
+    final text = await showSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -853,7 +853,7 @@ class _FlowEditorState extends State<FlowEditor> with SingleTickerProviderStateM
                       _fitted = false;
                     }),
                     onAdd: () async {
-                      final type = await showModalBottomSheet<FlowNodeType>(
+                      final type = await showSheet<FlowNodeType>(
                         context: context,
                         showDragHandle: true,
                         builder: (ctx) => SafeArea(

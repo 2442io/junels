@@ -62,7 +62,7 @@ Future<void> showQuickNav(BuildContext context) async {
     (AppSection.settings, null),
     (AppSection.help, null),
   ];
-  final picked = await showModalBottomSheet<Object>(
+  final picked = await showSheet<Object>(
     context: context,
     showDragHandle: true,
     builder: (ctx) => SafeArea(

@@ -169,6 +169,15 @@ class Notifier extends ChangeNotifier {
   bool get hasWaiting => visible.any((i) => i.waiting);
   bool get hasWarning => visible.any((i) => !i.read && i.kind == NotifyKind.warnung);
 
+  /// Wichtigste ungelesene Art (für den Punkt an der Glocke): Warnung > Aktion > Erinnerung > Fertig > Info.
+  NotifyKind? get topUnread {
+    const order = [NotifyKind.warnung, NotifyKind.aktion, NotifyKind.erinnerung, NotifyKind.ergebnis, NotifyKind.info];
+    for (final k in order) {
+      if (visible.any((i) => !i.read && !i.planned && i.kind == k)) return k;
+    }
+    return null;
+  }
+
   Future<void> load() async {
     try {
       if (!await _file.exists()) return;
