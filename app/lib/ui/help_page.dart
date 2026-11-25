@@ -313,10 +313,9 @@ Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt
     title: 'Amtswege & Formulare',
     summary: 'Junels erklärt Amtswege aus offiziellen Quellen und füllt Formulare gemeinsam mit dir aus.',
     keywords: 'amtsweg behörde formular antrag meldezettel reisepass lebenslage oesterreich.gv.at wien.gv.at begleiten ausfüllen id austria',
-    body: '''**Amtsweg-Lotse** (/amtsweg oder einfach fragen: „Ich ziehe um, was muss ich tun?“)
-Junels liest die offiziellen Seiten (oesterreich.gv.at, wien.gv.at) und antwortet mit einer Checkliste der Unterlagen, den Schritten, Kosten, Fristen, der zuständigen Stelle und dem Link zum Online-Formular.
-
-**Begleiten** (/begleiten mit Link, oder „Hilf mir bei diesem Formular: …“)
+    body: '''**/begleiten** – ein Skill für beides (auch /amtsweg funktioniert):
+- **Ohne Link**, z. B. „Ich ziehe um, was muss ich tun?“ (geht auch ohne Befehl): Junels liest die offiziellen Seiten (oesterreich.gv.at, wien.gv.at) und antwortet mit einer Checkliste der Unterlagen, den Schritten, Kosten, Fristen, der zuständigen Stelle und dem Link zum Online-Formular – und bietet an, dich durchs Formular zu begleiten.
+- **Mit Link**, z. B. „/begleiten https://… Meldezettel ausfüllen“:
 - Junels öffnet das Formular im Browser, liest alle Felder und erklärt sie in einfachen Worten – was gemeint ist und wo du die Angabe findest.
 - Es fragt höchstens drei Angaben auf einmal und trägt sie ein; du siehst jeden Schritt.
 - 🔒 Sozialversicherungs-, Pass- und Kontonummern, Passwörter: trägst du selbst ein – Junels hebt das Feld violett hervor und liest den Wert nie.

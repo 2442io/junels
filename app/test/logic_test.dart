@@ -197,14 +197,16 @@ Wetter am Zielort abfragen und kurz empfehlen.''';
       expect(s.unmapped, ['Bash']);
     });
 
-    test('Amtsweg-Lotse wird erkannt', () {
+    test('Amtswege laufen über Begleiten', () {
       expect(wantsAmtsweg('Ich ziehe nach Wien um, wie melde ich meinen Wohnsitz um?'), isTrue);
       expect(wantsAmtsweg('Was brauche ich für einen neuen Reisepass?'), isTrue);
       expect(wantsAmtsweg('Wie beantrage ich Familienbeihilfe?'), isTrue);
       expect(wantsAmtsweg('Wie wird das Wetter morgen?'), isFalse);
       expect(wantsAmtsweg('Hilf mir bei https://www.wien.gv.at/amtswege/reisepass-antrag'), isFalse);
       final lib = SkillLibrary(File('${Directory.systemTemp.createTempSync('sk').path}/skills.json'));
-      expect(lib.byCommand('amtsweg')?.tools, contains('begleiten'));
+      expect(lib.byCommand('amtsweg')?.command, 'begleiten');
+      expect(lib.byCommand('begleiten')?.tools, containsAll(['begleiten', 'site_search']));
+      expect(lib.match('/amtsweg Reisepass verlängern')?.$2, 'Reisepass verlängern');
     });
 
     test('Ausgabeformat im Skill, Antwort und Chat', () {

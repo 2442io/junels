@@ -3992,9 +3992,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final conv = target ?? _ensureConversation();
     // Skill: /befehl am Anfang oder automatisch erkannt (eigene Skills)
-    // Amtsweg/Lebenslage ohne Adresse → Amtsweg-Lotse (offizielle Infos, dann Begleitung durchs Formular)
+    // Amtsweg/Lebenslage ohne Adresse → Begleiten (offizielle Infos, dann gemeinsam durchs Formular)
     final skillHit = skills.match(input) ??
-        (wantsAmtsweg(input) && (skills.byCommand('amtsweg')?.enabled ?? false) ? (skills.byCommand('amtsweg')!, input) : null);
+        (wantsAmtsweg(input) && (skills.byCommand('begleiten')?.enabled ?? false) ? (skills.byCommand('begleiten')!, input) : null);
     final skill = skillHit?.$1;
     final skillTask = skillHit?.$2 ?? '';
     // Skill ist ein Ablauf: den Ablauf mit der Eingabe starten, Ergebnis kommt in diesen Chat

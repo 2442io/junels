@@ -18,7 +18,7 @@ bool wantsGuide(String input) {
   return url && verb;
 }
 
-/// Geht es um einen Amtsweg / eine Lebenslage (ohne konkrete Adresse)? → Skill „Amtsweg-Lotse“
+/// Geht es um einen Amtsweg / eine Lebenslage (ohne konkrete Adresse)? → Skill „Begleiten“ (Infos aus offiziellen Quellen, dann Formular)
 bool wantsAmtsweg(String input) {
   final t = input.toLowerCase();
   if (RegExp(r'https?://').hasMatch(t)) return false;

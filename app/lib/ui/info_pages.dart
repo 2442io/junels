@@ -14,6 +14,9 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.60.1', [
+    'Amtsweg-Lotse und Begleiten sind jetzt ein Skill: /begleiten ohne Link klärt den Amtsweg (Unterlagen, Kosten, Fristen, Formular-Link) und begleitet dich danach durchs Formular, mit Link geht es direkt los. /amtsweg funktioniert weiterhin',
+  ]),
   ('1.60.0', [
     'Gespräch: Junels redet nicht mehr über die Frage, seine Anweisungen oder den „Kontext“ – Meta-Sätze werden herausgefiltert; bei unverständlicher Frage (Spracherkennung verhört) fragt Junels kurz nach statt zu raten',
     'Begleiten hilft jetzt wirklich bei Formularen: liest alle Felder (auch Tabellen-Formulare der Ämter), erklärt sie in einfachen Worten, fragt höchstens 3 Angaben auf einmal und trägt sie ein',
