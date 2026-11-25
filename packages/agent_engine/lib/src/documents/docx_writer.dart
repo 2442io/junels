@@ -88,7 +88,7 @@ class DocxBody {
               currentNum = firstNumId + orderedNums.length;
               orderedNums.add(currentNum);
             }
-            numId = currentNum!;
+            numId = currentNum;
           }
           out.write(para(runs(text),
               style: 'ListParagraph', extraPr: '<w:numPr><w:ilvl w:val="${depth.clamp(0, 4)}"/><w:numId w:val="$numId"/></w:numPr>'));

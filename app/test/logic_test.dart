@@ -197,6 +197,16 @@ Wetter am Zielort abfragen und kurz empfehlen.''';
       expect(s.unmapped, ['Bash']);
     });
 
+    test('Amtsweg-Lotse wird erkannt', () {
+      expect(wantsAmtsweg('Ich ziehe nach Wien um, wie melde ich meinen Wohnsitz um?'), isTrue);
+      expect(wantsAmtsweg('Was brauche ich für einen neuen Reisepass?'), isTrue);
+      expect(wantsAmtsweg('Wie beantrage ich Familienbeihilfe?'), isTrue);
+      expect(wantsAmtsweg('Wie wird das Wetter morgen?'), isFalse);
+      expect(wantsAmtsweg('Hilf mir bei https://www.wien.gv.at/amtswege/reisepass-antrag'), isFalse);
+      final lib = SkillLibrary(File('${Directory.systemTemp.createTempSync('sk').path}/skills.json'));
+      expect(lib.byCommand('amtsweg')?.tools, contains('begleiten'));
+    });
+
     test('Ausgabeformat im Skill, Antwort und Chat', () {
       final sk = Skill(id: 'o', name: 'Shop', when: 'Produkte suchen', instructions: 'suchen', output: 'cards');
       expect(Skill.fromMarkdown(sk.toMarkdown(), id: 'p')!.output, 'cards');

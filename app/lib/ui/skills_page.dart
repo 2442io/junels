@@ -30,6 +30,7 @@ const skillIcons = <String, IconData>{
   'wb_sunny': Icons.wb_sunny_outlined,
   'travel_explore': Icons.travel_explore,
   'explore': Icons.explore_outlined,
+  'account_balance': Icons.account_balance_outlined,
   'checklist': Icons.checklist,
   'music_note': Icons.music_note_outlined,
   'mail': Icons.mail_outline,

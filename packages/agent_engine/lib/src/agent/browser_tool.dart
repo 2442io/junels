@@ -106,10 +106,152 @@ const browserSnapshotJs = r'''
 })()
 ''';
 
-String _actJs(int id, String action, [String text = '', bool submit = false]) => '''
+
+/// Liest ein Formular vollständig: Felder mit Beschriftung, Abschnitt, Pflicht, Hinweis, Fehlern und ob schon etwas
+/// eingetragen ist – NIE den eingetragenen Wert. Felder bekommen data-jfid (Ziel „F3“).
+const browserFormJs = r'''
 (function(){
-  var e=document.querySelector('[data-jid="$id"]');
-  if(!e)return JSON.stringify({ok:false,error:'Element $id nicht mehr auf der Seite – lies die Seite neu (action read)'});
+  var txt=function(s){return (s||'').replace(/\s+/g,' ').trim();};
+  var it=function(e){return e?(e.innerText||e.textContent||''):'';};
+  var vis=function(e){var r=e.getBoundingClientRect();var s=getComputedStyle(e);return (r.width>1||r.height>1)&&s.visibility!=='hidden'&&s.display!=='none';};
+  document.querySelectorAll('[data-jfid]').forEach(function(e){e.removeAttribute('data-jfid');});
+  var heads=Array.prototype.slice.call(document.querySelectorAll('h1,h2,h3,h4,legend,.section-title,[role=heading]')).filter(vis);
+  var sectionOf=function(e){
+    var fs=e.closest&&e.closest('fieldset');var lg=fs&&fs.querySelector('legend');if(lg)return txt(it(lg)).slice(0,80);
+    var best='';for(var i=0;i<heads.length;i++){if(heads[i].compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)best=txt(it(heads[i]));}
+    return best.slice(0,80);
+  };
+  var labelOf=function(e){
+    var l='';
+    if(e.id){var lf=document.querySelector('label[for="'+CSS.escape(e.id)+'"]');if(lf)l=txt(it(lf));}
+    if(!l&&e.closest){var wl=e.closest('label');if(wl)l=txt(it(wl));}
+    if(!l&&e.getAttribute('aria-labelledby')){l=e.getAttribute('aria-labelledby').split(' ').map(function(id){var x=document.getElementById(id);return x?txt(it(x)):'';}).join(' ');}
+    if(!l)l=txt(e.getAttribute('aria-label'));
+    if(!l&&e.closest){var td=e.closest('td,dd,.form-group,.field,.row');
+      if(td&&td.tagName==='TD'){var tr=td.parentElement;var cells=Array.prototype.slice.call(tr.children);var k=cells.indexOf(td);
+        for(var j=k-1;j>=0&&!l;j--)l=txt(it(cells[j]));}
+      else if(td&&td.tagName==='DD'){var dt=td.previousElementSibling;if(dt)l=txt(it(dt));}
+      else if(td){var c=td.cloneNode(true);c.querySelectorAll('input,select,textarea,option,script,style').forEach(function(x){x.remove();});l=txt(it(c));}}
+    if(!l){var p=e.previousElementSibling;if(p&&!/INPUT|SELECT|TEXTAREA/.test(p.tagName))l=txt(it(p));}
+    if(!l)l=txt(e.getAttribute('placeholder'))||txt(e.getAttribute('title'))||txt(e.getAttribute('name'));
+    return l.slice(0,120);
+  };
+  var hintOf=function(e){
+    var h='';var d=e.getAttribute('aria-describedby');
+    if(d)h=d.split(' ').map(function(id){var x=document.getElementById(id);return x?txt(it(x)):'';}).join(' ');
+    if(!h&&e.title)h=txt(e.title);
+    if(!h&&e.parentElement){var n=e.parentElement.querySelector('small,.hint,.help,.helptext,.form-text,.description,.info');if(n)h=txt(it(n));}
+    return h.slice(0,200);
+  };
+  var fields=[],n=0,radios={};
+  var all=Array.prototype.slice.call(document.querySelectorAll('input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=image]):not([type=reset]),select,textarea'));
+  for(var i=0;i<all.length&&fields.length<90;i++){
+    var e=all[i];if(!vis(e)||e.disabled)continue;
+    var type=(e.getAttribute('type')||e.tagName).toLowerCase();
+    var label=labelOf(e);
+    var req=!!(e.required||e.getAttribute('aria-required')==='true'||/\*\s*$|\(pflicht|pflichtfeld/i.test(label)||/required|pflicht/i.test(e.className));
+    var low=(label+' '+(e.name||'')+' '+(e.getAttribute('autocomplete')||'')).toLowerCase();
+    var secret=type==='password'||/passwort|password|kennwort|\bpin\b|\btan\b|sozialversicherung|svnr|sv-nummer|versicherungsnummer|reisepass|passnummer|pass-nr|ausweis|personalausweis|iban|\bbic\b|kontonummer|kreditkarte|kartennummer|cvc|cvv|steuernummer|cc-/.test(low);
+    if(type==='radio'){
+      var g=e.name||('r'+i);
+      var optLabel=labelOf(e);
+      if(radios[g]){radios[g].options.push(optLabel);if(e.checked)radios[g].filled=true;continue;}
+      n++;e.setAttribute('data-jfid',String(n));
+      // Frage zur Gruppe: Text direkt vor dem ersten Knopf (z. B. „Hauptwohnsitz? *“), sonst Tabellenzeile/Legende
+      var gl='';var nd=(e.closest&&e.closest('label'))||e;
+      for(var pv=nd.previousElementSibling,k2=0;pv&&k2<6&&!gl;pv=pv.previousElementSibling,k2++){if(!pv.querySelector('input')&&!/INPUT|SELECT/.test(pv.tagName))gl=txt(it(pv));}
+      if(!gl){var tr2=e.closest&&e.closest('tr');if(tr2&&tr2.firstElementChild&&!tr2.firstElementChild.querySelector('input'))gl=txt(it(tr2.firstElementChild));}
+      if(!gl){var grp=e.closest&&(e.closest('fieldset')||e.closest('.form-group'));gl=grp?txt(it(grp.querySelector('legend')||grp.firstElementChild||grp)):optLabel;}
+      gl=gl.slice(0,100);
+      if(/\*\s*$/.test(gl))req=true;
+      radios[g]={id:'F'+n,kind:'radio',label:gl,options:[optLabel],filled:!!e.checked,required:req,section:sectionOf(e),hint:hintOf(e),name:g};
+      fields.push(radios[g]);continue;
+    }
+    n++;e.setAttribute('data-jfid',String(n));
+    var o={id:'F'+n,kind:e.tagName==='SELECT'?'select':(type==='checkbox'?'checkbox':(e.tagName==='TEXTAREA'?'textarea':'input')),type:type,label:label,required:req,section:sectionOf(e),hint:hintOf(e)};
+    if(o.kind==='select'){o.options=Array.prototype.slice.call(e.options).slice(0,25).map(function(x){return txt(x.text);}).filter(function(x){return x;});o.filled=e.selectedIndex>0||(e.value&&e.selectedIndex>=0&&!/bitte|auswählen|--/i.test(txt(e.options[e.selectedIndex]&&e.options[e.selectedIndex].text)));}
+    else if(o.kind==='checkbox')o.filled=!!e.checked;
+    else o.filled=!!(e.value&&e.value.length);
+    if(e.getAttribute('pattern'))o.pattern=e.getAttribute('pattern').slice(0,40);
+    if(e.maxLength>0&&e.maxLength<500)o.max=e.maxLength;
+    if(e.getAttribute('aria-invalid')==='true')o.invalid=true;
+    if(secret)o.secret=1;
+    var ph=txt(e.getAttribute('placeholder'));if(ph&&ph!==label)o.ph=ph.slice(0,50);
+    fields.push(o);
+  }
+  var errs=[];document.querySelectorAll('[role=alert],.error,.fehler,.validation-summary-errors,.field-validation-error,.invalid-feedback,.alert-danger').forEach(function(x){if(vis(x)){var t=txt(it(x));if(t&&errs.indexOf(t)<0)errs.push(t.slice(0,200));}});
+  var btns=[];document.querySelectorAll('button,input[type=submit],input[type=button],a.button,a.btn,[role=button]').forEach(function(b){if(!vis(b))return;var t=txt(it(b))||txt(b.value)||txt(b.getAttribute('aria-label'));if(t&&t.length<40&&btns.indexOf(t)<0)btns.push(t);});
+  var body=txt(it(document.querySelector('main,[role=main],#content,form')||document.body));
+  var step=(body.match(/schritt\s*\d+\s*(von|\/)\s*\d+/i)||[''])[0];
+  return JSON.stringify({url:location.href,title:document.title,step:step,fields:fields,errors:errs.slice(0,8),buttons:btns.slice(0,12),intro:body.slice(0,600)});
+})()
+''';
+
+/// Feld im Browser hervorheben (Rahmen + Sprechblase mit Erklärung), damit der Nutzer sieht, wo er tippen soll.
+String browserMarkJs(int fid, String text) => '''
+(function(){
+  document.querySelectorAll('.junels-mark').forEach(function(x){x.remove();});
+  document.querySelectorAll('[data-junels-outline]').forEach(function(x){x.style.outline=x.getAttribute('data-junels-outline');x.removeAttribute('data-junels-outline');});
+  var e=document.querySelector('[data-jfid="$fid"]');
+  if(!e)return JSON.stringify({ok:false,error:'Feld F$fid nicht mehr auf der Seite – Formular neu lesen (begleiten aktion formular)'});
+  e.scrollIntoView({block:'center'});
+  e.setAttribute('data-junels-outline',e.style.outline||'');
+  e.style.outline='3px solid #8b5cf6';e.style.outlineOffset='2px';
+  var t=${jsonEncode(text)};
+  if(t){var b=document.createElement('div');b.className='junels-mark';b.textContent='💬 '+t;
+    b.style.cssText='position:absolute;z-index:2147483647;max-width:320px;background:#8b5cf6;color:#fff;font:14px/1.4 system-ui,sans-serif;padding:8px 10px;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+    var r=e.getBoundingClientRect();b.style.left=Math.max(8,r.left+scrollX)+'px';b.style.top=(r.bottom+scrollY+8)+'px';document.body.appendChild(b);}
+  try{e.focus({preventScroll:true});}catch(x){}
+  return JSON.stringify({ok:true});
+})()
+''';
+
+/// Formular-Daten (JSON aus [browserFormJs]) als Text für das Modell.
+String formatForm(Map<String, dynamic> f) {
+  final fields = ((f['fields'] as List?) ?? const []).cast<Map>();
+  final b = StringBuffer('Formular: ${f['title'] ?? ''}${(f['step'] ?? '').toString().isNotEmpty ? ' – ${f['step']}' : ''}\n');
+  var section = '';
+  var openReq = 0, req = 0;
+  for (final x in fields) {
+    final sec = (x['section'] ?? '').toString();
+    if (sec.isNotEmpty && sec != section) {
+      section = sec;
+      b.writeln('Abschnitt „$sec“');
+    }
+    final required = x['required'] == true;
+    if (required) {
+      req++;
+      if (x['filled'] != true) openReq++;
+    }
+    final kind = switch (x['kind']) {
+      'select' => 'Auswahl: ${((x['options'] as List?) ?? const []).take(10).join(' | ')}',
+      'radio' => 'eins wählen: ${((x['options'] as List?) ?? const []).take(10).join(' | ')}',
+      'checkbox' => 'Häkchen',
+      'textarea' => 'Text, mehrzeilig',
+      _ => switch (x['type']) { 'date' => 'Datum', 'email' => 'E-Mail', 'tel' => 'Telefon', 'number' => 'Zahl', _ => 'Text' },
+    };
+    b.write('  ${x['id']} ${x['label']}${required ? ' *' : ''} ($kind)');
+    b.write(x['filled'] == true ? ' – ausgefüllt' : ' – leer');
+    if (x['invalid'] == true) b.write(' – ⚠ FEHLER');
+    if (x['secret'] == 1) b.write(' – 🔒 trägt der Nutzer selbst ein');
+    if ((x['ph'] ?? '').toString().isNotEmpty) b.write(' – Beispiel: ${x['ph']}');
+    if ((x['hint'] ?? '').toString().isNotEmpty) b.write(' – Hinweis: ${x['hint']}');
+    if (x['max'] != null) b.write(' – max. ${x['max']} Zeichen');
+    b.writeln();
+  }
+  if (fields.isEmpty) b.writeln('(keine Eingabefelder auf dieser Seite)');
+  final errs = ((f['errors'] as List?) ?? const []);
+  if (errs.isNotEmpty) b.writeln('Fehlermeldungen der Seite: ${errs.join(' · ')}');
+  final btns = ((f['buttons'] as List?) ?? const []);
+  if (btns.isNotEmpty) b.writeln('Knöpfe: ${btns.join(' · ')} (anklicken: browser read, dann click mit Nummer)');
+  if (req > 0) b.writeln('Pflichtfelder: ${req - openReq} von $req ausgefüllt${openReq > 0 ? ' – $openReq offen' : ''}');
+  return b.toString();
+}
+
+String _actJs(int id, String action, [String text = '', bool submit = false, String attr = 'data-jid']) => '''
+(function(){
+  var e=document.querySelector('[$attr="$id"]');
+  if(!e)return JSON.stringify({ok:false,error:'Element $id nicht mehr auf der Seite – lies die Seite neu (action read bzw. Formular neu lesen)'});
   if(e.scrollIntoView)e.scrollIntoView({block:'center'});
   var act=${jsonEncode(action)},v=${jsonEncode(text)};
   if(act==='click'){
@@ -130,6 +272,16 @@ String _actJs(int id, String action, [String text = '', bool submit = false]) =>
       if(f){setTimeout(function(){try{if(f.requestSubmit)f.requestSubmit();else f.submit();}catch(x){}},150);}
     }
     return JSON.stringify({ok:true});
+  }
+  if(act==='select'&&e.type==='radio'){
+    var rs=Array.prototype.slice.call(document.querySelectorAll('input[type=radio][name="'+e.name+'"]'));
+    var lab=function(r){var l=r.id?document.querySelector('label[for="'+r.id+'"]'):null;return ((l?l.innerText:'')||(r.closest('label')?r.closest('label').innerText:'')||r.value||'').toLowerCase();};
+    var hit=rs.find(function(r){return lab(r).indexOf(v.toLowerCase())>=0;});
+    if(!hit)return JSON.stringify({ok:false,error:'Option nicht gefunden'});
+    hit.click();return JSON.stringify({ok:true});
+  }
+  if(act==='check'){
+    var want=!/^(nein|no|false|aus|0)\$/i.test(v.trim());if(e.checked!==want)e.click();return JSON.stringify({ok:true});
   }
   if(act==='select'){
     var o=Array.prototype.slice.call(e.options||[]).find(function(x){return x.text.toLowerCase().indexOf(v.toLowerCase())>=0;});
@@ -181,14 +333,17 @@ class BrowserTool extends AgentTool {
   String get description =>
       'Bedient einen echten Browser, den der Nutzer sieht. action: "open" (target = Adresse), "search" (target = Webseite, '
       'text = Suchbegriffe; sucht über das Suchfeld der Seite), "click" (target = Nummer), "type" (target = Nummer, text; '
-      'mit Enter), "select" (target = Nummer, text = Option), "scroll" (target = "down"/"up"), "back", "read". '
-      'Nach jeder Aktion bekommst du die Seite mit nummerierten Elementen [n]. Nie Passwörter oder Zahlungsdaten eingeben.';
+      'Enter nur bei Suchfeldern), "select" (target = Nummer, text = Option), "check" (Häkchen, text = ja/nein), '
+      '"scroll" (target = "down"/"up"), "back", "read", "form" (liest alle Formularfelder als F1, F2 … mit Beschriftung, '
+      'Pflicht, Hinweis, ob ausgefüllt), "mark" (target = F-Nummer, text = kurze Erklärung: hebt das Feld für den Nutzer hervor). '
+      'type/select/check gehen auch mit F-Nummern. Nach jeder Aktion bekommst du die Seite mit nummerierten Elementen [n]. '
+      'Nie Passwörter, Ausweis-, Sozialversicherungs- oder Zahlungsdaten eingeben (🔒-Felder trägt der Nutzer ein).';
   @override
   bool get requiresNetwork => true;
   @override
   List<ToolParam> get params => const [
         ToolParam('action', ParamType.enumeration, 'Was tun',
-            values: ['open', 'search', 'click', 'type', 'select', 'scroll', 'back', 'read']),
+            values: ['open', 'search', 'click', 'type', 'select', 'check', 'scroll', 'back', 'read', 'form', 'mark']),
         ToolParam('target', ParamType.string, 'Adresse, Webseite oder Nummer des Elements'),
         ToolParam('text', ParamType.string, 'Text zum Eingeben oder Suchbegriffe (sonst leer)'),
       ];
@@ -242,18 +397,34 @@ class BrowserTool extends AgentTool {
             !await d.confirm('Im Browser klicken?', '„$label“\nDer Agent möchte diesen Knopf drücken.')) {
           return 'Der Nutzer hat den Klick auf „$label“ abgelehnt. Frag, wie es weitergehen soll.';
         }
-        await _act(d, _actJs(el['id'] as int, 'click'));
+        await _act(d, _actJs(_num(el['id']), 'click', '', false, _attr(el)));
       case 'type' || 'fill':
         final el = await _element(d, target);
         if (el['secret'] == 1) {
-          await d.handOver('🔒 Privat anmelden: Gib Passwort bzw. Zahlungsdaten selbst im Browser ein und tippe dann auf „Weiter“. '
-              'Junels liest diese Felder nie – die KI sieht dein Passwort nicht.');
-          return _snapshot(d, note: 'Der Nutzer hat das Feld selbst ausgefüllt.');
+          if (_attr(el) == 'data-jfid') await d.eval(browserMarkJs(_num(el['id']), 'Bitte hier selbst eintragen – Junels liest das nicht.'));
+          await d.handOver('🔒 Gib „${el['label'] ?? 'dieses Feld'}“ selbst im Browser ein (Passwort, Ausweis-, SV- oder Zahlungsdaten) '
+              'und tippe dann auf „Weiter“. Junels liest diese Felder nie – die KI sieht die Angabe nicht.');
+          return _attr(el) == 'data-jfid' ? await _form(d, note: 'Der Nutzer hat ${el['id']} selbst ausgefüllt.') : _snapshot(d, note: 'Der Nutzer hat das Feld selbst ausgefüllt.');
         }
-        await _act(d, _actJs(el['id'] as int, 'type', text, true));
+        // Enter nur bei Suchfeldern – in Formularen würde Enter vorzeitig absenden
+        await _act(d, _actJs(_num(el['id']), 'type', text, el['search'] == 1, _attr(el)));
+        if (_attr(el) == 'data-jfid') return _form(d, note: '${el['id']} eingetragen.');
       case 'select':
         final el = await _element(d, target);
-        await _act(d, _actJs(el['id'] as int, 'select', text));
+        await _act(d, _actJs(_num(el['id']), 'select', text, false, _attr(el)));
+        if (_attr(el) == 'data-jfid') return _form(d, note: '${el['id']}: „$text“ gewählt.');
+      case 'check':
+        final el = await _element(d, target);
+        await _act(d, _actJs(_num(el['id']), 'check', text, false, _attr(el)));
+        if (_attr(el) == 'data-jfid') return _form(d, note: '${el['id']}: Häkchen ${RegExp(r'^(nein|no|false|aus|0)$', caseSensitive: false).hasMatch(text.trim()) ? 'entfernt' : 'gesetzt'}.');
+      case 'form' || 'formular':
+        return _form(d);
+      case 'mark' || 'zeigen':
+        final el = await _element(d, target.toUpperCase().startsWith('F') ? target : 'F$target');
+        await _act(d, browserMarkJs(_num(el['id']), text.trim()));
+        ctx.answerNow = true;
+        return '${el['id']} „${el['label']}“ ist im Browser hervorgehoben${text.trim().isEmpty ? '' : ' mit der Erklärung „${text.trim()}“'}. '
+            'Sag dem Nutzer kurz, was er dort eintragen soll.';
       case 'scroll':
         final up = target.toLowerCase().contains('up') || target.toLowerCase().contains('hoch');
         await d.eval('(function(){window.scrollBy(0,${up ? '-' : ''}Math.round(innerHeight*0.8));return "{}";})()');
@@ -309,7 +480,30 @@ class BrowserTool extends AgentTool {
     if (r['ok'] != true) throw ToolException((r['error'] ?? 'Aktion fehlgeschlagen').toString());
   }
 
+  static int _num(Object? id) => id is int ? id : int.parse(id.toString().replaceAll(RegExp(r'[^0-9]'), ''));
+  static String _attr(Map<String, dynamic> el) => el['id'] is String && (el['id'] as String).startsWith('F') ? 'data-jfid' : 'data-jid';
+
+  List<Map<String, dynamic>> _lastFields = const [];
+
+  /// Formular lesen (Felder F1 …), merken und als Text liefern
+  Future<String> _form(BrowserDriver d, {String note = ''}) async {
+    final f = _decode(await d.eval(browserFormJs));
+    _lastFields = ((f['fields'] as List?) ?? const []).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    lastForm = f;
+    return '${note.isEmpty ? '' : '$note\n'}${formatForm(f)}';
+  }
+
+  /// Zuletzt gelesenes Formular (für Begleiten: Fortschritt, Prüfen vor dem Absenden)
+  Map<String, dynamic>? lastForm;
+
   Future<Map<String, dynamic>> _element(BrowserDriver d, String target) async {
+    if (RegExp(r'^\s*F\d+\s*$', caseSensitive: false).hasMatch(target)) {
+      if (_lastFields.isEmpty) await _form(d);
+      final fid = 'F${target.replaceAll(RegExp(r'[^0-9]'), '')}';
+      final f = _lastFields.where((e) => e['id'] == fid).firstOrNull;
+      if (f == null) throw ToolException('Feld $fid gibt es nicht – Formular neu lesen (action form)');
+      return f;
+    }
     final id = int.tryParse(target.replaceAll(RegExp(r'[^0-9]'), ''));
     if (id == null) throw ToolException('target muss die Nummer eines Elements sein, z. B. 3');
     var els = _lastEls;

@@ -14,6 +14,14 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.60.0', [
+    'Gespräch: Junels redet nicht mehr über die Frage, seine Anweisungen oder den „Kontext“ – Meta-Sätze werden herausgefiltert; bei unverständlicher Frage (Spracherkennung verhört) fragt Junels kurz nach statt zu raten',
+    'Begleiten hilft jetzt wirklich bei Formularen: liest alle Felder (auch Tabellen-Formulare der Ämter), erklärt sie in einfachen Worten, fragt höchstens 3 Angaben auf einmal und trägt sie ein',
+    'Sensible Felder (SV-Nummer, Pass, IBAN, Passwort) hebt Junels violett mit Erklärung hervor – du tippst selbst, Junels liest den Wert nie',
+    'Vor dem Absenden: Prüfung auf offene Pflichtfelder und Fehlermeldungen, Zusammenfassung, dann erst dein Ja',
+    'Neuer Skill Amtsweg-Lotse (/amtsweg oder einfach fragen, z. B. „Ich ziehe um, was muss ich tun?“): Unterlagen-Checkliste, Schritte, Kosten, Fristen und Formular-Link aus oesterreich.gv.at und wien.gv.at – danach Begleitung durchs Formular',
+    'Browser: Eintippen in Formularfelder schickt das Formular nicht mehr vorzeitig ab (Enter nur noch in Suchfeldern)',
+  ]),
   ('1.59.0', [
     'Skills & Abläufe zusammengeführt: eine Liste für Skills, Abläufe, Zeitpläne und Beobachtungen – mit Filtern (Anleitung, Mit Ablauf, Zeitplan, Beobachtet, Probleme)',
     'Jeder Ablauf ist jetzt auch ein Skill: „/name Eingabe“ im Chat startet ihn, Schritte und Ergebnis erscheinen direkt im Chat. Bestehende Prozesse wurden automatisch übernommen',

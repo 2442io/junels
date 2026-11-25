@@ -531,8 +531,10 @@ class ConversationMode {
     }, onAnswer: (raw, done) {
       if (myTurn != _turn) return;
       // Wiederholte Frage und lautes Denken nicht vorlesen
-      final full = stripAnswerPreamble(raw, text, done: done);
+      var full = stripAnswerPreamble(raw, text, done: done);
       if (full == null) return;
+      // Nur Gerede über die Frage/Anweisungen, keine Antwort → nachfragen statt vorlesen
+      if (done && !_speakingStarted && full.trim().isNotEmpty && onlyPreamble(full, text)) full = voiceNotUnderstood;
       if (firstMs < 0 && full.trim().isNotEmpty) {
         firstMs = sw.elapsedMilliseconds;
         timing.value = 'Aufnahme ${_sec(audioMs)} · Erkennung ${_sec(sttMs)} · erste Worte nach ${_sec(firstMs)}';

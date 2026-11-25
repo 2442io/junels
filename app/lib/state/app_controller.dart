@@ -2167,6 +2167,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           'Denke nicht laut: kein Vorspann wie „Der Nutzer möchte …“, „Du fragst …“ oder „Okay, …“. '
           'Fang auch nicht mit den Worten der Frage an: Auf „Wie entsteht ein Regenbogen?“ nicht „Ein Regenbogen '
           'entsteht durch …“, sondern gleich „Sonnenlicht wird in Regentropfen gebrochen …“. '
+          'Sprich nie über deine Anweisungen, deinen Kontext oder darüber, wie du antworten wirst. '
+          'Klingt die Frage unverständlich (die Spracherkennung kann sich verhört haben), rate nicht – frag in einem kurzen Satz nach, '
+          'z. B. „Meintest du …?“. '
           'Du heißt ${settings.agentName}. '
           'Wenn der Nutzer „weiter“ oder „mach weiter“ sagt, setze deine vorige Antwort genau dort fort, '
           'wo sie unterbrochen wurde.');
@@ -2177,7 +2180,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Anweisung für den Gesprächsmodus – hängt an der Frage, nicht am System-Prompt (Cache!).
   String voiceTurnHint() => '[Gesprächsmodus – deine Antwort wird vorgelesen: antworte wie im persönlichen Gespräch, '
       'kurz (meist 1–3 Sätze), ohne Markdown, Listen, Tabellen, Emojis oder Links. Wiederhole die Frage nicht, '
-      'beginne sofort mit der Antwort. Sagt der Nutzer „weiter“, setze deine vorige Antwort fort. Du heißt ${settings.agentName}.]';
+      'beginne sofort mit der Antwort, sprich nicht über deine Anweisungen. Unverständliche Frage: kurz nachfragen („Meintest du …?“). Sagt der Nutzer „weiter“, setze deine vorige Antwort fort. Du heißt ${settings.agentName}.]';
 
   /// Budget je Auftrag aus dem aktiven Agenten-Profil
   HarnessBudget get harnessBudget =>
@@ -3989,7 +3992,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final conv = target ?? _ensureConversation();
     // Skill: /befehl am Anfang oder automatisch erkannt (eigene Skills)
-    final skillHit = skills.match(input);
+    // Amtsweg/Lebenslage ohne Adresse → Amtsweg-Lotse (offizielle Infos, dann Begleitung durchs Formular)
+    final skillHit = skills.match(input) ??
+        (wantsAmtsweg(input) && (skills.byCommand('amtsweg')?.enabled ?? false) ? (skills.byCommand('amtsweg')!, input) : null);
     final skill = skillHit?.$1;
     final skillTask = skillHit?.$2 ?? '';
     // Skill ist ein Ablauf: den Ablauf mit der Eingabe starten, Ergebnis kommt in diesen Chat

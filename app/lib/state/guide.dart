@@ -18,6 +18,22 @@ bool wantsGuide(String input) {
   return url && verb;
 }
 
+/// Geht es um einen Amtsweg / eine Lebenslage (ohne konkrete Adresse)? → Skill „Amtsweg-Lotse“
+bool wantsAmtsweg(String input) {
+  final t = input.toLowerCase();
+  if (RegExp(r'https?://').hasMatch(t)) return false;
+  final topic = RegExp(
+      r'amtsweg|behörde|behoerde|magistrat|bezirksamt|meldezettel|wohnsitz (an|ab|um)melden|(an|ab|um)melden.*wohnsitz|ummelden|'
+      r'reisepass|personalausweis|staatsbürgerschaft|geburtsurkunde|heiratsurkunde|sterbeurkunde|parkpickerl|'
+      r'familienbeihilfe|kinderbetreuungsgeld|familienbonus|pflegegeld|mindestsicherung|wohnbeihilfe|arbeitnehmerveranlagung|'
+      r'führerschein|fuehrerschein|zulassung|ummeldung|abmeldung|anmeldebescheinigung|e-card|id austria|handysignatur|'
+      r'lebenslage|todesfall|erbschaft|verlassenschaft|eheschließung|standesamt|gewerbe anmelden|hundeabgabe|wahlkarte',
+      caseSensitive: false);
+  final ask = RegExp(r'\b(wie|was|wo|welche|brauch|muss|kann ich|beantrag|antrag|anmeld|ummeld|verläng|verlaeng|hilf|unterlagen|kosten|frist)',
+      caseSensitive: false);
+  return topic.hasMatch(t) && ask.hasMatch(t);
+}
+
 /// Erste Adresse in einem Text.
 String? firstUrl(String text) {
   final m = RegExp(r'https?://[^\s)>\]]+').firstMatch(text);
@@ -121,6 +137,10 @@ class Guide {
     }
     if (note.isNotEmpty) b.writeln('Hinweis: $note');
     b.write('Arbeite am Schritt mit ▶: Seite lesen (browser read), handeln, fehlende Angaben kurz erfragen. '
+        'FORMULAR auf der Seite: begleiten aktion formular (liest alle Felder F1, F2 …). Erkläre jedes Feld in einfachen Worten '
+        '(was gemeint ist, wo man die Angabe findet – z. B. Meldezettel, Reisepass, Lohnzettel). Frag höchstens 3 Angaben auf einmal '
+        'und trag sie mit browser type/select/check (target = F-Nummer) ein. 🔒-Felder (SV-Nummer, Passnummer, IBAN, Passwort) '
+        'trägt der Nutzer selbst ein: begleiten aktion zeigen (nr = F-Nummer, text = Erklärung). Vor dem Absenden: begleiten aktion pruefen. '
         'Ist ein Schritt geschafft: begleiten aktion schritt (nr). Anmeldung, Captcha, Zahlung, Unterschrift: begleiten aktion uebergabe. '
         'Warteschlange/auf etwas warten: begleiten aktion warten. Antworte knapp: was du getan hast und was als Nächstes kommt.');
     return b.toString();
@@ -171,6 +191,9 @@ class GuideTool extends AgentTool {
       'Führt den Nutzer gemeinsam durch eine Webseite (Amtsweg, Antrag, Tickets, Buchung, Kauf). aktion: '
       '"start" (url, ziel) öffnet die Seite im Browser, den der Nutzer sieht; '
       '"plan" (schritte = 3–8 kurze Schritte, je Zeile, Schritte des Nutzers mit „(du)“: Anmelden, Zahlen, Unterschreiben); '
+      '"formular" liest das Formular der Seite (Felder F1 …, Pflicht, Hinweise, ausgefüllt ja/nein); '
+      '"zeigen" (nr = F-Nummer, text = Erklärung) hebt ein Feld für den Nutzer hervor; '
+      '"pruefen" zeigt vor dem Absenden offene Pflichtfelder und Fehlermeldungen; '
       '"schritt" (nr = geschaffter Schritt); "uebergabe" (text = was der Nutzer selbst tun soll: Anmeldung/ID Austria, Captcha, '
       'Zahlung) – wartet, bis er „Weiter“ tippt; "warten" (text = Wort, auf das gewartet wird, leer = Warteschlange) beobachtet '
       'die Seite und benachrichtigt; "fertig"; "vorlage" (text = Name) speichert den Ablauf. Die Seite bedienst du mit dem Werkzeug browser. '
@@ -178,11 +201,11 @@ class GuideTool extends AgentTool {
   @override
   List<ToolParam> get params => const [
         ToolParam('aktion', ParamType.enumeration, 'Was tun',
-            values: ['start', 'plan', 'schritt', 'uebergabe', 'warten', 'fertig', 'vorlage']),
+            values: ['start', 'plan', 'formular', 'zeigen', 'pruefen', 'schritt', 'uebergabe', 'warten', 'fertig', 'vorlage']),
         ToolParam('url', ParamType.string, 'Adresse (bei start, sonst "")'),
         ToolParam('ziel', ParamType.string, 'Was der Nutzer erreichen will (bei start, sonst "")'),
         ToolParam('schritte', ParamType.string, 'Plan: ein Schritt pro Zeile (bei plan, sonst "")'),
-        ToolParam('nr', ParamType.string, 'Nummer des geschafften Schritts (bei schritt, sonst "")'),
+        ToolParam('nr', ParamType.string, 'Nummer des geschafften Schritts (bei schritt) bzw. Feld F-Nummer (bei zeigen), sonst ""'),
         ToolParam('text', ParamType.string, 'Hinweis für den Nutzer, Wartebedingung oder Name (sonst "")'),
       ];
 
@@ -217,6 +240,38 @@ class GuideTool extends AgentTool {
     if (g == null) throw ToolException('Noch keine Begleitung – zuerst aktion start mit der Adresse');
 
     switch (action) {
+      case 'formular':
+        final form = await browser.run({'action': 'form', 'target': '', 'text': ''}, ctx);
+        final f = browser.lastForm;
+        final fields = ((f?['fields'] as List?) ?? const []).cast<Map>();
+        final open = fields.where((x) => x['required'] == true && x['filled'] != true).length;
+        g.note = fields.isEmpty ? '' : 'Formular: ${fields.length} Felder, $open Pflichtfelder offen';
+        await _store(c, g);
+        if (fields.isEmpty) {
+          return '$form\nAuf dieser Seite ist kein Formular. Lies die Seite (browser read) und führe zum Formular (z. B. Link „Online-Antrag“).';
+        }
+        return '$form\n\nSO WEITER: Erkläre in 2–4 Sätzen, worum es in diesem Formular(-schritt) geht und welche Unterlagen man '
+            'bereitlegen sollte. Dann frag die ersten 1–3 offenen Pflichtangaben in einfachen Worten ab (mit kurzer Erklärung, '
+            'wo man sie findet). 🔒-Felder nicht erfragen – mit begleiten aktion zeigen hervorheben, der Nutzer tippt selbst.';
+      case 'zeigen':
+        final nr = '${args['nr'] ?? ''}'.trim().isNotEmpty ? '${args['nr']}'.trim() : text;
+        if (nr.isEmpty) throw ToolException('nr (Feld, z. B. F3) fehlt');
+        return browser.run({'action': 'mark', 'target': nr.toUpperCase().startsWith('F') ? nr : 'F$nr', 'text': text == nr ? '' : text}, ctx);
+      case 'pruefen':
+        final form = await browser.run({'action': 'form', 'target': '', 'text': ''}, ctx);
+        final f = browser.lastForm;
+        final fields = ((f?['fields'] as List?) ?? const []).cast<Map>();
+        final missing = [for (final x in fields) if (x['required'] == true && x['filled'] != true) '${x['id']} ${x['label']}'];
+        final bad = [for (final x in fields) if (x['invalid'] == true) '${x['id']} ${x['label']}'];
+        final errs = ((f?['errors'] as List?) ?? const []);
+        if (missing.isEmpty && bad.isEmpty && errs.isEmpty) {
+          return '$form\n\nALLES AUSGEFÜLLT. Fass für den Nutzer in 2–3 Sätzen zusammen, was eingetragen wurde (ohne 🔒-Angaben), '
+              'erinnere an Beilagen/Unterschrift und frag, ob abgeschickt werden soll. Den Absende-Knopf klickst du erst nach seinem Ja '
+              '(Junels fragt zusätzlich nach).';
+        }
+        return '$form\n\nNOCH NICHT FERTIG: ${missing.isEmpty ? '' : 'offene Pflichtfelder: ${missing.join(', ')}. '}'
+            '${bad.isEmpty ? '' : 'fehlerhaft: ${bad.join(', ')}. '}${errs.isEmpty ? '' : 'Meldungen: ${errs.join(' · ')}. '}'
+            'Erklär dem Nutzer kurz, was fehlt bzw. falsch ist und wie es richtig geht (z. B. Datumsformat TT.MM.JJJJ).';
       case 'plan':
         final lines = '${args['schritte'] ?? ''}'.trim().isNotEmpty ? '${args['schritte']}' : text;
         if (lines.trim().isEmpty) throw ToolException('schritte fehlen (ein Schritt pro Zeile)');

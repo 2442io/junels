@@ -590,6 +590,29 @@ Future<void> main() async {
     check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
   });
 
+  await group('Formulare (Begleiten)', () async {
+    final f = <String, dynamic>{
+      'title': 'Meldezettel – Anmeldung',
+      'step': 'Schritt 1 von 3',
+      'fields': [
+        {'id': 'F1', 'kind': 'input', 'type': 'text', 'label': 'Familienname', 'required': true, 'filled': true, 'section': 'Person'},
+        {'id': 'F2', 'kind': 'input', 'type': 'date', 'label': 'Geburtsdatum', 'required': true, 'filled': false, 'section': 'Person', 'ph': 'TT.MM.JJJJ'},
+        {'id': 'F3', 'kind': 'input', 'type': 'text', 'label': 'Reisepassnummer', 'required': false, 'filled': false, 'section': 'Person', 'secret': 1},
+        {'id': 'F4', 'kind': 'radio', 'label': 'Hauptwohnsitz?', 'options': ['ja', 'nein'], 'required': true, 'filled': false, 'section': 'Wohnung'},
+        {'id': 'F5', 'kind': 'select', 'type': 'select', 'label': 'Bezirk', 'options': ['1., Innere Stadt', '2., Leopoldstadt'], 'required': false, 'filled': false, 'section': 'Wohnung', 'invalid': true},
+      ],
+      'errors': ['Bitte Geburtsdatum angeben'],
+      'buttons': ['Weiter', 'Abbrechen'],
+    };
+    final t = formatForm(f);
+    check(t.contains('Schritt 1 von 3') && t.contains('Abschnitt „Person“') && t.contains('Abschnitt „Wohnung“'), 'Abschnitte und Schritt');
+    check(t.contains('F1 Familienname * (Text) – ausgefüllt') && t.contains('F2 Geburtsdatum * (Datum) – leer – Beispiel: TT.MM.JJJJ'), 'Felder: $t');
+    check(t.contains('F3 Reisepassnummer (Text) – leer – 🔒'), 'Ausweisnummer trägt Nutzer ein');
+    check(t.contains('eins wählen: ja | nein') && t.contains('⚠ FEHLER') && t.contains('Pflichtfelder: 1 von 3 ausgefüllt – 2 offen'), 'Radio, Fehler, Zählung');
+    check(t.contains('Fehlermeldungen der Seite: Bitte Geburtsdatum angeben') && t.contains('Knöpfe: Weiter · Abbrechen'), 'Meldungen, Knöpfe');
+    check(browserMarkJs(3, 'Hier „Ja“ wählen').contains('[data-jfid="3"]'), 'Feld hervorheben');
+  });
+
   await group('Ausgabeformate', () async {
     check(OutputView.detect('Vergleich die drei Handys als Tabelle') == OutputView.table, 'als Tabelle');
     check(OutputView.detect('mach mir eine Excel-Tabelle') == null, 'Excel ist Datei, nicht Ansicht');
@@ -1589,6 +1612,14 @@ Future<void> main() async {
     check(stripAnswerPreamble('Der Nutzer möchte das Wetter wissen. Ich sollte nachsehen. Morgen 12 Grad.', q) == 'Morgen 12 Grad.',
         'lautes Denken entfernt');
     check(stripAnswerPreamble('Morgen wird es sonnig.', q) == 'Morgen wird es sonnig.', 'normale Antwort bleibt');
+    const garbled = 'Wer ist Leah weg? Kennt Sekunden.';
+    const meta = 'Ich beantworte das basierend auf dem Kontext, den ich habe. Da die Frage selbst keinen klaren Bezug zu meinem Wissen hat, '
+        'werde ich versuchen, die wahrscheinlichste Interpretation zu liefern.';
+    check(onlyPreamble(meta, garbled), 'nur Meta-Gerede erkannt');
+    check(stripAnswerPreamble('$meta Leah ist eine Sängerin.', garbled) == 'Leah ist eine Sängerin.', 'Meta-Sätze vor der Antwort entfernt');
+    check(stripAnswerPreamble('Gemäß meinen Anweisungen antworte ich kurz. Es sind 12 Grad.', q) == 'Es sind 12 Grad.', 'Anweisungen nicht vorlesen');
+    check(!onlyPreamble('Es sind 12 Grad und sonnig.', q), 'echte Antwort bleibt');
+    check(stripAnswerPreamble(meta, garbled, done: false) == null, 'Meta beim Streamen zurückhalten');
     check(stripAnswerPreamble('Du fragst nach', q, done: false) == null, 'unklarer Anfang: warten');
     check(stripAnswerPreamble('Die wichtigsten Sportnachrichten sind: Rapid gewinnt.', 'Welche Sportnews gibt es auf krone.at?') ==
         'Die wichtigsten Sportnachrichten sind: Rapid gewinnt.', 'Einleitung mit neuer Info bleibt');

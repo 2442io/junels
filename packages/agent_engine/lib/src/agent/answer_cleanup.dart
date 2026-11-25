@@ -9,6 +9,18 @@ final _metaStart = RegExp(
     r'alles klar[,.! ]|hmm|gut[,.] ich|also[,] (der|die) (nutzer|frage)|die antwort (ist|lautet)\s*:?\s*$)',
     caseSensitive: false);
 
+/// Sätze, die über die Frage, die eigenen Anweisungen oder den Kontext reden statt zu antworten
+/// („… basierend auf dem Kontext, den ich habe“, „Da die Frage keinen klaren Bezug hat, werde ich versuchen …“).
+final _metaAny = RegExp(
+    r'basierend auf (dem|meinem) (kontext|wissen|verfügbaren)|auf grundlage (des|meines) (kontext|wissens)|'
+    r'(den|dem) kontext,? (den|der) ich (habe|kenne)|keinen (klaren |direkten )?bezug|wahrscheinlichste interpretation|'
+    r'(meine[rn]?|den|die) (anweisungen|vorgaben|systemanweisung|instruktionen)|gesprächsmodus|vorgelesen wird|'
+    r'(ich werde|ich versuche|ich will) (versuchen,? )?(die frage|deine frage|ihre frage|eine (kurze |passende |neutrale )?antwort|zu antworten|das zu beantworten)|'
+    r'^da (die|deine|ihre) frage|^um (die|deine|ihre|diese) frage zu beantworten|^(die|deine|ihre) frage (scheint|ist (etwas )?unklar|ergibt)|'
+    r'^es scheint,? (als|dass) (ob )?(die|deine|ihre|du|sie)|^ich interpretiere|^als (ki|sprachmodell|ki-assistent|assistent)\b|'
+    r'^hier (ist|kommt) (meine|die) antwort|^(meine )?antwort\s*:',
+    caseSensitive: false);
+
 Set<String> _words(String t) => {
       for (final w in t.toLowerCase().split(RegExp(r'[^\p{L}\d]+', unicode: true)))
         if (w.length > 2) w,
@@ -17,7 +29,7 @@ Set<String> _words(String t) => {
 /// Wiederholt der Satz nur die Frage oder ist es lautes Denken?
 bool looksLikePreamble(String sentence, String question) {
   final s = sentence.trim().replaceFirst(RegExp(r'^[*_#>\s]+'), '');
-  if (_metaStart.hasMatch(s)) return true;
+  if (_metaStart.hasMatch(s) || _metaAny.hasMatch(s)) return true;
   final q = _words(question), w = _words(s);
   if (q.length < 3 || w.isEmpty) return false;
   final overlap = w.intersection(q).length;
@@ -59,3 +71,12 @@ String? stripAnswerPreamble(String full, String question, {bool done = true}) {
   }
   return full.substring(math.min(cut, full.length)).trimLeft();
 }
+
+/// Besteht der Text nur aus Vorspann/Meta-Sätzen (keine eigentliche Antwort)?
+bool onlyPreamble(String text, String question) {
+  final sentences = RegExp(r'[^.!?\n]+[.!?\n]*').allMatches(text.trim()).map((m) => m.group(0)!.trim()).where((x) => x.length > 2).toList();
+  return sentences.isNotEmpty && sentences.every((x) => looksLikePreamble(x, question));
+}
+
+/// Was der Sprachmodus sagt, wenn das Modell nur über die Frage redet (z. B. weil die Spracherkennung sich verhört hat)
+const voiceNotUnderstood = 'Das habe ich leider nicht richtig verstanden. Kannst du es noch einmal sagen?';

@@ -307,6 +307,23 @@ Gespeichert wird auf **deinem eigenen Server** – immer auf dem Gerät mit dein
 Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt. Tipp: Als geplante Aufgabe jeden Freitag laufen lassen.''',
   ),
   HelpArticle(
+    id: 'amtswege',
+    category: 'Chat',
+    icon: Icons.account_balance_outlined,
+    title: 'Amtswege & Formulare',
+    summary: 'Junels erklärt Amtswege aus offiziellen Quellen und füllt Formulare gemeinsam mit dir aus.',
+    keywords: 'amtsweg behörde formular antrag meldezettel reisepass lebenslage oesterreich.gv.at wien.gv.at begleiten ausfüllen id austria',
+    body: '''**Amtsweg-Lotse** (/amtsweg oder einfach fragen: „Ich ziehe um, was muss ich tun?“)
+Junels liest die offiziellen Seiten (oesterreich.gv.at, wien.gv.at) und antwortet mit einer Checkliste der Unterlagen, den Schritten, Kosten, Fristen, der zuständigen Stelle und dem Link zum Online-Formular.
+
+**Begleiten** (/begleiten mit Link, oder „Hilf mir bei diesem Formular: …“)
+- Junels öffnet das Formular im Browser, liest alle Felder und erklärt sie in einfachen Worten – was gemeint ist und wo du die Angabe findest.
+- Es fragt höchstens drei Angaben auf einmal und trägt sie ein; du siehst jeden Schritt.
+- 🔒 Sozialversicherungs-, Pass- und Kontonummern, Passwörter: trägst du selbst ein – Junels hebt das Feld violett hervor und liest den Wert nie.
+- Anmeldung mit ID Austria, Unterschrift und Zahlung machst du selbst (Junels übergibt).
+- Vor dem Absenden prüft Junels offene Pflichtfelder und Fehlermeldungen und fragt dich.''',
+  ),
+  HelpArticle(
     id: 'skills-ablaeufe',
     category: 'Chat',
     icon: Icons.account_tree_outlined,

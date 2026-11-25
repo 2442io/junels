@@ -479,11 +479,32 @@ final builtinSkills = <Skill>[
     name: 'Begleiten',
     slug: 'begleiten',
     icon: 'explore',
-    when: 'Wenn ich etwas auf einer Webseite gemeinsam mit dir erledigen will (Amtsweg, Tickets, Buchung).',
-    instructions: '1. begleiten mit aktion start (url, ziel).\n2. Plan anlegen, Schritt für Schritt im Browser arbeiten.\n'
-        '3. Anmeldung, Captcha und Zahlung an mich übergeben.',
+    when: 'Wenn ich etwas auf einer Webseite gemeinsam mit dir erledigen will: Formular, Amtsweg, Antrag, Tickets, Buchung.',
+    instructions: '1. begleiten mit aktion start (url, ziel), dann aktion plan mit den Schritten dieser Seite.\n'
+        '2. Ist ein Formular da: begleiten aktion formular. Jedes Feld in einfachen Worten erklären (was gemeint ist, wo ich die Angabe finde), '
+        'höchstens 3 Angaben auf einmal fragen und mit browser type/select/check (F-Nummer) eintragen.\n'
+        '3. 🔒-Felder (SV-Nummer, Passnummer, IBAN, Passwort) trage ich selbst ein – mit begleiten aktion zeigen hervorheben.\n'
+        '4. Anmeldung (ID Austria), Captcha, Unterschrift und Zahlung an mich übergeben (aktion uebergabe).\n'
+        '5. Vor dem Absenden begleiten aktion pruefen, kurz zusammenfassen und mein Ja abwarten.',
     tools: ['begleiten', 'browser'],
     inputs: 'Link, Ziel',
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-amtsweg',
+    name: 'Amtsweg-Lotse',
+    slug: 'amtsweg',
+    icon: 'account_balance',
+    when: 'Wenn ich etwas bei einer Behörde erledigen muss oder in einer Lebenslage bin (Umzug, Geburt, Heirat, Pension, Todesfall, Reisepass, Führerschein).',
+    instructions: '1. Klären, worum es geht und wo ich wohne (Wien oder anderes Bundesland), falls nicht klar.\n'
+        '2. Nur offizielle Quellen: site_search auf oesterreich.gv.at, bei Wien auch wien.gv.at (Amtshelfer unter wien.gv.at/amtswege); '
+        'die passende Seite mit web_fetch lesen.\n'
+        '3. Antworte so: ein Satz Überblick, dann „## Das brauchst du“ als Checkliste (- [ ] Unterlage), dann „## So geht es“ als nummerierte '
+        'Schritte, dann Kosten, Fristen, zuständige Stelle und ob es online geht (ID Austria) – mit Link zur Quelle und zum Online-Formular.\n'
+        '4. Am Ende anbieten: „Soll ich dich durch das Online-Formular begleiten?“ – bei Ja begleiten aktion start mit dem Formular-Link.\n'
+        '5. Keine Rechtsberatung, nichts erfinden: steht etwas nicht in der Quelle, das sagen und auf die Behörde verweisen.',
+    tools: ['site_search', 'web_fetch', 'web_search', 'begleiten', 'browser'],
+    inputs: 'Anliegen oder Lebenslage, Wohnort',
     builtin: true,
   ),
   Skill(
