@@ -23,7 +23,7 @@ bool wantsAmtsweg(String input) {
   final t = input.toLowerCase();
   if (RegExp(r'https?://').hasMatch(t)) return false;
   final topic = RegExp(
-      r'amtsweg|behörde|behoerde|magistrat|bezirksamt|meldezettel|wohnsitz (an|ab|um)melden|(an|ab|um)melden.*wohnsitz|ummelden|'
+      r'amtsweg|behörde|behoerde|magistrat|bezirksamt|meldezettel|wohnsitz|ummelden|umzug|übersiedl|ziehe .*\bum\b|'
       r'reisepass|personalausweis|staatsbürgerschaft|geburtsurkunde|heiratsurkunde|sterbeurkunde|parkpickerl|'
       r'familienbeihilfe|kinderbetreuungsgeld|familienbonus|pflegegeld|mindestsicherung|wohnbeihilfe|arbeitnehmerveranlagung|'
       r'führerschein|fuehrerschein|zulassung|ummeldung|abmeldung|anmeldebescheinigung|e-card|id austria|handysignatur|'
