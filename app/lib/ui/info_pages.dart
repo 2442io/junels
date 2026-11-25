@@ -14,6 +14,10 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.60.2', [
+    'Fix: Steht der Chat auf „Gerät“, nutzt auch Begleiten nie die Cloud (vorher schlug Begleiten die Cloud vor, wenn sie im Chat einmal erlaubt war)',
+    'Fix: 2442 API – lange Anfragen (z. B. mit Webseiten-Inhalt) werden auf die Höchstlänge des Servers gekürzt statt mit „Frage zu lang“ abzubrechen',
+  ]),
   ('1.60.1', [
     'Amtsweg-Lotse und Begleiten sind jetzt ein Skill: /begleiten ohne Link klärt den Amtsweg (Unterlagen, Kosten, Fristen, Formular-Link) und begleitet dich danach durchs Formular, mit Link geht es direkt los. /amtsweg funktioniert weiterhin',
   ]),

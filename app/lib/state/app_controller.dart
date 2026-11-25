@@ -1473,7 +1473,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> _guideWantsCloud(Conversation conv) async {
     final r = routingOf(conv);
     final p = cloudProvider;
-    if (r == 'cloud' || r == 'onprem' || p == null || !deviceOnline) return false;
+    // „Gerät“ ist eine klare Ansage: keine Cloud, auch nicht für Begleitungen
+    if (r == 'local' || r == 'cloud' || r == 'onprem' || p == null || !deviceOnline) return false;
     if (conv.cloudAllowed) return true;
     final known = _guideCloud[conv.id];
     if (known != null) return known;

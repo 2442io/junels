@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'llama_engine.dart';
@@ -396,17 +397,60 @@ class RemoteBackend implements AgentBackend {
 
   /// 2442-API: eine Frage, eine Antwort (ohne Streaming). Der Verlauf wird zu einem Text.
   /// Ergebnis: (Antwort, Hinweis bei erschöpften Favoriten).
+  /// Höchstlänge der Frage je Server (die 2442 API meldet sie bei Überschreitung, z. B. „max. 4000 Zeichen“)
+  static final Map<String, int> _limit2442 = {};
+
   Future<(String, String?)> _ask2442(List<ChatMessage> msgs, {required bool json}) async {
-    final b = StringBuffer();
-    for (final m in msgs) {
-      final who = switch (m.role) { 'system' => 'Anweisungen', 'assistant' => 'Assistent', _ => 'Nutzer' };
-      b.writeln('### $who\n${m.content.trim()}\n');
+    final parts = [
+      for (final m in msgs) (switch (m.role) { 'system' => 'Anweisungen', 'assistant' => 'Assistent', _ => 'Nutzer' }, m.content.trim()),
+    ];
+    final tail = json
+        ? 'ANTWORTFORMAT: Antworte ausschließlich mit genau einem JSON-Objekt im oben beschriebenen Format – '
+            'ohne Text davor oder danach und ohne Codeblock.\n### Assistent\n'
+        : '### Assistent\n';
+    try {
+      return await _post2442(fitQuestion(parts, tail, _limit2442[config.baseUrl] ?? 3900));
+    } on RemoteException catch (e) {
+      // Server nennt seine Grenze → einmal gekürzt neu fragen
+      final m = RegExp(r'max\.?\s*([\d.]+)\s*Zeichen', caseSensitive: false).firstMatch(e.message);
+      if (m == null) rethrow;
+      final limit = int.parse(m.group(1)!.replaceAll('.', ''));
+      _limit2442[config.baseUrl] = (limit * 0.95).floor();
+      return _post2442(fitQuestion(parts, tail, _limit2442[config.baseUrl]!));
     }
-    if (json) {
-      b.writeln('ANTWORTFORMAT: Antworte ausschließlich mit genau einem JSON-Objekt im oben beschriebenen Format – '
-          'ohne Text davor oder danach und ohne Codeblock.');
+  }
+
+  /// Verlauf als eine Frage, höchstens [limit] Zeichen: Anweisungen gekürzt, letzte Nachricht vollständig(er),
+  /// ältere Nachrichten von hinten her, so viel Platz bleibt.
+  static String fitQuestion(List<(String, String)> parts, String tail, int limit) {
+    String block((String, String) p, [int? max]) {
+      var t = p.$2;
+      if (max != null && t.length > max) t = '${t.substring(0, math.max(0, max - 12)).trimRight()} […gekürzt]';
+      return '### ${p.$1}\n$t\n\n';
     }
-    b.write('### Assistent\n');
+
+    final full = parts.map(block).join() + tail;
+    if (full.length <= limit || parts.isEmpty) return full;
+    final budget = limit - tail.length;
+    final sys = parts.first.$1 == 'Anweisungen' ? parts.first : null;
+    final rest = sys == null ? parts : parts.sublist(1);
+    if (rest.isEmpty) return block(sys!, budget - 30) + tail;
+    final last = rest.last;
+    final lastText = block(last, (budget * 0.45).floor());
+    final sysText = sys == null ? '' : block(sys, math.min(sys.$2.length, (budget * 0.35).floor()));
+    var room = budget - lastText.length - sysText.length;
+    final middle = <String>[];
+    for (final p in rest.reversed.skip(1)) {
+      if (room < 120) break;
+      final b = block(p, math.min(900, room - 20));
+      if (b.length > room) break;
+      middle.insert(0, b);
+      room -= b.length;
+    }
+    return sysText + middle.join() + lastText + tail;
+  }
+
+  Future<(String, String?)> _post2442(String question) async {
     final favs = config.model.split(RegExp(r'[,;\s]+')).where((f) => f.isNotEmpty).toList();
     var base = config.baseUrl.trim();
     if (base.endsWith('/')) base = base.substring(0, base.length - 1);
@@ -416,7 +460,7 @@ class RemoteBackend implements AgentBackend {
     req.headers.contentType = ContentType.json;
     req.headers.set('accept', 'application/json');
     if (apiKey?.isNotEmpty ?? false) req.headers.set('x-api-key', apiKey!);
-    req.add(utf8.encode(jsonEncode({'question': b.toString(), if (favs.isNotEmpty) 'favorites': favs})));
+    req.add(utf8.encode(jsonEncode({'question': question, if (favs.isNotEmpty) 'favorites': favs})));
     final res = await req.close().timeout(const Duration(seconds: 120));
     final body = await res.transform(utf8.decoder).join();
     Map? j;

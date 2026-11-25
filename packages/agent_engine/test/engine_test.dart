@@ -590,6 +590,20 @@ Future<void> main() async {
     check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
   });
 
+  await group('2442 API: Fragelänge', () async {
+    final parts = [
+      ('Anweisungen', 'A' * 6000),
+      ('Nutzer', 'alte Frage ' * 50),
+      ('Assistent', 'alte Antwort ' * 50),
+      ('Nutzer', 'Beobachtung: ${'Seiteninhalt ' * 600} ENDE'),
+    ];
+    final q = RemoteBackend.fitQuestion(parts, '### Assistent\n', 3900);
+    check(q.length <= 3900, 'passt in die Grenze: ${q.length}');
+    check(q.startsWith('### Anweisungen\nAAA') && q.endsWith('### Assistent\n') && q.contains('Beobachtung:'), 'Anweisungen, letzte Nachricht, Schluss');
+    final short = RemoteBackend.fitQuestion([('Anweisungen', 'kurz'), ('Nutzer', 'Hallo')], '### Assistent\n', 3900);
+    check(short == '### Anweisungen\nkurz\n\n### Nutzer\nHallo\n\n### Assistent\n', 'kurze Fragen unverändert');
+  });
+
   await group('Formulare (Begleiten)', () async {
     final f = <String, dynamic>{
       'title': 'Meldezettel – Anmeldung',
