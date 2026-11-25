@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.61.0', [
+    'Gespräch: App-Aktionen (z. B. Spotify) werden im Gespräch per Stimme bestätigt („Soll ich „Weihnachtslieder“ in Spotify abspielen?“) statt still als Karte im Chat zu liegen – und Junels behauptet nicht mehr, es laufe schon',
+    'Begleiten öffnet die Seite sofort im Browser und liest das Formular selbst – ohne Umweg über Pläne; danach erklärt Junels das Formular und fragt gleich die ersten Angaben ab',
+    'Begleiten erkennt Fehlerseiten (z. B. Formular-Link ohne konkretes Formular, abgelaufene Sitzung) und Anmeldeseiten (ID Austria) und reagiert passend: Formular selbst suchen, kurz nachfragen oder die Anmeldung übergeben',
+    'Antworten zeigen keine Werkzeug-Namen wie „begleiten aktion plan“ mehr; unsinnige Tokens/s-Werte bei Cloud-Antworten werden nicht mehr angezeigt',
+  ]),
   ('1.60.2', [
     'Fix: Steht der Chat auf „Gerät“, nutzt auch Begleiten nie die Cloud (vorher schlug Begleiten die Cloud vor, wenn sie im Chat einmal erlaubt war)',
     'Fix: 2442 API – lange Anfragen (z. B. mit Webseiten-Inhalt) werden auf die Höchstlänge des Servers gekürzt statt mit „Frage zu lang“ abzubrechen',

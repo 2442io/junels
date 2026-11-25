@@ -214,6 +214,68 @@ class GuideTool extends AgentTool {
     await save(c);
   }
 
+  /// Nach dem Öffnen: Formular gleich lesen, Fehlerseite/Anmeldung erkennen, Plan aus den Formular-Abschnitten.
+  Future<String> _afterOpen(Conversation c, Guide g, String page, ToolContext ctx) async {
+    final low = page.toLowerCase();
+    // Seite sagt, dass der Link so nicht geht (z. B. Formularserver ohne konkretes Formular, abgelaufene Sitzung)
+    final broken = RegExp(r'nur unter angabe eines konkreten formular|seite (wurde )?nicht gefunden|\b404\b|sitzung (ist )?abgelaufen|'
+            r'nicht mehr gültig|ungültige(r|s)? (link|aufruf|anfrage)|ein fehler ist aufgetreten|zugriff verweigert')
+        .hasMatch(low);
+    if (broken) {
+      g.setPlan('Passendes Formular finden\nAngaben sammeln\nFormular ausfüllen\nPrüfen & absenden (du bestätigst)');
+      await _store(c, g);
+      final hasGoal = !g.goal.startsWith('Vorgang auf');
+      return 'Seite geöffnet, aber sie zeigt KEIN Formular, sondern einen Fehler/Hinweis:\n$page\n\n'
+          '${hasGoal ? 'SO WEITER: Das Ziel ist „${g.goal}“. Such das passende Online-Formular selbst (site_search auf wien.gv.at bzw. '
+              'oesterreich.gv.at, oder browser search), öffne es mit browser open und lies es mit begleiten aktion formular. '
+              'Frag den Nutzer nur, wenn es mehrere passende Formulare gibt.' : 'SO WEITER: Sag in EINEM Satz, dass dieser Link kein bestimmtes '
+              'Formular öffnet (zitiere kurz die Meldung), und frag, was der Nutzer erledigen will – mit 3 konkreten Beispielen '
+              '(z. B. Meldezettel, Parkpickerl, Hundeabgabe). Keine Pläne oder Listen, keine Werkzeugnamen im Text.'}';
+    }
+    // Anmeldung nötig (ID Austria, Mein Wien …): an den Nutzer übergeben
+    if (RegExp(r'id austria|handy-?signatur|mit (ihrer|deiner) id|anmelden|einloggen|login').hasMatch(low) &&
+        RegExp(r'passwort|password|anmelden mit|login mit|id austria').hasMatch(low) &&
+        !RegExp(r'formular|antrag').hasMatch(low.length > 2000 ? low.substring(0, 2000) : low)) {
+      g.setPlan('Anmelden (du)\nAngaben sammeln\nFormular ausfüllen\nPrüfen & absenden (du bestätigst)');
+      await _store(c, g);
+      return 'Seite geöffnet – sie verlangt eine Anmeldung:\n$page\n\n'
+          'SO WEITER: Ruf begleiten aktion uebergabe auf (text: „Bitte melde dich an, z. B. mit ID Austria – danach mache ich weiter.“).';
+    }
+    // Formular gleich lesen
+    String form;
+    try {
+      form = await browser.run({'action': 'form', 'target': '', 'text': ''}, ctx);
+    } catch (_) {
+      form = '';
+    }
+    final fields = ((browser.lastForm?['fields'] as List?) ?? const []).cast<Map>();
+    if (fields.length >= 2) {
+      final sections = <String>[];
+      for (final f in fields) {
+        final sec = '${f['section'] ?? ''}'.trim();
+        if (sec.isNotEmpty && !sections.contains(sec) && sections.length < 5) sections.add(sec);
+      }
+      g.setPlan([
+        if (sections.isEmpty) 'Angaben eintragen' else for (final x in sections) x,
+        if ((browser.lastForm?['step'] ?? '').toString().isNotEmpty) 'Weiter zum nächsten Formularschritt',
+        'Prüfen & absenden (du bestätigst)',
+      ].join('\n'));
+      final open = fields.where((x) => x['required'] == true && x['filled'] != true).length;
+      g.note = 'Formular: ${fields.length} Felder, $open Pflichtfelder offen';
+      await _store(c, g);
+      return 'Begleitung gestartet – der Nutzer sieht das Formular im Browser.\n$form\n\n'
+          'SO WEITER (keine Pläne, keine Werkzeugnamen im Text): Sag in 1–2 Sätzen, worum es in dem Formular geht und welche '
+          'Unterlagen man bereitlegen sollte. Dann frag gleich die ersten 1–3 offenen Pflichtangaben ab – jede mit kurzer Erklärung, '
+          'wo man sie findet. Sobald der Nutzer antwortet, trägst du sie mit browser type/select/check (target = F-Nummer) ein.';
+    }
+    g.setPlan('Zum Formular finden\nAngaben sammeln\nFormular ausfüllen\nPrüfen & absenden (du bestätigst)');
+    await _store(c, g);
+    return 'Begleitung gestartet – der Nutzer sieht die Seite im Browser.\n$page\n\n'
+        'SO WEITER: Auf dieser Seite ist noch kein Formular. Gibt es einen Link oder Knopf zum Online-Formular („Online-Antrag“, '
+        '„Formular“, „Jetzt beantragen“, „Weiter“), klick ihn selbst (browser click) und lies dann begleiten aktion formular. '
+        'Frag den Nutzer nur, wenn unklar ist, welcher Weg passt. Keine Pläne oder Werkzeugnamen im Text.';
+  }
+
   @override
   Future<String> run(Map<String, dynamic> args, ToolContext ctx) async {
     final c = conversation();
@@ -225,17 +287,23 @@ class GuideTool extends AgentTool {
     if (action == 'start') {
       final url = '${args['url'] ?? ''}'.trim().isNotEmpty ? '${args['url']}'.trim() : (firstUrl(ctx.userRequest) ?? g?.url ?? '');
       if (url.isEmpty) throw ToolException('url fehlt – frag den Nutzer nach der Adresse');
+      // schon offen (z. B. von der App gestartet): nicht neu laden, Stand melden
+      if (g != null && g.active && g.url == url && browser.lastForm != null) {
+        return 'Begleitung läuft bereits, die Seite ist offen.\n${g.brief()}\n${formatForm(browser.lastForm!)}';
+      }
       final goal = '${args['ziel'] ?? ''}'.trim().isNotEmpty
           ? '${args['ziel']}'.trim()
-          : ctx.userRequest.replaceAll(RegExp(r'https?://\S+'), '').trim();
+          : ctx.userRequest
+              .replaceAll(RegExp(r'https?://\S+'), '')
+              .replaceFirst(RegExp(r'^\s*/[a-z0-9äöüß-]+', caseSensitive: false), '')
+              .replaceAll(RegExp(r'\b(hilf mir|bitte|begleite mich|mit dem formular|dabei)\b', caseSensitive: false), '')
+              .trim();
       g = Guide(goal: goal.isEmpty ? 'Vorgang auf ${Uri.tryParse(url)?.host ?? url}' : goal, url: url, asked: g?.asked ?? false)
         ..setPlan('Seite verstehen und Ablauf klären\nAngaben sammeln\nFormular ausfüllen\nPrüfen & absenden (du bestätigst)');
       await _store(c, g);
       service.stopWatch();
       final page = await browser.run({'action': 'open', 'target': url, 'text': ''}, ctx);
-      return 'Begleitung gestartet – der Nutzer sieht die Seite im Browser.\n$page\n\n'
-          'NÄCHSTES: begleiten aktion plan mit 3–8 kurzen Schritten für genau diese Seite (Schritte des Nutzers mit „(du)“). '
-          'Dann sag in 2–3 Sätzen, wie es abläuft, und frag nach den Angaben für den ersten Schritt.';
+      return _afterOpen(c, g, page, ctx);
     }
     if (g == null) throw ToolException('Noch keine Begleitung – zuerst aktion start mit der Adresse');
 

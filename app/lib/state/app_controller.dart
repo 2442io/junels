@@ -4201,6 +4201,33 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     );
     ctx.userRequest = gateText.trim();
 
+    // Begleiten mit neuer Adresse: Seite sofort im Browser öffnen und das Formular lesen – nicht erst auf das Modell warten
+    if (guideNow && runTools.any((t) => t.name == 'begleiten')) {
+      final g0 = Guide.of(conv);
+      final url = firstUrl(input);
+      if (url != null && !(g0 != null && g0.active && g0.url == url)) {
+        final log = StepLog(step: 0)
+          ..tool = 'begleiten'
+          ..args = {'aktion': 'start', 'url': url}
+          ..thought = 'Ich öffne die Seite im Browser und lese das Formular.';
+        answer.steps.add(log);
+        notifyListeners();
+        final sw = Stopwatch()..start();
+        try {
+          final obs = await guideTool.run({'aktion': 'start', 'url': url, 'ziel': ''}, ctx);
+          log.observation = obs;
+          turnInput = '${turnInput.replaceAll(RegExp(r'\[BEGLEITMODUS:[^\]]*\]'), '').trim()}\n\n'
+              'BEREITS ERLEDIGT (begleiten start – nicht nochmal aufrufen, die Seite ist im Browser offen):\n$obs';
+        } catch (e) {
+          log
+            ..observation = 'Fehler: $e'
+            ..isError = true;
+        }
+        log.durationMs = sw.elapsedMilliseconds;
+        notifyListeners();
+      }
+    }
+
     // Angehängte Bilder einmal ansehen (Bildverständnis), die Beschreibung bekommt der Agent als Text
     final unseen = [for (final d in docs) if (d.path != null && isImageFile(d.name) && !_imageNotes.containsKey(d.path)) d];
     if (unseen.isNotEmpty && canSeeImages) {
@@ -4367,11 +4394,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
             }
           case MetricsUpdate(:final stats):
             lastStats = stats;
-            if (stats.generatedTokens > 2) lastTokensPerSecond = stats.tokensPerSecond;
+            // Cloud ohne Streaming liefert unsinnige Raten (z. B. 175000 Tokens/s) → nicht anzeigen
+            if (stats.generatedTokens > 2) lastTokensPerSecond = stats.tokensPerSecond > 1500 ? null : stats.tokensPerSecond;
             answer.tokensPerSecond = lastTokensPerSecond;
           case FinalAnswer(:final text, :final truncated, thought: final finalThought):
             answer
-              ..text = stripAnswerPreamble(text, input) ?? text
+              ..text = (stripAnswerPreamble(text, input) ?? text)
+                  // Werkzeug-Namen, die ein Modell als Überschrift schreibt („begleiten aktion plan“), gehören nicht in die Antwort
+                  .replaceAll(RegExp(r'^\s*[*#]*\s*(begleiten|browser)\s+(aktion|action)\s+\w+\s*[*:]*\s*$\n?', multiLine: true, caseSensitive: false), '')
+                  .trim()
               ..truncated = truncated;
             onAnswer?.call(text, true);
             final last = answer.steps.lastOrNull;

@@ -210,7 +210,8 @@ class AppControlTool extends AgentTool {
         'status': 'pending',
       });
       ctx.answerNow = true;
-      return 'Vorschlag erstellt – der Nutzer bestätigt mit „Ausführen“.';
+      return 'NOCH NICHT AUSGEFÜHRT – der Nutzer muss erst bestätigen. Sag in einem kurzen Satz, was du vorhast '
+          '(z. B. „Soll ich ${q.isEmpty ? '${app.name} öffnen' : '„$q“ in ${app.name} abspielen'}?“). Behaupte NICHT, dass es schon läuft.';
     }
     ctx.answerNow = true;
     return execute(app, action, link, query: q);

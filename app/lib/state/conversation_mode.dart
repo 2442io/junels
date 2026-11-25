@@ -565,14 +565,23 @@ class ConversationMode {
     // Entwurf (E-Mail, WhatsApp) wartet auf Freigabe → per Stimme fragen
     final pa = app.pendingAction;
     if (pa != null && myTurn == _turn && active) {
-      final yes = await _askYesNo('Soll ich das senden? Sag ja oder nein.', 'Senden?');
+      // im Gespräch bestätigen – nicht still als Karte im Chat liegen lassen
+      final a = pa.$1.actions[pa.$2];
+      final isApp = a['type'] == 'app';
+      final what = isApp
+          ? ((a['query'] ?? '').isNotEmpty
+              ? 'Soll ich „${a['query']}“ in ${a['app']} ${a['action'] == 'suchen' ? 'suchen' : 'abspielen'}?'
+              : 'Soll ich ${a['app']} öffnen?')
+          : 'Soll ich das senden?';
+      final yes = await _askYesNo('$what Sag ja oder nein.', isApp ? '${a['app']}?' : 'Senden?');
       if (myTurn == _turn && active) {
         final o = app.voice.output..begin();
         if (yes == true) {
           final msg = await app.runAction(pa.$1, pa.$2, approval: 'Du hast im Gespräch „Ja“ gesagt');
-          o.add('$msg.');
+          agentText.value = msg;
+          o.add(msg.endsWith('.') ? msg : '$msg.');
         } else if (yes == false) {
-          o.add('Okay, nicht gesendet. Der Entwurf bleibt im Chat.');
+          o.add(isApp ? 'Okay, mache ich nicht.' : 'Okay, nicht gesendet. Der Entwurf bleibt im Chat.');
         }
         o.finish();
         await o.done.timeout(const Duration(seconds: 30), onTimeout: () => o.stop());
