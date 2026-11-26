@@ -2330,8 +2330,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Offene Aktion der letzten Antwort im aktuellen Chat (für „Ja“ im Gespräch).
-  (ChatEntry, int)? get pendingAction {
-    final e = current?.entries.lastOrNull;
+  (ChatEntry, int)? get pendingAction => pendingActionIn(current);
+
+  (ChatEntry, int)? pendingActionIn(Conversation? c) {
+    final e = c?.entries.lastOrNull;
     if (e == null || e.role != 'assistant') return null;
     final i = e.actions.indexWhere((a) => a['status'] == 'pending');
     return i < 0 ? null : (e, i);

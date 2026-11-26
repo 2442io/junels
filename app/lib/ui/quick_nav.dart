@@ -7,6 +7,7 @@ import '../state/app_scope.dart';
 import 'nav.dart';
 import 'self_test_page.dart';
 import 'monitor_page.dart';
+import 'conversation_page.dart';
 import 'theme.dart';
 
 /// AppBar mit Schnellnavigation (⋯-Raster rechts), sobald man tiefer als die Startseite ist.
@@ -102,7 +103,7 @@ Future<void> showQuickNav(BuildContext context) async {
             Expanded(
               child: FilledButton.icon(
                 icon: const Icon(Icons.forum_outlined),
-                label: const Text('Zum Chat'),
+                label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Zum Chat')),
                 onPressed: () => Navigator.pop(ctx, 'home'),
               ),
             ),
@@ -110,8 +111,16 @@ Future<void> showQuickNav(BuildContext context) async {
             Expanded(
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.add),
-                label: const Text('Neuer Chat'),
+                label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Neuer Chat')),
                 onPressed: () => Navigator.pop(ctx, 'new'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.graphic_eq),
+                label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Voice')),
+                onPressed: () => Navigator.pop(ctx, 'voice'),
               ),
             ),
           ]),
@@ -163,6 +172,11 @@ Future<void> showQuickNav(BuildContext context) async {
     // nach dem Schließen der Seiten das Menü öffnen
     await Future<void>.delayed(const Duration(milliseconds: 250));
     (picked == 'left' ? ShellControls.openLeft : ShellControls.openRight)?.call();
+    return;
+  }
+  if (picked == 'voice') {
+    shell?.go(AppSection.chat);
+    if (rootContext.mounted) await openConversation(rootContext);
     return;
   }
   if (picked == 'monitor') {

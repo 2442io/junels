@@ -156,7 +156,7 @@ class SpeechOutput {
   String? _piperDir;
   Future<_TtsWorker>? _starting;
   FlutterTts? _system;
-  final AudioPlayer _player = AudioPlayer();
+  AudioPlayer _player = AudioPlayer();
   bool _contextSet = false;
 
   /// So viele Sätze werden im Voraus erzeugt, während der aktuelle noch spielt.
@@ -443,14 +443,37 @@ class SpeechOutput {
     }
   }
 
-  Future<bool> _play(_Clip clip) async {
+  /// Spielt den Satz ab. Startet die Wiedergabe nicht wirklich (Player hängt nach einem Abbruch –
+  /// dann stand „Ich spreche …“ da, aber man hörte nichts), wird der Player neu erzeugt und noch einmal versucht.
+  Future<bool> _play(_Clip clip, {bool retry = true}) async {
     await _ensureContext();
+    final gen = _generation;
     final done = _playDone = Completer<void>();
-    final sub = _player.onPlayerComplete.listen((_) {
+    final player = _player;
+    var started = false;
+    final sub = player.onPlayerComplete.listen((_) {
+      started = true;
       if (!done.isCompleted) done.complete();
     });
+    final stateSub = player.onPlayerStateChanged.listen((s) {
+      if (s == PlayerState.playing) started = true;
+    });
+    final posSub = player.onPositionChanged.listen((p) {
+      if (p > Duration.zero) started = true;
+    });
     try {
-      await _player.play(DeviceFileSource(clip.path!));
+      await player.play(DeviceFileSource(clip.path!)).timeout(const Duration(seconds: 4));
+      // Läuft die Wiedergabe wirklich? (Zustand „playing“ oder Position bewegt sich)
+      final sw = Stopwatch()..start();
+      while (!started && !done.isCompleted && gen == _generation && sw.elapsedMilliseconds < 1500) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      if (!started && !done.isCompleted && gen == _generation) {
+        voiceLog('Wiedergabe startet nicht – Player wird neu erzeugt${retry ? '' : ' (aufgegeben)'}');
+        await _resetPlayer();
+        if (retry) return _play(clip, retry: false);
+        return false;
+      }
       // Sicherheitsnetz, falls das Ende-Ereignis ausbleibt
       final ms = (clip.seconds * 1000).round() + 800;
       await done.future.timeout(Duration(milliseconds: ms), onTimeout: () {});
@@ -458,10 +481,23 @@ class SpeechOutput {
     } catch (e, st) {
       voiceLog('Wiedergabe-Fehler (${clip.path}): $e\n$st');
       lastError.value = 'Wiedergabe: $e';
+      await _resetPlayer();
+      if (retry && gen == _generation) return _play(clip, retry: false);
       return false;
     } finally {
       await sub.cancel();
+      await stateSub.cancel();
+      await posSub.cancel();
     }
+  }
+
+  Future<void> _resetPlayer() async {
+    final old = _player;
+    _player = AudioPlayer();
+    _contextSet = false;
+    try {
+      await old.dispose();
+    } catch (_) {}
   }
 
   Future<void> _speakSystem(String text) async {

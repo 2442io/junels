@@ -21,7 +21,11 @@ class VoiceActivityDetector {
     this.marginDb = 12,
     this.classifier,
     this.nearFieldDb = 0,
+    this.preRollMs = 300,
   });
+
+  /// So viel Ton vor dem erkannten Start wird mitgenommen (erstes Wort nicht abschneiden).
+  final int preRollMs;
 
   /// Liefert pro Frame, ob darin menschliche Sprache steckt (null = nur Energie).
   bool Function(Float32List frame)? classifier;
@@ -124,7 +128,7 @@ class VoiceActivityDetector {
         // Grundrauschen langsam nachführen (nur in Ruhe)
         if (!voiced) _noiseDb = _noiseDb * 0.95 + db * 0.05;
         _preRoll.addAll(frame);
-        final maxPre = sampleRate * 300 ~/ 1000;
+        final maxPre = sampleRate * preRollMs ~/ 1000;
         if (_preRoll.length > maxPre) _preRoll.removeRange(0, _preRoll.length - maxPre);
         _speechRun = voiced ? _speechRun + frameMs : 0;
         if (_speechRun >= startMs) {

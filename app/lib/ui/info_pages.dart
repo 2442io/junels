@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.64.0', [
+    'Schnellmenü: neben „Zum Chat“ und „Neuer Chat“ jetzt auch „Voice“',
+    'Gespräch (Mac): kein stummes „Ich spreche …“ mehr – die Echo-Unterdrückung des Mikrofons hat die eigene Stimme fast lautlos gedreht; am Mac jetzt aus (Schwelle beim Sprechen höher)',
+    'Sprachausgabe prüft, ob wirklich etwas abgespielt wird – sonst wird der Player neu gestartet bzw. die Systemstimme genutzt',
+    'Erstes Wort wird nicht mehr abgeschnitten: 0,7 s Vorlauf vor dem erkannten Sprachbeginn und kurze Stille vor der Erkennung',
+    'App-Aktionen im Gespräch („Spiel Weihnachtslieder auf Spotify“) werden direkt ausgeführt statt nochmal nachzufragen – auch wenn das Gespräch in „Ergebnisse“ läuft',
+  ]),
   ('1.63.0', [
     'Neu: „Ergebnisse“ – Abläufe, geplante Aufgaben, externe Aufrufe und Gespräche ohne offenen Chat landen an einem Ort statt in vielen einzelnen Chats',
     'Ergebnisse zeigen ihre Herkunft (⚙ Ablauf, ⏱ Geplant, 🎙 Gespräch, 🔌 Extern) und lassen sich filtern; Zahl neuer Ergebnisse in der Seitenleiste',

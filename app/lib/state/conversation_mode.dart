@@ -47,7 +47,8 @@ class ConversationMode {
 
   ValueNotifier<double> get level => app.voice.mic.level;
 
-  final _vad = VoiceActivityDetector(endSilenceMs: 1200, maxUtteranceMs: 20000);
+  // 700 ms Vorlauf: der Anfang des ersten Wortes liegt oft vor dem erkannten Sprachbeginn
+  final _vad = VoiceActivityDetector(endSilenceMs: 1200, maxUtteranceMs: 20000, preRollMs: 700);
   SileroClassifier? _silero;
 
   /// Absender-Modus: Äußerung endet erst mit „Fertig“.
@@ -139,7 +140,7 @@ class ConversationMode {
     _followUntil = DateTime.now().add(const Duration(seconds: 30));
     needsName.value = false;
     state.value = ConvState.listening;
-    await app.voice.mic.start(_onFrame, echoCancel: true);
+    await app.voice.mic.start(_onFrame, echoCancel: !Platform.isMacOS);
     // Manche Android-Geräte beenden die Aufnahme, wenn die Sprachausgabe läuft → neu starten
     _watchdog?.cancel();
     _watchdog = Timer.periodic(const Duration(seconds: 1), (_) => _checkMic());
@@ -156,7 +157,7 @@ class ConversationMode {
     _restartingMic = true;
     voiceLog('Mikrofon liefert nichts mehr – starte neu');
     try {
-      await app.voice.mic.start(_onFrame, echoCancel: true);
+      await app.voice.mic.start(_onFrame, echoCancel: !Platform.isMacOS);
     } catch (e) {
       error.value = 'Mikrofon: $e';
     } finally {
@@ -243,7 +244,8 @@ class ConversationMode {
     if (DateTime.now().isBefore(_consentSpokenUntil) || pcm.length < 16000 * 0.25) return;
     try {
       final stt = await app.voice.stt(app.sttModelPath!);
-      final text = (await stt.transcribe(pcm, language: _language, threads: app.device.threads)).text.trim().toLowerCase();
+      final padded = Float32List(pcm.length + 4000 + 3200)..setRange(4000, 4000 + pcm.length, pcm);
+      final text = (await stt.transcribe(padded, language: _language, threads: app.device.threads)).text.trim().toLowerCase();
       // eigenes Echo („Darf ich? Sag ja oder nein“) nicht als Antwort werten
       if (text.isEmpty || text.contains('darf ich') || text.contains('soll ich') || (text.contains(' ja') && text.contains('nein'))) return;
       final no = RegExp(r'\b(nein|nee|ne|nicht|lieber nicht|lass|stopp?|abbrechen|kein)\b').hasMatch(text);
@@ -309,7 +311,8 @@ class ConversationMode {
     if (!active || muted.value) return;
     final s = state.value;
     // Während der Agent spricht, höhere Schwelle (Echo der eigenen Stimme)
-    _vad.extraMarginDb = s == ConvState.speaking ? 12 : 0;
+    // macOS ohne Echo-Unterdrückung (sie würde die Wiedergabe stummschalten) → noch höhere Schwelle
+    _vad.extraMarginDb = s == ConvState.speaking ? (Platform.isMacOS ? 18 : 12) : 0;
     final ev = _vad.add(frame);
     voiced.value = _vad.inSpeech;
 
@@ -381,7 +384,9 @@ class ConversationMode {
     String text;
     try {
       final stt = await app.voice.stt(app.sttModelPath!);
-      text = (await stt.transcribe(pcm, language: _language, threads: app.device.threads)).text.trim();
+      // kurze Stille davor: Whisper verschluckt sonst gern das erste Wort, wenn der Ton direkt mit Sprache beginnt
+      final padded = Float32List(pcm.length + 4000 + 3200)..setRange(4000, 4000 + pcm.length, pcm);
+      text = (await stt.transcribe(padded, language: _language, threads: app.device.threads)).text.trim();
     } catch (e) {
       error.value = 'Spracherkennung: $e';
       voiceLog('Spracherkennung fehlgeschlagen: $e');
@@ -573,8 +578,18 @@ class ConversationMode {
     // Hängt die Sprachausgabe, trotzdem wieder zuhören
     await out.done.timeout(const Duration(minutes: 3), onTimeout: () => out.stop());
     // Entwurf (E-Mail, WhatsApp) wartet auf Freigabe → per Stimme fragen
-    final pa = app.pendingAction;
-    if (pa != null && myTurn == _turn && active) {
+    // Gespräch läuft in der Sammlung oder im offenen Chat – dort liegt die Aktion
+    final pa = app.pendingActionIn(_inFeed ? app.feed : app.current);
+    final a0 = pa?.$1.actions[pa.$2];
+    if (pa != null && a0 != null && a0['type'] == 'app' && myTurn == _turn && active) {
+      // App öffnen/abspielen hast du gerade selbst gesagt → gleich ausführen, nicht nochmal fragen
+      final o = app.voice.output..begin();
+      final msg = await app.runAction(pa.$1, pa.$2, approval: 'Im Gespräch gewünscht');
+      agentText.value = msg;
+      o.add(msg.endsWith('.') ? msg : '$msg.');
+      o.finish();
+      await o.done.timeout(const Duration(seconds: 30), onTimeout: () => o.stop());
+    } else if (pa != null && myTurn == _turn && active) {
       // im Gespräch bestätigen – nicht still als Karte im Chat liegen lassen
       final a = pa.$1.actions[pa.$2];
       final isApp = a['type'] == 'app';
