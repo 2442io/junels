@@ -6,7 +6,9 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../state/app_scope.dart';
 import '../state/browser_service.dart';
+import 'skills_page.dart' show openMacroReview;
 import '../state/native_files.dart';
 
 class BrowserDock extends StatelessWidget {
@@ -23,7 +25,8 @@ class BrowserDock extends StatelessWidget {
         return LayoutBuilder(builder: (context, c) {
           final show = browser.visible;
           final open = show && browser.expanded;
-          final pageH = open ? c.maxHeight * 0.48 : 0.0;
+          // Beim Vormachen fast der ganze Platz für die Seite
+          final pageH = open ? c.maxHeight * (browser.recording ? 0.8 : 0.48) : 0.0;
           return Column(
             children: [
               if (show) _Bar(browser: browser),
@@ -122,6 +125,32 @@ class _Bar extends StatelessWidget {
               ),
             ),
           ),
+          if (browser.recording)
+            Container(
+              width: double.infinity,
+              color: Colors.red.shade700,
+              padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+              child: Row(children: [
+                const Icon(Icons.fiber_manual_record, size: 16, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Aufnahme · ${browser.recorded.length} Schritte – mach es einfach vor',
+                      style: t.bodySmall?.copyWith(color: Colors.white)),
+                ),
+                TextButton(
+                  onPressed: () => AppScope.read(context).finishRecording(keep: false),
+                  child: const Text('Abbrechen', style: TextStyle(color: Colors.white70)),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.red.shade700),
+                  onPressed: () {
+                    final s = AppScope.read(context).finishRecording();
+                    if (s != null) openMacroReview(context, s);
+                  },
+                  child: const Text('Fertig'),
+                ),
+              ]),
+            ),
           if (browser.watch != null)
             Container(
               width: double.infinity,

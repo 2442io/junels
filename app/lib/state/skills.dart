@@ -7,7 +7,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:agent_engine/agent_engine.dart' show OutputView;
+import 'package:agent_engine/agent_engine.dart' show OutputView, MacroStep;
 import 'package:flutter/foundation.dart';
 
 class Skill {
@@ -30,6 +30,9 @@ class Skill {
     this.internet = 'ask',
     this.model = '',
     this.output = '',
+    this.job = false,
+    List<MacroStep>? macro,
+    Map<String, String>? macroParams,
     this.flowId,
     this.promptId,
     Map<String, String>? files,
@@ -40,7 +43,9 @@ class Skill {
   })  : tools = tools ?? [],
         files = files ?? {},
         meta = meta ?? {},
-        unmapped = unmapped ?? [];
+        unmapped = unmapped ?? [],
+        macro = macro ?? [],
+        macroParams = macroParams ?? {};
 
   final String id;
   String name;
@@ -66,6 +71,15 @@ class Skill {
 
   /// Ausgabeformat (OutputView): '' = automatisch, cards, table, list, steps, chart, pdf, word, excel, pptx
   String output;
+
+  /// Als Web-Job ausführen: planen → im Browser ausführen → prüfen; Fortschritt in „Ergebnisse“
+  bool job;
+
+  /// Vorgemachter Ablauf (Aufnahme) – wird abgespielt statt geplant; das Modell springt nur bei Abweichungen ein
+  List<MacroStep> macro;
+
+  /// Platzhalter des Ablaufs mit Beispiel-/Standardwert (z. B. suchbegriff → „rtx 4070“)
+  Map<String, String> macroParams;
 
   /// Ablauf (Prozess) dieses Skills: Auslöser (Zeitplan, Beobachtung, Ereignis) und/oder mehrere Schritte.
   /// Ohne eigene Anleitung ist der Skill der Ablauf selbst (/befehl startet ihn).
@@ -159,6 +173,9 @@ class Skill {
         if (internet != 'ask') 'internet': internet,
         if (model.isNotEmpty) 'model': model,
         if (output.isNotEmpty) 'output': output,
+        if (job) 'job': true,
+        if (macro.isNotEmpty) 'macro': [for (final m in macro) m.toJson()],
+        if (macroParams.isNotEmpty) 'macroParams': macroParams,
         if (flowId != null) 'flowId': flowId,
         if (promptId != null) 'promptId': promptId,
         if (files.isNotEmpty) 'files': files,
@@ -187,6 +204,9 @@ class Skill {
         internet: internetLabels.containsKey(j['internet']) ? '${j['internet']}' : 'ask',
         model: modelLabels.containsKey(j['model']) ? '${j['model']}' : '',
         output: OutputView.valid('${j['output'] ?? ''}') ? '${j['output'] ?? ''}' : '',
+        job: j['job'] == true,
+        macro: [for (final m in (j['macro'] as List? ?? const [])) MacroStep.fromJson((m as Map).cast<String, dynamic>())],
+        macroParams: {for (final e in ((j['macroParams'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
         flowId: j['flowId'] as String?,
         promptId: j['promptId'] as String?,
         files: {for (final e in ((j['files'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
@@ -515,6 +535,150 @@ final builtinSkills = <Skill>[
     instructions: '1. find_loose_ends nutzen, bei verbundenem Postfach auch mail_inbox.\n'
         '2. Nach Dringlichkeit sortiert auflisten, je Punkt ein Vorschlag für den nächsten Schritt.',
     tools: ['find_loose_ends', 'mail_inbox', 'calendar_list'],
+    builtin: true,
+  ),
+  // ---------------------------------------------------------------- Im Web erledigen
+  Skill(
+    id: 'b-preis-scout',
+    name: 'Preis-Scout',
+    slug: 'preis',
+    icon: 'sell',
+    when: 'Wenn ich den besten Preis für ein Produkt suche oder Preise vergleichen will.',
+    instructions: '1. Auf geizhals.at nach dem Produkt suchen (browser search) und mit browser collect (target 2) die Angebote sammeln.\n'
+        '2. Zum Gegencheck auf willhaben.at suchen (gebraucht) und ggf. einen großen Shop (z. B. amazon.de) – je browser collect.\n'
+        '3. Ergebnis als Tabelle: Produkt, Preis, Versand (wenn ersichtlich), Händler/Quelle, Link – günstigstes zuerst. '
+        'Gebraucht-Angebote kennzeichnen.\n'
+        '4. Nennt der Nutzer einen Zielpreis („unter 500 €“) und das günstigste Angebot liegt darunter: send_notification mit Preis und Link. '
+        'Tipp an den Nutzer: unter „Wann“ täglich einplanen, dann meldet sich Junels, sobald der Preis fällt.\n'
+        'Nie bestellen oder bezahlen.',
+    tools: ['browser', 'site_search', 'web_search', 'web_fetch', 'send_notification', 'create_excel'],
+    inputs: 'Produkt, optional Zielpreis',
+    output: 'table',
+    job: true,
+    auto: false, // nur per /befehl – startet sonst ungefragt einen Web-Job
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-inserate',
+    name: 'Inserate-Wächter',
+    slug: 'inserate',
+    icon: 'radar',
+    when: 'Wenn ich auf willhaben nach Wohnung, Auto, Fahrrad oder anderen Inseraten suche und nur neue Treffer sehen will.',
+    instructions: '1. willhaben.at öffnen und die Suche mit den Filtern des Nutzers einstellen (Kategorie, Ort/Bezirk, Preis bis, '
+        'Zimmer/Fläche, Marke …) – über Suchfeld und Filter-Links.\n'
+        '2. browser collect mit text „neu“ (target 2): liefert nur Inserate, die noch nicht gemeldet wurden.\n'
+        '3. Neue Treffer als Karten: Titel, Preis, Ort, Link. Keine neuen → kurz sagen „keine neuen Inserate“.\n'
+        '4. Tipp an den Nutzer: unter „Wann“ einplanen (z. B. täglich 7:30) – dann kommen neue Inserate automatisch in „Ergebnisse“.\n'
+        'Nie Kontakt aufnehmen oder etwas absenden.',
+    tools: ['browser', 'site_search', 'web_search'],
+    inputs: 'Was (Wohnung, Auto, Rad …), Ort, Preis bis, weitere Filter',
+    output: 'cards',
+    job: true,
+    auto: false, // nur per /befehl – startet sonst ungefragt einen Web-Job
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-reise',
+    name: 'Reise-Vergleich',
+    slug: 'reise',
+    icon: 'flight',
+    when: 'Wenn ich eine Reise plane und Zug, Flug und Hotel für einen Zeitraum vergleichen will.',
+    instructions: '1. Zug: oebb.at (Ticketshop) – Verbindung für Hin- und Rückfahrt eintragen und die Angebote mit Zeit, Dauer, Umstiegen und Preis lesen.\n'
+        '2. Flug (wenn sinnvoll): eine Flugsuche (z. B. austrian.com oder kayak.at) mit Datum – Abflug, Ankunft, Dauer, Preis.\n'
+        '3. Hotel: booking.com mit Ort und Zeitraum, browser collect (target 1) – Name, Preis gesamt, Bewertung, Lage.\n'
+        '4. Ergebnis als Tabelle je Bereich (Zug, Flug, Hotel) und ein kurzer Vorschlag (günstigste / schnellste Kombination).\n'
+        'NICHT buchen: höchstens bis zur Übergabe vorbereiten, Buchen und Zahlen macht der Nutzer.',
+    tools: ['browser', 'site_search', 'web_search', 'web_fetch', 'datetime', 'create_excel'],
+    inputs: 'Von, Nach, Hinreise, Rückreise, Personen',
+    output: 'table',
+    job: true,
+    auto: false, // nur per /befehl – startet sonst ungefragt einen Web-Job
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-firmen-dossier',
+    name: 'Firmen-Dossier',
+    slug: 'dossier',
+    icon: 'business',
+    when: 'Wenn ich mich auf ein Treffen mit einer Firma vorbereite oder wissen will, wer eine Firma ist.',
+    instructions: '1. web_search nach der Firma; Webseite mit web_fetch lesen (Über uns, Leistungen, Team, Kontakt).\n'
+        '2. Firmenbuch-Daten über öffentliche Seiten (z. B. firmen.wko.at, firmenabc.at): Rechtsform, Sitz, Gründung, Geschäftsführung.\n'
+        '3. Aktuelle News (news, web_search) der letzten 12 Monate.\n'
+        '4. Ansprechpartner nur, wenn öffentlich auf der Firmenseite genannt (Name, Funktion) – keine privaten Daten.\n'
+        '5. create_word: Dossier mit Abschnitten Überblick, Zahlen & Fakten, Leistungen, Personen, News, '
+        'Fragen fürs Gespräch, Quellen.',
+    tools: ['web_search', 'web_fetch', 'news', 'site_search', 'create_word'],
+    inputs: 'Firma (Name oder Webseite)',
+    output: 'word',
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-formular',
+    name: 'Formular-Ausfüller',
+    slug: 'ausfuellen',
+    icon: 'edit_note',
+    when: 'Wenn ich ein Online-Formular mit meinen Daten ausfüllen lassen will.',
+    instructions: '1. Seite öffnen (Link vom Nutzer) und browser form lesen.\n'
+        '2. browser autofill: trägt Name, Adresse, E-Mail, Telefon, Kundennummern aus „Meine Daten“ ein (die Werte siehst du nicht).\n'
+        '3. Was noch offen ist, kurz nachfragen (höchstens 3 Angaben auf einmal) und mit browser type/select/check eintragen.\n'
+        '4. 🔒-Felder (SV-Nummer, IBAN, Pass, Passwort) mit browser mark hervorheben – die trägt der Nutzer selbst ein.\n'
+        '5. NICHT absenden: am Ende zusammenfassen und sagen, dass der Nutzer prüft und selbst absendet.\n'
+        'Sind „Meine Daten“ leer: auf Einstellungen → Meine Daten hinweisen.',
+    tools: ['browser', 'begleiten', 'site_search'],
+    inputs: 'Link zum Formular',
+    auto: false, // nur per /befehl – startet sonst ungefragt einen Web-Job
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-belege',
+    name: 'Belege-Sammler',
+    slug: 'belege',
+    icon: 'receipt_long',
+    when: 'Wenn ich Rechnungen aus Online-Portalen (Strom, Handy, Amazon …) herunterladen und für die Steuer auflisten will.',
+    instructions: '1. Portal öffnen (z. B. Kundenkonto Rechnungen). Ist eine Anmeldung nötig: an den Nutzer übergeben – er meldet sich selbst an.\n'
+        '2. Zur Rechnungsübersicht navigieren; den gewünschten Zeitraum (Standard: letzter Monat) suchen.\n'
+        '3. Jede passende Rechnung mit browser download speichern (target = Link-Nummer, text = „<Anbieter> <Datum>“).\n'
+        '4. create_excel: Liste mit Datum, Anbieter, Rechnungsnummer, Betrag (brutto), Datei – Summe am Ende.\n'
+        'Nie bezahlen oder Einstellungen ändern. Tipp: unter „Wann“ monatlich einplanen.',
+    tools: ['browser', 'site_search', 'create_excel', 'calculator'],
+    inputs: 'Portal(e), Zeitraum',
+    output: 'excel',
+    job: true,
+    auto: false, // nur per /befehl – startet sonst ungefragt einen Web-Job
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-kuendigung',
+    name: 'Kündigung & Verträge',
+    slug: 'kuendigen',
+    icon: 'gavel',
+    when: 'Wenn ich einen Vertrag kündigen will oder wissen will, bis wann ich kündigen muss.',
+    instructions: '1. Vertrag klären: Anbieter, Vertragsart, Kundennummer (falls in „Meine Daten“ – sonst nachfragen), Beginn, Mindestlaufzeit, Kündigungsfrist.\n'
+        '2. Kündigungsfrist und letzten Kündigungstag berechnen (datetime, calculator); bei Unklarheit die AGB des Anbieters mit web_search suchen.\n'
+        '3. create_word: Kündigungsschreiben (Absender, Empfänger mit Adresse des Anbieters, Betreff mit Kundennummer, '
+        'Kündigung zum nächstmöglichen Termin, Bitte um schriftliche Bestätigung, Datum, Unterschriftszeile).\n'
+        '4. calendar_add: Erinnerung 7 Tage vor dem letzten Kündigungstag und eine zum Vertragsende.\n'
+        'Hinweis: kein Rechtsrat; Einschreiben oder Bestätigung aufheben.',
+    tools: ['web_search', 'web_fetch', 'datetime', 'calculator', 'create_word', 'calendar_add'],
+    inputs: 'Anbieter, Vertrag, Vertragsbeginn',
+    output: 'word',
+    builtin: true,
+  ),
+  Skill(
+    id: 'b-termin-suche',
+    name: 'Termin-Sucher',
+    slug: 'termin-suche',
+    icon: 'event_available',
+    when: 'Wenn ich einen freien Termin bei Arzt, Amt oder Werkstatt online finden will.',
+    instructions: '1. Buchungsseite öffnen (Link des Nutzers oder über site_search/web_search finden, z. B. Ordination, Magistrat, Werkstatt).\n'
+        '2. Freie Termine im gewünschten Zeitraum suchen und auflisten (Datum, Uhrzeit, Ort/Person).\n'
+        '3. Den passendsten Termin wählen (Wunsch des Nutzers) und das Formular mit browser autofill und den Angaben ausfüllen.\n'
+        '4. VOR dem Bestätigen anhalten: zusammenfassen und an den Nutzer übergeben – er bestätigt selbst.\n'
+        'Anmeldung, CAPTCHA und Zahlung macht der Nutzer.',
+    tools: ['browser', 'begleiten', 'site_search', 'web_search', 'datetime'],
+    inputs: 'Wo (Arzt/Amt/Link), Zeitraum, Anliegen',
+    job: true,
+    auto: false, // nur per /befehl – startet sonst ungefragt einen Web-Job
     builtin: true,
   ),
   Skill(

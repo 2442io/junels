@@ -67,6 +67,27 @@ void main() {
     });
   });
 
+  group('Web-Jobs & Vormachen', () {
+    test('Skill merkt sich Web-Job, Aufnahme und Platzhalter', () {
+      final s = Skill(id: 'u1', name: 'Preise', instructions: 'x', job: true,
+          macro: [MacroStep(kind: 'open', url: 'https://geizhals.at'), MacroStep(kind: 'type', hints: {'name': 'fs'}, value: '{suchbegriff}', enter: true)],
+          macroParams: {'suchbegriff': 'rtx 4070'});
+      final r = Skill.fromJson(s.toJson());
+      expect(r.job, isTrue);
+      expect(r.macro.length, 2);
+      expect(r.macro[1].value, '{suchbegriff}');
+      expect(r.macroParams['suchbegriff'], 'rtx 4070');
+    });
+    test('Meine Daten und Freigaben bleiben gespeichert', () {
+      final st = AppSettings()
+        ..myData = {'vorname': 'Christoph'}
+        ..sitePolicy = {'fill': 'allow', 'submit': 'ask', 'sites': {'willhaben.at': {'submit': 'allow'}}};
+      final r = AppSettings.fromJson(st.toJson());
+      expect(r.myData['vorname'], 'Christoph');
+      expect(SitePolicy.fromJson(r.sitePolicy).level('willhaben.at', 'submit'), 'allow');
+    });
+  });
+
   group('Geplante Aufgaben sind Skills', () {
     test('Zeitplan-Verweis bleibt gespeichert, Befehl eindeutig', () {
       final s = Skill(id: 'plan-1', name: 'Morgen-Übersicht', instructions: 'x', promptId: 'p1');

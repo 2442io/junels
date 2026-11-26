@@ -115,6 +115,7 @@ class _HomeShellState extends State<HomeShell> {
     app.consentHandler = (purpose) => askNetworkConsent(context, purpose);
     app.cloudConsentHandler = (reason) => askCloudConsent(context, reason);
     app.deviceBridge.confirmHandler = (title, detail) => _confirm(title, detail);
+    app.choiceHandler = (title, detail) => _choice(title, detail);
     app.pendingLaunch.addListener(() => _launch(app));
     if (app.pendingLaunch.value != null) WidgetsBinding.instance.addPostFrameCallback((_) => _launch(app));
     if (app.needsSystemCheck) {
@@ -139,6 +140,26 @@ class _HomeShellState extends State<HomeShell> {
       ),
     );
     return ok ?? false;
+  }
+
+  /// Freigabe je Website: Nein / Einmal / Immer auf dieser Seite
+  Future<String> _choice(String title, String detail) async {
+    final r = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.verified_user_outlined),
+        title: Text(title),
+        content: Text(detail),
+        actionsOverflowButtonSpacing: 4,
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'no'), child: const Text('Nein')),
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, 'always'), child: const Text('Hier immer')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, 'once'), child: const Text('Ja, einmal')),
+        ],
+      ),
+    );
+    return r ?? 'no';
   }
 
   /// Schnellstart vom Startbildschirm / Dock-Menü.

@@ -496,6 +496,12 @@ class AppSettings {
   String? ttsVoiceId; // Katalog-ID der Piper-Stimme ('__system__' = Stimme des Geräts)
   /// Sammlung „Ergebnisse“ zuletzt angesehen (für die Zahl ungelesener Ergebnisse)
   DateTime? feedSeen;
+
+  /// Freigaben je Website (Ausfüllen/Absenden: frei, mit Rückfrage, nie) – siehe SitePolicy
+  Map<String, dynamic> sitePolicy = {};
+
+  /// „Meine Daten“ zum Ausfüllen von Formularen (nichts Sensibles)
+  Map<String, String> myData = {};
   String systemVoice; // Stimme des Geräts: „Name|Locale“ (leer = Standard)
   String slowVoice; // (veraltet) früher: Stimme zu langsam → Gerätestimme
   /// Gemessenes Tempo der lokalen Stimmen (Ordner → ms je Zeichen), fürs Puffern beim Vorlesen.
@@ -585,6 +591,8 @@ class AppSettings {
   Map<String, Object?> toJson() => {
         'contextSize': contextSize,
         if (feedSeen != null) 'feedSeen': feedSeen!.toIso8601String(),
+        if (sitePolicy.isNotEmpty) 'sitePolicy': sitePolicy,
+        if (myData.isNotEmpty) 'myData': myData,
         'contextAuto': contextAuto,
         'activeProfileId': activeProfileId,
         'lastModelId': lastModelId,
@@ -640,7 +648,10 @@ class AppSettings {
         'toolsVersion': toolsVersion,
       };
 
-  factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings._fromJson(j)..feedSeen = DateTime.tryParse(j['feedSeen'] as String? ?? '');
+  factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings._fromJson(j)
+    ..feedSeen = DateTime.tryParse(j['feedSeen'] as String? ?? '')
+    ..sitePolicy = ((j['sitePolicy'] as Map?) ?? const {}).cast<String, dynamic>()
+    ..myData = {for (final e in ((j['myData'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'};
   factory AppSettings._fromJson(Map<String, dynamic> j) => AppSettings(
         contextSize: (j['contextSize'] as num?)?.toInt() ?? 2048,
         contextAuto: j['contextAuto'] as bool? ?? true,

@@ -24,6 +24,7 @@ import 'answer_views.dart';
 import 'skills_page.dart';
 import 'internet_menu.dart';
 import 'quick_nav.dart';
+import 'job_panel.dart';
 import 'theme.dart';
 import 'prompt_editor.dart';
 import 'system_check.dart';
@@ -311,6 +312,7 @@ class _FeedCard extends StatelessWidget {
         _ when id.startsWith('voice:') => (Icons.graphic_eq, 'Gespräch'),
         _ when id.startsWith('watch:') => (Icons.radar, 'Beobachtung'),
         'mcp' => (Icons.electrical_services, 'Extern'),
+        _ when id.startsWith('job:') => (Icons.explore_outlined, 'Web-Job'),
         _ => (Icons.inbox_outlined, 'Ergebnis'),
       };
 
@@ -335,6 +337,12 @@ class _FeedCard extends StatelessWidget {
     } else if (id.startsWith('prompt:')) {
       final p = app.prompts.where((p) => p.id == id.substring(7)).firstOrNull;
       if (p != null) unawaited(app.runPrompt(p));
+    } else if (id.startsWith('job:')) {
+      final j = app.webJobs.byId(id.substring(4));
+      if (j != null) {
+        final skill = j.skillId == null ? null : app.skills.byId(j.skillId!);
+        app.webJobs.start(goal: j.goal, title: j.title, skill: skill, output: j.output);
+      }
     }
   }
 
@@ -342,6 +350,7 @@ class _FeedCard extends StatelessWidget {
     final id = item.originId;
     if (id.startsWith('flow:')) return app.flows.flows.any((f) => f.id == id.substring(5));
     if (id.startsWith('prompt:')) return app.prompts.any((p) => p.id == id.substring(7));
+    if (id.startsWith('job:')) return app.webJobs.byId(id.substring(4))?.finished ?? false;
     return false;
   }
 
@@ -435,6 +444,13 @@ class _FeedCard extends StatelessWidget {
       ]);
     }
 
+    // Web-Job: Fortschritt oben, Ergebnis (sobald da) darunter
+    if (item.originId.startsWith('job:')) {
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        JobPanel(jobId: item.originId.substring(4)),
+        if (text.isNotEmpty) ...[const SizedBox(height: 8), body],
+      ]);
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Panel(
@@ -562,6 +578,7 @@ class _FeedFilterBar extends StatelessWidget {
     }
     int count(String prefix) => entries.where((e) => e.role == 'assistant' && (e.originId ?? '').startsWith(prefix)).length;
     final kinds = <(String, String)>[
+      ('job:', '🧭 Web-Jobs'),
       ('flow:', '⚙ Abläufe'),
       ('prompt:', '⏱ Geplant'),
       ('voice:', '🎙 Gespräche'),
@@ -1078,6 +1095,12 @@ class _AssistantMessage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (entry.steps.isNotEmpty) _ThoughtLog(steps: entry.steps, live: live && entry.text.isEmpty),
+          // Web-Job: Fortschritt live (läuft unabhängig vom Chat weiter)
+          if ((entry.originId ?? '').startsWith('job:'))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Panel(padding: const EdgeInsets.fromLTRB(12, 10, 8, 4), child: JobPanel(jobId: entry.originId!.substring(4))),
+            ),
           if (waiting)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),

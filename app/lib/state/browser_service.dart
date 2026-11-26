@@ -2,6 +2,8 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
@@ -11,7 +13,168 @@ import 'background_work.dart';
 import 'voice_service.dart' show appLog;
 
 class BrowserService extends ChangeNotifier implements BrowserDriver {
-  BrowserService({required this.confirmer, required this.currentChat});
+  BrowserService({required this.confirmer, required this.currentChat, this.outDir});
+
+  /// Ordner für heruntergeladene Dateien (Rechnungen …)
+  final Directory Function()? outDir;
+
+  /// Meldet, wenn der Nutzer übernehmen soll (Text) bzw. fertig ist (null) – für Web-Jobs (Push, Status).
+  void Function(String? message)? onHandOver;
+
+  // ------------------------------------------------------------ Vormachen (Aufnahme)
+
+  bool recording = false;
+  String recordStart = '';
+  final List<Map<String, dynamic>> recorded = [];
+
+  /// Aufnahme starten: Seite öffnen, Junels merkt sich Klicks, Eingaben und Auswahl
+  Future<void> startRecording(Uri start, {required String conversation}) async {
+    recorded.clear();
+    recording = true;
+    recordStart = start.toString();
+    conversationId = conversation;
+    dismissed = false;
+    expanded = true;
+    activity = 'nimmt auf – mach es einfach vor';
+    notifyListeners();
+    final first = _c == null;
+    controller;
+    if (first) await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await open(start);
+    await _injectRecorder();
+  }
+
+  /// Aufnahme beenden → rohe Ereignisse
+  List<Map<String, dynamic>> stopRecording() {
+    recording = false;
+    activity = '';
+    final out = List<Map<String, dynamic>>.of(recorded);
+    notifyListeners();
+    return out;
+  }
+
+  Future<void> _injectRecorder() async {
+    if (!recording || _c == null) return;
+    try {
+      await _c!.runJavaScript(browserRecordJs);
+    } catch (_) {}
+  }
+
+  /// Während eines Web-Jobs gehört der Browser fest zu diesem Chat („Ergebnisse“)
+  String? pinned;
+
+  /// Browser einem Chat zuordnen (z. B. „Ergebnisse“ für Web-Jobs), ohne ihn aufzuklappen
+  Future<void> showFor(String conversation, {bool pin = false}) async {
+    final first = _c == null;
+    controller;
+    if (pin) pinned = conversation;
+    conversationId = conversation;
+    dismissed = false;
+    notifyListeners();
+    if (first) await Future<void>.delayed(const Duration(milliseconds: 1200));
+  }
+
+  // ------------------------------------------------------------ Herunterladen
+
+  /// Datei mit der Anmeldung der Seite laden (fetch im Browser), sonst direkt. → Pfad
+  Future<String?> download(String url, String name) async {
+    final dir = outDir?.call();
+    if (dir == null) return null;
+    Uint8List? bytes;
+    var type = '', disp = '';
+    if (_c != null) {
+      try {
+        await _c!.runJavaScript(_dlStartJs(url));
+        final until = DateTime.now().add(const Duration(seconds: 60));
+        Map<String, dynamic> st = const {};
+        while (DateTime.now().isBefore(until)) {
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          st = _dec(await _c!.runJavaScriptReturningResult(_dlStateJs));
+          if (st['state'] == 'ok' || st['state'] == 'err') break;
+        }
+        if (st['state'] == 'ok') {
+          type = '${st['type'] ?? ''}';
+          disp = '${st['disp'] ?? ''}';
+          final len = (st['len'] as num).toInt();
+          final b = StringBuffer();
+          for (var i = 0; i < len; i += 400000) {
+            final part = await _c!.runJavaScriptReturningResult('(function(){return window.__jdl.data.substr($i,400000);})()');
+            var p = part is String ? part : '$part';
+            if (p.startsWith('"') && p.endsWith('"')) p = jsonDecode(p) as String;
+            b.write(p);
+          }
+          bytes = base64Decode(b.toString());
+          await _c!.runJavaScript('window.__jdl=null;');
+        } else {
+          appLog('Browser', 'Download im Browser: ${st['error'] ?? 'Zeitüberschreitung'}', error: true);
+        }
+      } catch (e) {
+        appLog('Browser', 'Download im Browser: $e', error: true);
+      }
+    }
+    if (bytes == null) {
+      // ohne Anmeldung direkt laden (öffentliche/signierte Links)
+      try {
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+        final req = await client.getUrl(Uri.parse(url));
+        final res = await req.close();
+        if (res.statusCode >= 400) return null;
+        final b = BytesBuilder();
+        await for (final chunk in res) {
+          b.add(chunk);
+          if (b.length > 15 * 1024 * 1024) return null;
+        }
+        bytes = b.takeBytes();
+        type = res.headers.contentType?.mimeType ?? '';
+        disp = res.headers.value('content-disposition') ?? '';
+        client.close();
+      } catch (_) {
+        return null;
+      }
+    }
+    var file = RegExp(r'''filename\*?=(?:UTF-8'')?"?([^";]+)''', caseSensitive: false).firstMatch(disp)?.group(1);
+    file = file == null ? name : Uri.decodeComponent(file);
+    file = file.replaceAll(RegExp(r'[\\/:*?"<>|\n\r\t]'), ' ').trim();
+    if (file.isEmpty) file = 'Datei';
+    if (!file.contains('.')) {
+      final isPdf = type.contains('pdf') || (bytes.length > 4 && String.fromCharCodes(bytes.sublist(0, 4)) == '%PDF');
+      file = '$file.${isPdf ? 'pdf' : (type.contains('png') ? 'png' : (type.contains('jpeg') ? 'jpg' : 'bin'))}';
+    }
+    dir.createSync(recursive: true);
+    var f = File('${dir.path}/$file');
+    for (var i = 2; f.existsSync(); i++) {
+      final dot = file.lastIndexOf('.');
+      f = File('${dir.path}/${file.substring(0, dot)} ($i)${file.substring(dot)}');
+    }
+    await f.writeAsBytes(bytes);
+    return f.path;
+  }
+
+  static Map<String, dynamic> _dec(Object raw) {
+    Object? v = raw;
+    for (var i = 0; i < 3 && v is String; i++) {
+      try {
+        v = jsonDecode(v);
+      } catch (_) {
+        break;
+      }
+    }
+    return v is Map<String, dynamic> ? v : const {};
+  }
+
+  static String _dlStartJs(String url) => '''
+(function(){window.__jdl={state:'run'};
+fetch(${jsonEncode(url)},{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);
+var ct=r.headers.get('content-type')||'';var cd=r.headers.get('content-disposition')||'';
+return r.blob().then(function(b){if(b.size>15000000)throw new Error('zu groß');var fr=new FileReader();
+fr.onload=function(){var d=String(fr.result);d=d.substring(d.indexOf(',')+1);window.__jdl={state:'ok',type:ct,disp:cd,data:d};};fr.readAsDataURL(b);});
+}).catch(function(e){window.__jdl={state:'err',error:String(e)};});})()
+''';
+
+  static const _dlStateJs = r'''
+(function(){var d=window.__jdl||{};if(d.state!=='ok')return JSON.stringify({state:d.state||'',error:d.error||''});
+return JSON.stringify({state:'ok',type:d.type,disp:d.disp,len:d.data.length});})()
+''';
 
   final Future<bool> Function(String title, String detail) confirmer;
 
@@ -57,6 +220,15 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
   WebViewController _create() {
     final c = WebViewController();
     unawaited(c.setJavaScriptMode(JavaScriptMode.unrestricted).catchError((Object _) {}));
+    // Vormachen: die Seite meldet Klicks und Eingaben über diesen Kanal
+    unawaited(c.addJavaScriptChannel('JunelsRec', onMessageReceived: (m) {
+      if (!recording) return;
+      try {
+        final e = (jsonDecode(m.message) as Map).cast<String, dynamic>();
+        recorded.add(e);
+        notifyListeners();
+      } catch (_) {}
+    }).catchError((Object _) {}));
     unawaited(c.setNavigationDelegate(NavigationDelegate(
       onPageStarted: (u) {
         _navCount++;
@@ -77,6 +249,7 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
         } catch (_) {}
         final l = _loaded;
         if (l != null && !l.isCompleted) l.complete();
+        if (recording) unawaited(_injectRecorder());
         notifyListeners();
       },
       onWebResourceError: (e) {
@@ -103,7 +276,7 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
   Future<void> show() async {
     final first = _c == null;
     controller;
-    conversationId = currentChat();
+    conversationId = pinned ?? currentChat();
     dismissed = false;
     notifyListeners();
     // Die Ansicht muss erst im Fenster hängen (und eine Größe haben), bevor sie lädt
@@ -182,10 +355,12 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
     conversationId ??= currentChat();
     handOverMessage = message;
     final c = _handOver = Completer<bool>();
+    onHandOver?.call(message);
     notifyListeners();
     final ok = await c.future.timeout(const Duration(minutes: 20), onTimeout: () => false);
     handOverMessage = null;
     _handOver = null;
+    onHandOver?.call(null);
     notifyListeners();
     return ok;
   }

@@ -149,7 +149,14 @@ Future<void> _demo() async {
   await app.adoptScheduledPrompts();
   // Sammlung „Ergebnisse“
   final f = app.feed;
+  app.webJobs.jobs.add(WebJob(id: 'demo-job', title: 'Preis-Scout', goal: 'RTX 4070 Super unter 550 €', status: 'läuft', current: 2, steps: [
+    JobStep('geizhals.at öffnen und nach „RTX 4070 Super“ suchen', status: 'ok', note: '38 Treffer'),
+    JobStep('Angebote über 2 Seiten sammeln', status: 'ok', note: '24 Angebote'),
+    JobStep('willhaben.at nach gebrauchten Karten durchsuchen', status: 'läuft'),
+    JobStep('Ergebnis als Tabelle zusammenstellen'),
+  ]));
   f.entries.addAll([
+    ChatEntry(role: 'assistant', origin: '🧭 Preis-Scout', originId: 'job:demo-job', time: now.subtract(const Duration(minutes: 2))),
     ChatEntry(role: 'assistant', text: '## KI-News\n- OpenAI stellt neues Modell vor\n- EU AI Act: neue Leitlinien\n- Anthropic veröffentlicht Studie zu Agenten\n- Google zeigt Gemini-Update\n- Microsoft investiert in Rechenzentren in Österreich',
         origin: '⏱ Morning Briefing News', originId: 'prompt:${app.prompts[1].id}', time: now.subtract(const Duration(hours: 3))),
     ChatEntry(role: 'user', text: 'Wie wird das Wetter morgen in Wien?', origin: '🎙 Gespräch 17:40', originId: 'voice:1', viaVoice: true, time: now.subtract(const Duration(hours: 2))),
@@ -299,7 +306,8 @@ void main() {
       'menu': (const Size(412, 1700), const Scaffold(body: Sidebar())),
       'inbox': (const Size(412, 1700), const InboxPage()),
       'tasks': (const Size(412, 1700), const SkillsPage(filter: 'schedule')),
-      'results': (const Size(412, 1400), Builder(builder: (_) {
+      'job_editor': (const Size(412, 2200), SkillEditor(skill: app.skills.byId('b-preis-scout'))),
+      'results': (const Size(412, 1600), Builder(builder: (_) {
         app.current = app.feed;
         return const Scaffold(body: ChatView());
       })),

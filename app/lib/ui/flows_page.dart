@@ -2511,6 +2511,14 @@ class _NodeInspectorState extends State<_NodeInspector> {
         children.add(_modelPicker(n.config, 'provider', null));
         children.add(const SizedBox(height: 12));
         children.add(OutputViewField(value: n.str('output'), label: 'Ausgabe', onChanged: (v) => setState(() => _set('output', v))));
+        children.add(SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Als Web-Job im Browser'),
+          subtitle: const Text('Junels plant, erledigt es selbstständig im eingebauten Browser und prüft jeden Schritt. '
+              'Fortschritt in „Ergebnisse“. Nur solange die App offen ist.'),
+          value: n.config['job'] == true,
+          onChanged: (v) => setState(() => _set('job', v)),
+        ));
       case FlowNodeType.tool:
         final tool = tools.where((x) => x.name == n.str('tool')).firstOrNull;
         children.add(DropdownButtonFormField<String>(

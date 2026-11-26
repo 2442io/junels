@@ -29,6 +29,7 @@ import 'notifications.dart';
 import 'self_test.dart';
 import 'skill_tool.dart';
 import 'skills.dart';
+import 'web_jobs.dart';
 import 'run_stats.dart';
 import 'agent_eval_service.dart';
 import 'mcp_server.dart';
@@ -178,7 +179,80 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Eingebauter Browser, den der Agent bedient.
   late final BrowserService browser =
-      BrowserService(confirmer: (t, d) => deviceBridge.confirm(t, d), currentChat: () => current?.id);
+      BrowserService(confirmer: (t, d) => deviceBridge.confirm(t, d), currentChat: () => current?.id, outDir: () => outputsDir);
+
+  /// Web-Jobs (planen → im Browser ausführen → prüfen)
+  late final WebJobs webJobs = WebJobs(this);
+
+  /// Dialog mit drei Antworten (Nein / Einmal / Immer) – setzt die Oberfläche
+  Future<String> Function(String title, String detail)? choiceHandler;
+
+  SitePolicy get sitePolicy => SitePolicy.fromJson(settings.sitePolicy);
+
+  Future<void> saveSitePolicy(SitePolicy p) async {
+    settings.sitePolicy = p.toJson();
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  // ------------------------------------------------------------ Vormachen
+
+  /// Skill, für den gerade aufgenommen wird
+  String? recordingSkillId;
+
+  /// Aufnahme starten: Browser über „Ergebnisse“ aufklappen, Startseite öffnen
+  Future<void> startRecording(Skill s, String url) async {
+    var u = url.trim();
+    if (!u.contains('://')) u = 'https://$u';
+    final uri = Uri.tryParse(u);
+    if (uri == null || uri.host.isEmpty) throw Exception('„$url“ ist keine gültige Adresse');
+    recordingSkillId = s.id;
+    openFeed();
+    await browser.startRecording(uri, conversation: feedId);
+  }
+
+  /// Aufnahme beenden → Schritte (mit Platzhaltern) im Skill speichern; null = abgebrochen/leer
+  Skill? finishRecording({bool keep = true}) {
+    final events = browser.stopRecording();
+    final id = recordingSkillId;
+    recordingSkillId = null;
+    if (!keep || id == null) return null;
+    final s = skills.byId(id);
+    if (s == null) return null;
+    final steps = cleanRecording(browser.recordStart, events);
+    final params = autoPlaceholders(steps);
+    s
+      ..macro = steps
+      ..macroParams = params
+      ..job = true;
+    skills.upsert(s);
+    notifyListeners();
+    return s;
+  }
+
+  /// In dieser Sitzung schon erlaubt (Ausfüllen mit Rückfrage: einmal je Website)
+  final Set<String> _siteOk = {};
+
+  /// Freigabe je Website: frei → ja; nie → nein; mit Rückfrage → fragen (Absenden jedes Mal)
+  Future<bool> siteAllow(String host, String kind, String label) async {
+    final pol = sitePolicy;
+    final level = pol.level(host, kind);
+    if (level == 'allow') return true;
+    if (level == 'block') return false;
+    if (kind == 'fill' && _siteOk.contains(host)) return true;
+    final what = kind == 'fill' ? 'Formular auf $host ausfüllen?' : 'Auf $host „$label“ drücken?';
+    final detail = kind == 'fill'
+        ? 'Junels möchte auf $host Felder ausfüllen. Absenden fragt Junels extra.'
+        : 'Das sendet etwas ab (z. B. Formular, Bestellung ohne Zahlung, Nachricht). Bezahlen machst du immer selbst.';
+    final h = choiceHandler;
+    final answer = h == null ? ((await deviceBridge.confirm(what, detail)) ? 'once' : 'no') : await h(what, detail);
+    if (answer == 'always') {
+      pol.set(host, kind, 'allow');
+      await saveSitePolicy(pol);
+    }
+    if (answer != 'no' && kind == 'fill') _siteOk.add(host);
+    return answer != 'no';
+  }
 
   /// Schnellstart-Aktion (Startbildschirm-Knopf, Dock-Menü): "conversation", "newchat", "prompt:<id>"
   final pendingLaunch = ValueNotifier<String?>(null);
@@ -391,6 +465,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await loadDesigns();
       await watchlist.load();
       await flows.load();
+      await webJobs.load();
       // Skills & Abläufe sind eins: jeder Ablauf hat einen Skill (bestehende Prozesse werden beim Update übernommen)
       for (final wf in flows.flows) {
         skills.syncFlow(wf.id, wf.name, wf.description, enabled: wf.enabled);
@@ -1454,7 +1529,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  late final BrowserTool browserTool = BrowserTool(() => headless ? null : browser);
+  late final BrowserTool browserTool = BrowserTool(() => headless ? null : browser,
+      allow: siteAllow, myData: () => settings.myData, seen: _SeenFile(this), download: (u, n) => browser.download(u, n));
 
   /// Begleit-Modus: gemeinsam durch Webseiten (Plan, Übergabe, Warten & melden, Vorlage).
   late final GuideTool guideTool = GuideTool(
@@ -3682,7 +3758,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       RunMeter? meter,
       String source = 'flow',
       String output = '',
-      HarnessBudget? budget}) async {
+      HarnessBudget? budget,
+      bool noTools = false,
+      bool withBrowser = false}) async {
+    // Web-Job-Skill (oder vorgemacht) in einem Ablauf: als Job ausführen und auf das Ergebnis warten
+    if (!withBrowser && !noTools && skill != null && (skill.job || skill.macro.isNotEmpty) && !headless) {
+      onProgress?.call('🧭 Web-Job „${skill.name}“ läuft – Fortschritt unter Ergebnisse');
+      final rest = prompt.trim();
+      return webJobs.runAndWait(
+          goal: rest.isEmpty ? (skill.when.isNotEmpty ? skill.when : skill.name) : rest,
+          skill: skill,
+          output: output,
+          params: skill.macro.isEmpty ? const {} : parseParams(rest, [...skill.macroParams.keys], defaults: skill.macroParams));
+    }
     // Ausgabeformat: Baustein > Skill
     final view = output.isNotEmpty ? output : (skill?.output ?? '');
     onProgress?.call(skill == null ? 'Modell wird vorbereitet …' : 'Skill „${skill.name}“: Modell wird vorbereitet …');
@@ -3721,16 +3809,22 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         only: skill == null ? null : {...skill.tools, if (viewTool != null) viewTool},
         requiredTool: viewTool ?? skill?.requiredTool,
         network: allowInternet,
-        exclude: const {'browser', 'begleiten'},
+        exclude: withBrowser ? const {'begleiten'} : const {'browser', 'begleiten'},
       );
-      final tools = [...prep.tools, if (skill != null && skill.files.isNotEmpty) skillLoadTool];
+      final tools = noTools
+          ? <AgentTool>[]
+          : [
+              ...prep.tools,
+              if (withBrowser && !prep.tools.any((t) => t.name == 'browser')) browserTool,
+              if (skill != null && skill.files.isNotEmpty) skillLoadTool,
+            ];
       if (skill != null) prompt = '${skill.brief()}\nAufgabe: ${prompt.trim().isEmpty ? '(siehe Anleitung)' : prompt}';
-      if (wantsGuide(prompt)) {
+      if (!withBrowser && wantsGuide(prompt)) {
         prompt = '$prompt\n\n[Hinweis: Dieser Prozess läuft ohne den Nutzer – Anmeldung, Formulare absenden und Zahlungen gehen hier nicht. '
             'Liefere eine kurze Schritt-für-Schritt-Anleitung mit dem Link und schreib am Ende: „Gemeinsam erledigen: im Chat '
             '„Begleite mich: <Link>“ schreiben.“]';
       }
-      final req = skill == null && viewTool == null ? null : prep.requiredTool;
+      final req = noTools || (skill == null && viewTool == null) ? null : prep.requiredTool;
       if (view.isNotEmpty) {
         prompt = '$prompt\n\n${OutputView.instruction(view)}';
         if (!OutputView.isFile(view) && view != OutputView.chart) entry.view = view;
@@ -4200,6 +4294,23 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       current = c;
     }
     final conv = target ?? _ensureConversation();
+    // „/job <Auftrag>“: beliebigen Auftrag als Web-Job erledigen lassen
+    final jobCmd = RegExp(r'^/(job|erledige)\s+(.+)$', caseSensitive: false, dotAll: true).firstMatch(input.trim());
+    if (jobCmd != null && !headless && !voice) {
+      final job = webJobs.start(goal: jobCmd.group(2)!.trim());
+      if (conv.id != feedId) {
+        conv.entries
+          ..add(ChatEntry(role: 'user', text: input.trim()))
+          ..add(ChatEntry(
+              role: 'assistant',
+              originId: 'job:${job.id}',
+              text: '🧭 Läuft als Web-Job – du kannst inzwischen weitermachen. Fortschritt hier und unter **Ergebnisse**.'));
+        conv.updated = DateTime.now();
+        await storage.saveConversation(conv);
+      }
+      notifyListeners();
+      return;
+    }
     // „Danke“, „passt“, „ok“ nach einer Antwort: nur reagieren, kein Modell nötig
     final ack = voice || onAnswer != null || headless || noHistory ? null : ackReaction(input);
     if (ack != null && conv.entries.isNotEmpty && conv.entries.last.role == 'assistant' && attachments.isEmpty && withDocs == null) {
@@ -4222,6 +4333,28 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         await _runFlowSkill(conv, skill, wf, input, skillTask, onAnswer);
         return;
       }
+    }
+    // Web-Job-Skill: läuft selbstständig im Browser, Fortschritt als Karte (hier und in „Ergebnisse“)
+    if (skill != null && (skill.job || skill.macro.isNotEmpty) && !headless && !voice) {
+      final task = skillTask.trim();
+      final job = webJobs.start(
+          goal: task.isEmpty ? (skill.when.isNotEmpty ? skill.when : skill.name) : '$task${skill.when.isEmpty ? '' : ' (${skill.when})'}',
+          skill: skill,
+          params: skill.macro.isEmpty ? const {} : parseParams(task, [...skill.macroParams.keys], defaults: skill.macroParams));
+      if (conv.id != feedId) {
+        conv.entries
+          ..add(ChatEntry(role: 'user', text: input.trim()))
+          ..add(ChatEntry(
+              role: 'assistant',
+              skill: skill.name,
+              originId: 'job:${job.id}',
+              text: '🧭 **${skill.name}** läuft als Web-Job – du kannst inzwischen weitermachen. '
+                  'Fortschritt hier und unter **Ergebnisse**.'));
+        conv.updated = DateTime.now();
+        await storage.saveConversation(conv);
+      }
+      notifyListeners();
+      return;
     }
     notifier.doneFor(conv.id); // offene Aktionen dieses Chats gelten als erledigt, sobald du weitermachst
     // Begleit-Modus: Webseite gemeinsam erledigen (URL + „mach mit mir …“ oder laufende Begleitung)
@@ -4823,3 +4956,34 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 /// (inkl. AudioPlayer) mitschicken, was nicht erlaubt ist.
 Future<void> _extractInBackground(String archivePath, String targetDir) =>
     Isolate.run(() => extractFileToDisk(archivePath, targetDir));
+
+/// „Schon gesehen“-Listen für „nur neue Treffer“ (Inserate-Wächter …)
+class _SeenFile implements SeenStore {
+  _SeenFile(this.app);
+  final AppController app;
+  File get _f => File('${app.storage.root.path}/seen_links.json');
+  Map<String, dynamic>? _cache;
+
+  Future<Map<String, dynamic>> _all() async {
+    if (_cache != null) return _cache!;
+    try {
+      _cache = (jsonDecode(await _f.readAsString()) as Map).cast<String, dynamic>();
+    } catch (_) {
+      _cache = {};
+    }
+    return _cache!;
+  }
+
+  @override
+  Future<Set<String>> load(String key) async => {for (final x in ((await _all())[key] as List? ?? const [])) '$x'};
+
+  @override
+  Future<void> save(String key, Set<String> links) async {
+    final a = await _all();
+    // je Suche höchstens 500 Einträge merken
+    a[key] = links.length > 500 ? links.toList().sublist(links.length - 500) : links.toList();
+    try {
+      await _f.writeAsString(jsonEncode(a));
+    } catch (_) {}
+  }
+}

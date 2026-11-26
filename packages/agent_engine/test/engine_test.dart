@@ -590,6 +590,49 @@ Future<void> main() async {
     check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
   });
 
+  await group('Web-Jobs, Vormachen, Freigaben', () async {
+    final plan = parsePlan('Hier der Plan:\n1. geizhals.at öffnen und nach RTX 4070 suchen\n2) Liste über 2 Seiten sammeln\n- Detailseiten prüfen\n3. Ergebnis als Tabelle');
+    check(plan.length == 4 && plan.first.startsWith('geizhals'), 'Plan aus nummerierter Liste');
+    check(stepOutcome('Ich habe gesucht.\nERLEDIGT: 23 Treffer gefunden').$1 && stepOutcome('PROBLEM: Seite nicht erreichbar').$1 == false, 'Schritt-Ergebnis erkannt');
+    check(stepOutcome('Leider konnte ich die Seite nicht öffnen.').$1 == false, 'Fehler ohne Marker erkannt');
+    final job = WebJob(id: 'j1', title: 'Test', goal: 'Preise', steps: [JobStep('a'), JobStep('b')], status: 'läuft');
+    final back = WebJob.fromJson(job.toJson());
+    check(back.status == 'pausiert' && back.steps.length == 2, 'laufender Job wird nach Neustart pausiert');
+    check(jobStepPrompt(job, 1).contains('letzte Schritt'), 'letzter Schritt verlangt Ergebnis');
+    final pol = SitePolicy(submit: 'ask')..set('https://www.willhaben.at/iad', 'submit', 'allow');
+    check(pol.level('shop.willhaben.at', 'submit') == 'allow' && pol.level('amazon.de', 'submit') == 'ask' && pol.level('willhaben.at', 'pay') == 'block',
+        'Freigaben je Website (mit Unterdomains, Zahlen nie)');
+    check(SitePolicy.fromJson(pol.toJson()).level('willhaben.at', 'submit') == 'allow', 'Freigaben gespeichert');
+    final fill = autofillPlan([
+      {'id': 'F1', 'label': 'Vorname', 'type': 'text'},
+      {'id': 'F2', 'label': 'Nachname *', 'type': 'text'},
+      {'id': 'F3', 'label': 'E-Mail-Adresse', 'type': 'email'},
+      {'id': 'F4', 'label': 'Sozialversicherungsnummer', 'type': 'text'},
+      {'id': 'F5', 'label': 'IBAN', 'type': 'text'},
+      {'id': 'F6', 'label': 'Passwort', 'type': 'password', 'secret': 1},
+      {'id': 'F7', 'label': 'PLZ', 'type': 'text', 'filled': true},
+      {'id': 'F8', 'label': 'Kundennummer', 'type': 'text'},
+    ], {'vorname': 'Christoph', 'nachname': 'Muster', 'email': 'c@example.at', 'plz': '1010', 'kunde:Wien Energie': '12345'});
+    check(fill['F1'] == 'Christoph' && fill['F2'] == 'Muster' && fill['F3'] == 'c@example.at' && fill['F8'] == '12345', 'Meine Daten passend eingetragen');
+    check(!fill.containsKey('F4') && !fill.containsKey('F5') && !fill.containsKey('F6') && !fill.containsKey('F7'), 'Sensibles/Ausgefülltes bleibt leer');
+    final rec = cleanRecording('https://www.geizhals.at', [
+      {'kind': 'click', 'hints': {'tag': 'input', 'name': 'fs', 'label': 'Suche'}},
+      {'kind': 'type', 'hints': {'tag': 'input', 'name': 'fs', 'label': 'Suche'}, 'value': 'rtx'},
+      {'kind': 'type', 'hints': {'tag': 'input', 'name': 'fs', 'label': 'Suche'}, 'value': 'rtx 4070', 'enter': true},
+      {'kind': 'click', 'hints': {'tag': 'a', 'text': 'Preis aufsteigend'}},
+      {'kind': 'click', 'hints': {'tag': 'a', 'text': 'Preis aufsteigend'}},
+      {'kind': 'type', 'hints': {'tag': 'input', 'type': 'password', 'label': 'Passwort'}, 'secret': true},
+    ]);
+    check(rec.length == 4 && rec[1].value == 'rtx 4070' && rec[1].enter && rec[3].secret && rec[3].value.isEmpty, 'Aufnahme bereinigt (letzter Wert, keine Doppelklicks, Geheimes ohne Wert)');
+    final ph = autoPlaceholders(rec);
+    check(ph['suchbegriff'] == 'rtx 4070' && rec[1].value == '{suchbegriff}', 'Suchbegriff wird Platzhalter');
+    check(parseParams('rtx 4080', ['suchbegriff'])['suchbegriff'] == 'rtx 4080' &&
+        parseParams('ort=Graz; datum=3.12.', ['ort', 'datum'])['datum'] == '3.12.', 'Platzhalter-Werte aus der Eingabe');
+    check(fillPlaceholders('{suchbegriff} günstig', {'suchbegriff': 'Rad'}) == 'Rad günstig', 'Platzhalter ersetzt');
+    check(macroFromJson(macroToJson(rec)).length == 4, 'Ablauf gespeichert');
+    check(sensitiveField.hasMatch('IBAN') && sensitiveField.hasMatch('SV-Nummer') && !sensitiveField.hasMatch('Vorname'), 'Sensibles erkannt');
+  });
+
   await group('Reaktionen statt Antworten', () async {
     check(reactionOf('👍') == '👍' && reactionOf('👍 Notiert.') == '👍' && reactionOf('✅ Gemerkt!') == '✅', 'Emoji-Antwort → Reaktion');
     check(reactionOf('Alles klar.') == null && reactionOf('Alles klar.', infoGiven: true) == '👍', '„Alles klar.“ nur nach Mitteilung');

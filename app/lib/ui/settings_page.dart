@@ -29,6 +29,7 @@ import '../state/sync_service.dart' show PrivacyLevel;
 import 'notify_settings_page.dart';
 import 'self_test_page.dart';
 import 'theme.dart';
+import 'web_settings.dart';
 import 'update_page.dart';
 import 'quick_nav.dart';
 
@@ -72,6 +73,12 @@ List<SettingsEntry> settingsEntries(AppController app) => [
       SettingsEntry('vault', 'Verbindungen', Icons.lock_outline, 'Tresor & Mail-Konto',
           app.settings.smtpReady ? 'Mail-Konto ${app.settings.smtpUser}' : 'Passwörter und Schlüssel sicher ablegen, Mail direkt senden',
           keywords: ['Passwort', 'Schlüssel', 'SMTP', 'E-Mail', 'IMAP'], open: openVault),
+      SettingsEntry('mydata', 'Alltag', Icons.badge_outlined, 'Meine Daten',
+          app.settings.myData.isEmpty ? 'Name, Adresse, E-Mail, Kundennummern – zum Ausfüllen von Formularen' : '${app.settings.myData.length} Angaben · zum Ausfüllen',
+          keywords: ['Formular', 'Ausfüllen', 'Adresse', 'Kundennummer', 'Autofill'], open: openMyData),
+      SettingsEntry('sites', 'Verbindungen', Icons.verified_user_outlined, 'Websites & Freigaben',
+          'Was Junels im Browser frei darf: ausfüllen, absenden, nie zahlen',
+          keywords: ['Browser', 'Web-Job', 'Freigabe', 'Absenden', 'Rückfrage', 'Website'], open: openSitePolicy),
       SettingsEntry('notify', 'Alltag', Icons.notifications_outlined, 'Benachrichtigungen', 'Arten an/aus, Ruhezeit, Infos gesammelt',
           keywords: ['Push', 'Ruhezeit', 'Erinnerung', 'Warnung', 'Ton'], open: openNotifySettings),
       SettingsEntry('app', 'Alltag', Icons.palette_outlined, 'Darstellung & Designs', 'Hell/Dunkel, eigene Designs für Präsentationen und PDFs',

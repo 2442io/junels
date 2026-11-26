@@ -46,6 +46,13 @@ const skillIcons = <String, IconData>{
   'code': Icons.code,
   'chart': Icons.insert_chart_outlined,
   'flow': Icons.account_tree_outlined,
+  'sell': Icons.sell_outlined,
+  'radar': Icons.radar,
+  'business': Icons.business_outlined,
+  'edit_note': Icons.edit_note,
+  'receipt_long': Icons.receipt_long_outlined,
+  'gavel': Icons.gavel_outlined,
+  'event_available': Icons.event_available_outlined,
 };
 
 IconData skillIcon(String name) => skillIcons[name] ?? Icons.auto_awesome;
@@ -494,6 +501,7 @@ Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) a
       return Padding(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          option('job', Icons.explore_outlined, 'Web-Job jetzt', 'Junels erledigt etwas selbstständig im Browser – plant, führt aus, prüft'),
           option('schedule', Icons.schedule, 'Geplante Aufgabe', 'Läuft von selbst zu einer Uhrzeit – Ergebnis unter „Ergebnisse“'),
           option('skill', Icons.auto_awesome, 'Skill', 'Anleitung für eine wiederkehrende Aufgabe, Aufruf per /befehl'),
           option('flow', Icons.account_tree_outlined, 'Ablauf', 'Mehrere Schritte – beschreiben, Junels baut ihn'),
@@ -506,6 +514,8 @@ Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) a
   );
   if (picked == null || !context.mounted) return;
   switch (picked) {
+    case 'job':
+      await startJobDialog(context);
     case 'schedule':
       openPlanEditor(context);
     case 'skill':
@@ -519,6 +529,40 @@ Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) a
     case 'import':
       showSkillImport(context);
   }
+}
+
+/// Web-Job starten: Auftrag eingeben → läuft, Karte in „Ergebnisse“
+Future<void> startJobDialog(BuildContext context) async {
+  final ctl = TextEditingController();
+  final goal = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.explore_outlined),
+      title: const Text('Was soll Junels im Web erledigen?'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          controller: ctl,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(hintText: 'z. B. Finde die 5 günstigsten E-Bikes unter 2.000 € auf geizhals.at und mach eine Tabelle'),
+        ),
+        const SizedBox(height: 8),
+        Text('Junels plant die Schritte, arbeitet im eingebauten Browser und prüft jeden Schritt. '
+            'Anmelden, CAPTCHA und Bezahlen machst du selbst – Junels wartet dann.',
+            style: Theme.of(ctx).textTheme.bodySmall),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Starten')),
+      ],
+    ),
+  );
+  if (goal == null || goal.trim().isEmpty || !context.mounted) return;
+  final app = AppScope.read(context);
+  app.webJobs.start(goal: goal.trim());
+  app.openFeed('job:');
+  goHome(context);
 }
 
 /// Neue geplante Aufgabe = Skill mit Zeitplan (derselbe Editor, Zeitplan schon eingeschaltet)
@@ -554,6 +598,10 @@ class SkillCard extends StatelessWidget {
     final chips = <Widget>[
       if (plan != null) StatusChip(plan.scheduleLabel, color: on ? c.mint : c.muted, soft: on ? c.mintSoft : c.raised, icon: Icons.schedule, dense: true),
       if (wf?.trigger != null) StatusChip(wf!.trigger!.summary, color: c.violet, icon: Icons.bolt, dense: true),
+      if (s.macro.isNotEmpty)
+        StatusChip('vorgemacht · ${s.macro.length} Schritte', color: c.violet, icon: Icons.play_circle_outline, dense: true)
+      else if (s.job)
+        StatusChip('Web-Job', color: c.violet, icon: Icons.explore_outlined, dense: true),
       if (s.output.isNotEmpty) StatusChip(OutputView.labels[s.output] ?? s.output, color: c.blue, icon: outputViewIcon(s.output), dense: true),
       if (running) StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true),
       if (problem) StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true),
@@ -935,6 +983,109 @@ class _SkillEditorState extends State<SkillEditor> {
     return true;
   }
 
+  /// Web-Job & Vormachen
+  Widget _jobSection(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = AppColors.of(context);
+    final params = s.macroParams.keys.toList();
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          secondary: Icon(Icons.explore_outlined, color: s.job ? c.violet : c.muted),
+          title: const Text('Als Web-Job ausführen'),
+          subtitle: const Text('Junels plant, erledigt es selbstständig im Browser und prüft jeden Schritt. '
+              'Läuft im Hintergrund weiter – Fortschritt in „Ergebnisse“.'),
+          value: s.job || s.macro.isNotEmpty,
+          onChanged: (v) => setState(() => s.job = v),
+        ),
+        const Divider(height: 16),
+        Row(children: [
+          Icon(Icons.play_circle_outline, color: s.macro.isEmpty ? c.muted : c.blue),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(s.macro.isEmpty ? 'Vormachen' : '${s.macro.length} Schritte vorgemacht', style: t.titleSmall),
+              Text(
+                  s.macro.isEmpty
+                      ? 'Einmal selbst im Browser zeigen – danach spielt Junels es ab (zuverlässiger, auch mit kleinem Modell).'
+                      : params.isEmpty
+                          ? 'Wird genauso abgespielt.'
+                          : 'Platzhalter: ${params.map((p) => '{$p}').join(', ')} – z. B. /${s.command} ${s.macroParams[params.first]}',
+                  style: t.bodySmall?.copyWith(color: c.muted)),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.fiber_manual_record, size: 18),
+            label: Text(s.macro.isEmpty ? 'Vormachen' : 'Neu vormachen'),
+            onPressed: () => _record(context),
+          ),
+          if (s.macro.isNotEmpty) ...[
+            OutlinedButton.icon(
+              icon: const Icon(Icons.list_alt, size: 18),
+              label: const Text('Schritte'),
+              onPressed: () async {
+                if (!_save()) return;
+                await openMacroReview(context, AppScope.read(context).skills.byId(s.id) ?? s);
+                if (mounted) setState(() => s = (AppScope.read(context).skills.byId(s.id) ?? s).copy());
+              },
+            ),
+            TextButton(
+              onPressed: () => setState(() {
+                s.macro = [];
+                s.macroParams = {};
+              }),
+              child: const Text('Entfernen'),
+            ),
+          ],
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _record(BuildContext context) async {
+    final ctl = TextEditingController(text: RegExp(r'https?://\S+|\b[a-z0-9-]+\.(at|de|com|ch|eu|net|org)\b').firstMatch(s.instructions)?.group(0) ?? '');
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wo fängt es an?'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Junels öffnet die Seite im eingebauten Browser. Mach den Ablauf einfach vor – suchen, filtern, ausfüllen. '
+              'Mit „Fertig“ oben im Browser speicherst du ihn. Passwörter und andere 🔒-Felder werden nie aufgezeichnet.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctl,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(labelText: 'Startseite', hintText: 'z. B. geizhals.at'),
+            onSubmitted: (v) => Navigator.pop(ctx, v),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Aufnahme starten')),
+        ],
+      ),
+    );
+    if (url == null || url.trim().isEmpty || !context.mounted) return;
+    s.job = true;
+    if (!_save()) return;
+    final app = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+    goHome(context);
+    try {
+      await app.startRecording(app.skills.byId(s.id) ?? s, url);
+    } catch (e) {
+      app.browser.stopRecording();
+      app.recordingSkillId = null;
+      messenger.showSnackBar(SnackBar(content: Text('Aufnahme ging nicht: $e')));
+    }
+  }
+
   Widget _planSection(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
@@ -1142,6 +1293,10 @@ class _SkillEditorState extends State<SkillEditor> {
             if (tool != null && !s.tools.contains(tool)) s.tools.add(tool);
           }),
         ),
+        const SizedBox(height: 18),
+        Text('Im Web erledigen', style: t.titleSmall),
+        const SizedBox(height: 8),
+        _jobSection(context),
         const SizedBox(height: 12),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
@@ -1410,6 +1565,114 @@ class _SkillEditorState extends State<SkillEditor> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ------------------------------------------------------------------ Vorgemachter Ablauf
+
+/// Aufgenommene Schritte ansehen, Werte/Platzhalter anpassen, Schritte entfernen
+Future<void> openMacroReview(BuildContext context, Skill skill) =>
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => MacroReviewPage(skillId: skill.id)));
+
+class MacroReviewPage extends StatefulWidget {
+  const MacroReviewPage({super.key, required this.skillId});
+  final String skillId;
+
+  @override
+  State<MacroReviewPage> createState() => _MacroReviewPageState();
+}
+
+class _MacroReviewPageState extends State<MacroReviewPage> {
+  late Skill s;
+
+  @override
+  void initState() {
+    super.initState();
+    s = (AppScope.read(context).skills.byId(widget.skillId) ?? Skill(id: widget.skillId, name: '')).copy();
+  }
+
+  void _syncParams() {
+    final used = <String>{for (final m in s.macro) ...m.placeholders};
+    s.macroParams = {for (final p in used) p: s.macroParams[p] ?? ''};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = AppColors.of(context);
+    return Scaffold(
+      appBar: JAppBar(
+        title: Text('Vorgemacht: ${s.name.isEmpty ? 'Ablauf' : s.name}'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _syncParams();
+              AppScope.read(context).skills.upsert(s);
+              Navigator.pop(context);
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+      body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 60), children: [
+        Text('So spielt Junels den Ablauf ab. Eingaben in {geschweiften Klammern} sind Platzhalter – '
+            'die füllst du beim Aufruf, z. B. „/${s.command} ${s.macroParams.values.firstOrNull ?? 'Wert'}“. '
+            'Findet Junels einen Knopf nicht mehr, springt das Modell für diesen Schritt ein.',
+            style: t.bodySmall?.copyWith(color: c.muted)),
+        const SizedBox(height: 12),
+        for (var i = 0; i < s.macro.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Panel(
+              padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                CircleAvatar(radius: 13, backgroundColor: c.raised, child: Text('${i + 1}', style: t.labelSmall)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text(s.macro[i].describe, style: t.bodyMedium),
+                    if ((s.macro[i].kind == 'type' || s.macro[i].kind == 'select') && !s.macro[i].secret)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: TextFormField(
+                          initialValue: s.macro[i].value,
+                          decoration: const InputDecoration(isDense: true, labelText: 'Wert', helperText: 'z. B. {suchbegriff} für einen Platzhalter'),
+                          onChanged: (v) => setState(() {
+                            s.macro[i].value = v;
+                            _syncParams();
+                          }),
+                        ),
+                      ),
+                  ]),
+                ),
+                if (i > 0)
+                  IconButton(
+                    tooltip: 'Schritt entfernen',
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => setState(() {
+                      s.macro.removeAt(i);
+                      _syncParams();
+                    }),
+                  ),
+              ]),
+            ),
+          ),
+        if (s.macroParams.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('Platzhalter (Standardwerte)', style: t.titleSmall),
+          const SizedBox(height: 8),
+          for (final p in s.macroParams.keys.toList())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TextFormField(
+                initialValue: s.macroParams[p],
+                decoration: InputDecoration(labelText: '{$p}', isDense: true),
+                onChanged: (v) => s.macroParams[p] = v,
+              ),
+            ),
+        ],
+      ]),
     );
   }
 }

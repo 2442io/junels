@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'network_tools.dart';
 import 'site_search_tool.dart';
 import 'tool.dart';
+import 'web_job.dart';
 
 /// Ein echter Browser (WebView), den der Agent bedient. Die App liefert die Umsetzung.
 abstract class BrowserDriver {
@@ -319,9 +320,38 @@ bool looksLikeLogin(Map<String, dynamic> snap) {
   return _loginPage.hasMatch(url) || secret || RegExp(r'mit id austria anmelden|passkey', caseSensitive: false).hasMatch(head);
 }
 
+/// Bereits gesehene Einträge (für „nur neue Treffer“), dauerhaft in der App gespeichert.
+abstract class SeenStore {
+  Future<Set<String>> load(String key);
+  Future<void> save(String key, Set<String> links);
+}
+
 class BrowserTool extends AgentTool {
-  BrowserTool(this.driver);
+  BrowserTool(this.driver, {this.allow, this.myData, this.seen, this.download});
   final BrowserDriver? Function() driver;
+
+  /// Freigabe je Website: kind fill | submit. null = wie bisher (Rückfrage bei heiklen Knöpfen).
+  final Future<bool> Function(String host, String kind, String label)? allow;
+
+  /// „Meine Daten“ zum Ausfüllen (Werte gehen nie ans Modell)
+  final Map<String, String> Function()? myData;
+
+  final SeenStore? seen;
+
+  /// Datei aus dem Browser speichern (mit der Anmeldung der Seite) → Pfad; null = nicht möglich
+  final Future<String?> Function(String url, String name)? download;
+
+  String _lastUrl = '';
+  String get _host => SitePolicy.hostOf(_lastUrl);
+
+  Future<String?> _denied(String kind, String label) async {
+    final a = allow;
+    if (a == null) return null;
+    if (await a(_host, kind, label)) return null;
+    return kind == 'fill'
+        ? 'Formulare ausfüllen ist auf $_host nicht freigegeben (Freigaben je Website). Sag dem Nutzer, was einzutragen wäre.'
+        : 'Der Nutzer hat „$label“ auf $_host nicht freigegeben. Frag, wie es weitergehen soll.';
+  }
 
   @override
   String get name => 'browser';
@@ -335,7 +365,11 @@ class BrowserTool extends AgentTool {
       'text = Suchbegriffe; sucht über das Suchfeld der Seite), "click" (target = Nummer), "type" (target = Nummer, text; '
       'Enter nur bei Suchfeldern), "select" (target = Nummer, text = Option), "check" (Häkchen, text = ja/nein), '
       '"scroll" (target = "down"/"up"), "back", "read", "form" (liest alle Formularfelder als F1, F2 … mit Beschriftung, '
-      'Pflicht, Hinweis, ob ausgefüllt), "mark" (target = F-Nummer, text = kurze Erklärung: hebt das Feld für den Nutzer hervor). '
+      'Pflicht, Hinweis, ob ausgefüllt), "mark" (target = F-Nummer, text = kurze Erklärung: hebt das Feld für den Nutzer hervor), '
+      '"collect" (sammelt alle Einträge der Ergebnisliste über mehrere Seiten als Tabelle; target = Seitenzahl, z. B. 3; '
+      'text = "details" öffnet zusätzlich die Detailseiten, "neu" liefert nur bisher nicht gesehene Einträge), '
+      '"autofill" (füllt das Formular aus „Meine Daten“ des Nutzers: Name, Adresse, E-Mail …), '
+      '"download" (target = Nummer eines Links oder Adresse, text = Dateiname: speichert die Datei, z. B. eine Rechnung als PDF). '
       'type/select/check gehen auch mit F-Nummern. Nach jeder Aktion bekommst du die Seite mit nummerierten Elementen [n]. '
       'Nie Passwörter, Ausweis-, Sozialversicherungs- oder Zahlungsdaten eingeben (🔒-Felder trägt der Nutzer ein).';
   @override
@@ -343,7 +377,7 @@ class BrowserTool extends AgentTool {
   @override
   List<ToolParam> get params => const [
         ToolParam('action', ParamType.enumeration, 'Was tun',
-            values: ['open', 'search', 'click', 'type', 'select', 'check', 'scroll', 'back', 'read', 'form', 'mark']),
+            values: ['open', 'search', 'click', 'type', 'select', 'check', 'scroll', 'back', 'read', 'form', 'mark', 'collect', 'autofill', 'download']),
         ToolParam('target', ParamType.string, 'Adresse, Webseite oder Nummer des Elements'),
         ToolParam('text', ParamType.string, 'Text zum Eingeben oder Suchbegriffe (sonst leer)'),
       ];
@@ -393,13 +427,22 @@ class BrowserTool extends AgentTool {
                   ? 'Der Nutzer hat die Zahlung („$label“) selbst übernommen. Prüfe die Seite (Bestätigung?) und sag, wie es weitergeht.'
                   : 'Der Nutzer hat die Zahlung abgebrochen. Frag, wie es weitergehen soll.');
         }
-        if (_riskyLabel.hasMatch(label) &&
-            !await d.confirm('Im Browser klicken?', '„$label“\nDer Agent möchte diesen Knopf drücken.')) {
-          return 'Der Nutzer hat den Klick auf „$label“ abgelehnt. Frag, wie es weitergehen soll.';
+        if (_riskyLabel.hasMatch(label)) {
+          if (allow != null) {
+            // Freigabe je Website (frei / mit Rückfrage / nie)
+            final no = await _denied('submit', label);
+            if (no != null) return no;
+          } else if (!await d.confirm('Im Browser klicken?', '„$label“\nDer Agent möchte diesen Knopf drücken.')) {
+            return 'Der Nutzer hat den Klick auf „$label“ abgelehnt. Frag, wie es weitergehen soll.';
+          }
         }
         await _act(d, _actJs(_num(el['id']), 'click', '', false, _attr(el)));
       case 'type' || 'fill':
         final el = await _element(d, target);
+        if (el['secret'] != 1) {
+          final no = await _denied('fill', '${el['label'] ?? ''}');
+          if (no != null) return no;
+        }
         if (el['secret'] == 1) {
           if (_attr(el) == 'data-jfid') await d.eval(browserMarkJs(_num(el['id']), 'Bitte hier selbst eintragen – Junels liest das nicht.'));
           await d.handOver('🔒 Gib „${el['label'] ?? 'dieses Feld'}“ selbst im Browser ein (Passwort, Ausweis-, SV- oder Zahlungsdaten) '
@@ -411,6 +454,8 @@ class BrowserTool extends AgentTool {
         if (_attr(el) == 'data-jfid') return _form(d, note: '${el['id']} eingetragen.');
       case 'select':
         final el = await _element(d, target);
+        final noSel = await _denied('fill', '${el['label'] ?? ''}');
+        if (noSel != null) return noSel;
         await _act(d, _actJs(_num(el['id']), 'select', text, false, _attr(el)));
         if (_attr(el) == 'data-jfid') return _form(d, note: '${el['id']}: „$text“ gewählt.');
       case 'check':
@@ -419,6 +464,14 @@ class BrowserTool extends AgentTool {
         if (_attr(el) == 'data-jfid') return _form(d, note: '${el['id']}: Häkchen ${RegExp(r'^(nein|no|false|aus|0)$', caseSensitive: false).hasMatch(text.trim()) ? 'entfernt' : 'gesetzt'}.');
       case 'form' || 'formular':
         return _form(d);
+      case 'autofill' || 'ausfüllen':
+        return _autofill(d);
+      case 'collect' || 'sammeln':
+        final r = await _collect(d, int.tryParse(target.replaceAll(RegExp(r'[^0-9]'), '')) ?? 3, text.toLowerCase());
+        ctx.answerNow = true;
+        return r;
+      case 'download' || 'herunterladen':
+        return _download(d, target, text, ctx);
       case 'mark' || 'zeigen':
         final el = await _element(d, target.toUpperCase().startsWith('F') ? target : 'F$target');
         await _act(d, browserMarkJs(_num(el['id']), text.trim()));
@@ -496,6 +549,134 @@ class BrowserTool extends AgentTool {
   /// Zuletzt gelesenes Formular (für Begleiten: Fortschritt, Prüfen vor dem Absenden)
   Map<String, dynamic>? lastForm;
 
+  /// Formular aus „Meine Daten“ füllen – die Werte gehen nie ans Modell, nur welche Felder gefüllt wurden.
+  Future<String> _autofill(BrowserDriver d) async {
+    final data = myData?.call() ?? const <String, String>{};
+    if (data.values.every((v) => v.trim().isEmpty)) {
+      return '„Meine Daten“ sind noch leer. Sag dem Nutzer: Einstellungen → Meine Daten (Name, Adresse, E-Mail …) einmal ausfüllen.';
+    }
+    await _form(d);
+    final plan = autofillPlan(_lastFields, data);
+    if (plan.isEmpty) return '${await _form(d, note: 'Kein Feld passt zu „Meine Daten“.')}';
+    if (_lastUrl.isEmpty) await _read(d);
+    final no = await _denied('fill', 'Formular mit „Meine Daten“ ausfüllen');
+    if (no != null) return no;
+    final done = <String>[];
+    for (final e in plan.entries) {
+      final f = _lastFields.where((x) => x['id'] == e.key).firstOrNull;
+      if (f == null) continue;
+      try {
+        final isSelect = '${f['type']}' == 'select';
+        await _act(d, _actJs(_num(e.key), isSelect ? 'select' : 'type', e.value, false, 'data-jfid'));
+        done.add('${e.key} „${f['label']}“');
+      } catch (_) {}
+    }
+    return _form(d,
+        note: done.isEmpty
+            ? 'Ausfüllen aus „Meine Daten“ hat nicht geklappt.'
+            : 'Aus „Meine Daten“ ausgefüllt (die Werte sieht nur der Nutzer): ${done.join(', ')}. '
+                'Prüfe, was noch offen ist; 🔒-Felder trägt der Nutzer selbst ein, absenden tut der Nutzer.');
+  }
+
+  /// Ergebnisliste über mehrere Seiten sammeln (optional mit Detailseiten) → Tabelle
+  Future<String> _collect(BrowserDriver d, int pages, String mode) async {
+    pages = pages.clamp(1, 10);
+    final details = mode.contains('detail');
+    final onlyNew = mode.contains('neu') || mode.contains('new');
+    final start = _lastUrl.isNotEmpty ? _lastUrl : ((await _read(d))['url'] ?? '').toString();
+    final items = <PageItem>[];
+    final seenLinks = <String>{};
+    var read = 0;
+    for (var p = 0; p < pages; p++) {
+      final snap = await _read(d);
+      read++;
+      for (final c in ((snap['cards'] as List?) ?? const []).cast<Map<String, dynamic>>()) {
+        final link = cleanLink((c['link'] ?? '').toString());
+        final title = (c['title'] ?? '').toString();
+        if (link.isEmpty || isJunkLink(link, title) || !seenLinks.add(link)) continue;
+        items.add(PageItem(title, link, (c['image'] ?? '').toString(),
+            summary: (c['price'] ?? '').toString().isNotEmpty ? 'Preis: ${c['price']}' : (c['desc'] ?? '').toString()));
+      }
+      if (p == pages - 1) break;
+      final next = _decode(await d.eval(browserNextPageJs));
+      if (next['ok'] != true) break;
+      await d.settle();
+    }
+    var list = items;
+    var newNote = '';
+    final store = seen;
+    if (onlyNew && store != null) {
+      final key = Uri.tryParse(start)?.replace(fragment: '').toString() ?? start;
+      final old = await store.load(key);
+      list = [for (final i in items) if (!old.contains(i.link)) i];
+      await store.save(key, {...old, ...items.map((i) => i.link)});
+      newNote = old.isEmpty
+          ? 'Erster Durchlauf: alle ${items.length} Einträge gemerkt – ab jetzt kommen nur neue.'
+          : '${list.length} neue von ${items.length} Einträgen (bisher gesehene ausgelassen).';
+    }
+    // Detailseiten: Preis, Verfügbarkeit, Merkmale
+    final facts = <String, Map<String, dynamic>>{};
+    if (details && list.isNotEmpty) {
+      for (final i in list.take(8)) {
+        try {
+          await d.open(Uri.parse(i.link));
+          await d.settle();
+          facts[i.link] = _decode(await d.eval(browserDetailJs));
+        } catch (_) {}
+      }
+      try {
+        await d.open(Uri.parse(start));
+      } catch (_) {}
+    }
+    final keys = <String>[];
+    for (final f in facts.values) {
+      for (final k in ((f['facts'] as Map?) ?? const {}).keys) {
+        if (!keys.contains('$k') && keys.length < 4) keys.add('$k');
+      }
+    }
+    String cell(String s) => s.replaceAll('|', '/').replaceAll('\n', ' ').trim();
+    final b = StringBuffer()
+      ..writeln('Gesammelt: ${list.length} Einträge von $read Seite${read == 1 ? '' : 'n'} ($start).${newNote.isEmpty ? '' : ' $newNote'}')
+      ..writeln()
+      ..writeln('| Nr | Titel | Preis | ${details ? 'Verfügbar | ${keys.map(cell).join(' | ')}${keys.isEmpty ? '' : ' | '}' : ''}Link |')
+      ..writeln('|---|---|---|${details ? '---|${'---|' * keys.length}' : ''}---|');
+    var n = 0;
+    for (final i in list.take(60)) {
+      n++;
+      final f = facts[i.link];
+      final price = (f?['price'] ?? '').toString().isNotEmpty ? '${f!['price']}' : i.summary.replaceFirst('Preis: ', '');
+      final ff = (f?['facts'] as Map?) ?? const {};
+      b.writeln('| $n | ${cell(i.title)} | ${cell(price.length > 40 ? '' : price)} | '
+          '${details ? '${cell('${f?['availability'] ?? ''}')} | ${keys.map((k) => cell('${ff[k] ?? ''}')).join(' | ')}${keys.isEmpty ? '' : ' | '}' : ''}'
+          '${i.link} |');
+    }
+    if (list.isEmpty) b.writeln('(keine ${onlyNew ? 'neuen ' : ''}Einträge)');
+    b
+      ..writeln()
+      ..writeln('Gib die Tabelle (oder eine passende Auswahl) dem Nutzer aus – Links dürfen in der Tabelle stehen.');
+    if (list.isNotEmpty) b..write(moreCardsMarker)..write(formatCardItems(list.take(40)));
+    return b.toString().trim();
+  }
+
+  /// Datei speichern (Link-Nummer oder Adresse)
+  Future<String> _download(BrowserDriver d, String target, String name, ToolContext ctx) async {
+    final dl = download;
+    if (dl == null) throw ToolException('Herunterladen geht hier nicht');
+    var url = target.trim();
+    if (!url.contains('://')) {
+      final el = await _element(d, target);
+      url = (el['href'] ?? '').toString();
+      if (name.trim().isEmpty) name = (el['label'] ?? '').toString();
+      if (url.isEmpty) throw ToolException('[${el['id']}] ist kein Link mit Adresse – klicke ihn oder nimm einen anderen');
+    }
+    final path = await dl(url, name.trim().isEmpty ? 'Datei' : name.trim());
+    if (path == null) throw ToolException('Download fehlgeschlagen (Datei nicht erreichbar oder zu groß)');
+    final file = path.split(RegExp(r'[/\\]')).last;
+    final kind = file.toLowerCase().endsWith('.pdf') ? 'pdf' : (RegExp(r'\.(png|jpe?g|webp)$').hasMatch(file.toLowerCase()) ? 'image' : 'file');
+    ctx.onArtifact(Artifact(title: file, kind: kind == 'file' ? 'pdf' : kind, content: path));
+    return 'Gespeichert: $file. Weiter mit dem nächsten Schritt (oder fertig).';
+  }
+
   Future<Map<String, dynamic>> _element(BrowserDriver d, String target) async {
     if (RegExp(r'^\s*F\d+\s*$', caseSensitive: false).hasMatch(target)) {
       if (_lastFields.isEmpty) await _form(d);
@@ -523,6 +704,7 @@ class BrowserTool extends AgentTool {
       snap = _decode(await d.eval(browserSnapshotJs));
     }
     _lastEls = ((snap['els'] as List?) ?? const []).cast<Map<String, dynamic>>();
+    _lastUrl = (snap['url'] ?? _lastUrl).toString();
     return snap;
   }
 
@@ -617,6 +799,58 @@ class BrowserTool extends AgentTool {
     if (cards.length > 5) b..write(moreCardsMarker)..write(formatCardItems(cards.skip(5).take(35)));
     return b.toString().trim();
   }
+}
+
+/// Einen aufgenommenen Schritt abspielen. Gibt null zurück, wenn es geklappt hat, sonst den Grund
+/// (dann springt das Modell ein). [params] füllt Platzhalter wie {suchbegriff}.
+Future<String?> replayMacroStep(BrowserDriver d, MacroStep s, Map<String, String> params,
+    {Future<bool> Function(String host, String kind, String label)? allow}) async {
+  Map<String, dynamic> dec(String raw) {
+    Object? v = raw;
+    for (var i = 0; i < 3 && v is String; i++) {
+      try {
+        v = jsonDecode(v);
+      } catch (_) {
+        break;
+      }
+    }
+    return v is Map<String, dynamic> ? v : const {};
+  }
+
+  if (s.kind == 'open') {
+    final u = Uri.tryParse(fillPlaceholders(s.url, params));
+    if (u == null) return 'Adresse ungültig';
+    await d.open(u);
+    await d.settle();
+    return null;
+  }
+  if (s.secret) {
+    final ok = await d.handOver('🔒 „${s.label}“ trägst du selbst ein (Junels liest das nie). Danach „Weiter“.');
+    return ok ? null : 'Nutzer hat abgebrochen';
+  }
+  final found = dec(await d.eval(browserFindJs(s.hints)));
+  if (found['ok'] != true) return 'Element „${s.label}“ nicht gefunden – die Seite hat sich wohl geändert';
+  final host = SitePolicy.hostOf(dec(await d.eval('(function(){return JSON.stringify({u:location.href});})()'))['u']?.toString() ?? '');
+  final label = (found['label'] ?? s.label).toString();
+  if (s.kind == 'click' && _paymentLabel.hasMatch(label)) {
+    final ok = await d.handOver('💳 Zahlung machst du selbst: „$label“. Danach „Weiter“.');
+    return ok ? null : 'Zahlung abgebrochen';
+  }
+  if (allow != null) {
+    if (s.kind == 'click' && _riskyLabel.hasMatch(label) && !await allow(host, 'submit', label)) return 'nicht freigegeben: „$label“';
+    if (s.kind != 'click' && !await allow(host, 'fill', label)) return 'Ausfüllen auf $host nicht freigegeben';
+  }
+  final value = fillPlaceholders(s.value, params);
+  final js = switch (s.kind) {
+    'type' => _actJs(1, 'type', value, s.enter, 'data-jmid'),
+    'select' => _actJs(1, 'select', value, false, 'data-jmid'),
+    'check' => _actJs(1, 'check', value, false, 'data-jmid'),
+    _ => _actJs(1, 'click', '', false, 'data-jmid'),
+  };
+  final r = dec(await d.eval(js));
+  if (r['ok'] != true) return (r['error'] ?? 'Aktion fehlgeschlagen').toString();
+  await d.settle();
+  return null;
 }
 
 /// Nur für Tests: Aktions-Skript erzeugen.

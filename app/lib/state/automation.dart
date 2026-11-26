@@ -1154,6 +1154,12 @@ class FlowService {
           app.refreshUi();
         }
 
+        if (n.config['job'] == true) {
+          // Web-Job: selbstständig im Browser (kann dauern – Anmeldung/CAPTCHA macht der Nutzer)
+          live[wf.id] = '🧭 Web-Job „${n.title}“ läuft – Fortschritt unter Ergebnisse';
+          app.refreshUi();
+          return app.webJobs.runAndWait(goal: prompt, title: n.title.isEmpty ? wf.name : n.title, output: n.str('output'));
+        }
         return app
             .automationAgent(prompt,
                 allowInternet: wf.allowInternet,
@@ -1193,8 +1199,9 @@ class FlowService {
         return app
             .automationAgent(task,
                 allowInternet: wf.allowInternet, conv: conv, entry: log, onProgress: progress, cancel: _cancel[wf.id]?.future, skill: skill, provider: n.str('provider'), output: n.str('output'), meter: _meters[wf.id], source: 'flow')
-            .timeout(const Duration(minutes: 10),
-                onTimeout: () => throw Exception('Zeitüberschreitung: Der Skill lief über 10 Minuten.'));
+            // Web-Jobs dürfen länger dauern (Anmeldung, Übergaben)
+            .timeout(Duration(minutes: skill.job || skill.macro.isNotEmpty ? 60 : 10),
+                onTimeout: () => throw Exception('Zeitüberschreitung: Der Skill lief zu lange.'));
       case FlowNodeType.team:
         return _runTeam(wf, n, vars, prevText, conv, log, step);
       case FlowNodeType.platform:

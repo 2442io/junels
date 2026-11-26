@@ -14,6 +14,18 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.67.0', [
+    'Web-Jobs: Junels erledigt Aufträge selbstständig im eingebauten Browser – planen (Cloud-Modell, wenn erlaubt), Schritt für Schritt ausführen, jeden Schritt prüfen und notfalls anders versuchen',
+    'Job-Karte in „Ergebnisse“ (und im Chat): Schritt 3/7, Fortschrittsbalken, aktuelle Seite, Pause, Fortsetzen, Abbrechen, Zusehen – am Ende ein Nachweis (Seite + Uhrzeit)',
+    'Bei Anmeldung, CAPTCHA oder Zahlung hält der Job an, meldet sich per Push und macht nach „Weiter“ weiter',
+    'Vormachen: Ablauf einmal im Browser zeigen – Junels nimmt Klicks, Eingaben und Auswahl auf (nie Passwörter oder 🔒-Felder), macht Suchbegriffe/Daten zu Platzhaltern und spielt ihn danach ab; das Modell springt nur ein, wenn sich die Seite geändert hat',
+    'Freigaben je Website: Ausfüllen und Absenden frei / mit Rückfrage / nie, „Hier immer“ direkt aus der Rückfrage; Bezahlen und Anmelden immer durch dich',
+    'Mehrseitiges Sammeln: Ergebnislisten über mehrere Seiten (optional mit Detailseiten) als Tabelle – auch „nur neue Treffer“',
+    '„Meine Daten“: Name, Adresse, E-Mail, Kundennummern – Junels füllt Formulare damit aus, das Modell sieht die Werte nicht',
+    'Dateien aus Portalen herunterladen (mit deiner Anmeldung im Browser), z. B. Rechnungen als PDF',
+    'Neue Skills: Preis-Scout, Inserate-Wächter, Reise-Vergleich, Firmen-Dossier, Formular-Ausfüller, Belege-Sammler, Kündigung & Verträge, Termin-Sucher',
+    'Skills & Abläufe: „Als Web-Job ausführen“ und „Vormachen“ im Skill, Agent-Baustein „Als Web-Job im Browser“, „Neu → Web-Job jetzt“ und /job <Auftrag> im Chat',
+  ]),
   ('1.66.0', [
     '„Ergebnisse“ als Karten statt Chat-Verlauf: neueste zuerst, nach Tagen gruppiert, mit Herkunft, Uhrzeit und Vorschau – „Ganz anzeigen“ klappt auf',
     'Je Ergebnis: Nachfragen (eigener Chat mit dem Ergebnis), Nochmal ausführen, Kopieren, Entfernen; neue Ergebnisse sind markiert',

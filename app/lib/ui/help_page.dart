@@ -323,6 +323,27 @@ Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt
 - Vor dem Absenden prüft Junels offene Pflichtfelder und Fehlermeldungen und fragt dich.''',
   ),
   HelpArticle(
+    id: 'web-jobs',
+    category: 'Chat',
+    icon: Icons.explore_outlined,
+    title: 'Web-Jobs & Vormachen',
+    summary: 'Junels erledigt Aufgaben selbstständig im Browser – geplant, geprüft, mit Nachweis.',
+    keywords: 'web-job job browser selbstständig vormachen aufnahme makro freigabe meine daten ausfüllen sammeln preis inserate belege termin',
+    body: '''**Starten:** „/job Finde die 5 günstigsten …“ im Chat, ein Skill mit „Als Web-Job ausführen“ (z. B. /preis, /inserate, /reise, /belege, /termin-suche) oder Skills & Abläufe → Neu → Web-Job jetzt. In Abläufen: Agent-Baustein mit „Als Web-Job im Browser“.
+
+**So arbeitet Junels:** Erst plant es die Schritte (mit dem Cloud-Modell, wenn KI-Modus Cloud/Hybrid → Cloud), dann erledigt es sie einzeln im eingebauten Browser und prüft nach jedem Schritt, ob es geklappt hat – sonst versucht es es anders. Der Fortschritt steht als Karte in „Ergebnisse“: Pause, Fortsetzen, Abbrechen, Zusehen. Am Ende gibt es einen Nachweis (Seite und Uhrzeit).
+
+**Anmelden, CAPTCHA, Bezahlen:** macht immer du. Der Job hält an, schickt eine Push-Nachricht und macht nach „Weiter“ weiter.
+
+**Vormachen:** Im Skill unter „Im Web erledigen“ → Vormachen. Du zeigst den Ablauf einmal im Browser, Junels zeichnet Klicks, Eingaben und Auswahl auf (Passwörter und 🔒-Felder nie). Suchbegriffe und Daten werden zu Platzhaltern – beim Aufruf „/befehl neuer Suchbegriff“. Findet Junels später einen Knopf nicht, springt das Modell für diesen Schritt ein.
+
+**Freigaben je Website** (Einstellungen → Websites & Freigaben): Ausfüllen und Absenden jeweils frei, mit Rückfrage oder nie – Standard: Ausfüllen frei, Absenden mit Rückfrage. Bei einer Rückfrage kannst du „Hier immer“ wählen.
+
+**Meine Daten** (Einstellungen): Name, Adresse, E-Mail, Kundennummern – Junels trägt sie direkt ins Formular ein; das Modell sieht die Werte nicht. Absenden tust du.
+
+Web-Jobs laufen, solange die App offen ist.''',
+  ),
+  HelpArticle(
     id: 'ergebnisse',
     category: 'Chat',
     icon: Icons.inbox_outlined,
