@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.66.0', [
+    '„Ergebnisse“ als Karten statt Chat-Verlauf: neueste zuerst, nach Tagen gruppiert, mit Herkunft, Uhrzeit und Vorschau – „Ganz anzeigen“ klappt auf',
+    'Je Ergebnis: Nachfragen (eigener Chat mit dem Ergebnis), Nochmal ausführen, Kopieren, Entfernen; neue Ergebnisse sind markiert',
+    'Gespräche erscheinen als eine Karte mit Frage und Antwort untereinander',
+    'Gespräch: KI-Modus (Gerät, Cloud, On-Prem, Hybrid) jetzt auch oben im Gesprächsmodus wählbar',
+    'Android: Glocke oben rechts sitzt wieder mittig, der Punkt für neue Mitteilungen wird nicht mehr abgeschnitten',
+  ]),
   ('1.65.0', [
     'Geplante Aufgaben sind jetzt Skills mit Zeitplan – alles unter „Skills & Abläufe“, bestehende Aufgaben werden automatisch übernommen',
     'Skills & Abläufe neu gestaltet: Tabs Alle · Geplant · Skills · Abläufe · Beobachtet, klare Karten mit nächstem/letztem Lauf, Format und Status, ▶ und An/Aus direkt an der Karte',

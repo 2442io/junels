@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../data/models.dart' show Conversation;
 import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'settings_page.dart' show openSettings;
@@ -97,8 +98,11 @@ class InternetMenu extends StatelessWidget {
 
 /// KI-Modus für diesen Chat: Am Gerät, On-Prem, Cloud oder Hybrid.
 class AiModeMenu extends StatelessWidget {
-  const AiModeMenu({super.key, this.compact = false});
+  const AiModeMenu({super.key, this.compact = false, this.target});
   final bool compact;
+
+  /// Chat, für den der Modus gilt (Standard: der offene Chat; im Gespräch: dessen Chat)
+  final Conversation? target;
 
   static IconData iconFor(String mode) => switch (mode) {
         'onprem' => Icons.dns_outlined,
@@ -112,7 +116,7 @@ class AiModeMenu extends StatelessWidget {
     final app = AppScope.of(context);
     final c = AppColors.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final conv = app.current;
+    final conv = target ?? app.current;
     final own = conv?.routing;
     final effective = own ?? (app.settings.routing == 'hybrid' ? 'hybrid-${app.settings.hybridTarget}' : app.settings.routing);
     final short = switch (app.routingOf(conv)) {
@@ -146,7 +150,7 @@ class AiModeMenu extends StatelessWidget {
         if (v == '__settings') {
           openSettings(context, section: 'providers');
         } else {
-          app.setChatRouting(v == '__default' ? null : v);
+          app.setChatRouting(v == '__default' ? null : v, conv: target);
         }
       },
       itemBuilder: (_) => [

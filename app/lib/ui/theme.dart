@@ -501,13 +501,17 @@ class PillIconButton extends StatelessWidget {
           child: SizedBox(
             width: 38,
             height: 38,
-            child: Badge(
-              isLabelVisible: badge,
-              smallSize: 8,
-              backgroundColor: badgeColor,
-              child: Icon(icon,
-                  size: 19,
-                  color: onPressed == null ? c.faint.withValues(alpha: 0.5) : (active ? c.mint : scheme.onSurface)),
+            // Symbol mittig, Punkt rechts oben am Symbol (nicht in der Ecke des Kreises abgeschnitten)
+            child: Center(
+              child: Badge(
+                isLabelVisible: badge,
+                smallSize: 8,
+                offset: const Offset(2, -2),
+                backgroundColor: badgeColor,
+                child: Icon(icon,
+                    size: 19,
+                    color: onPressed == null ? c.faint.withValues(alpha: 0.5) : (active ? c.mint : scheme.onSurface)),
+              ),
             ),
           ),
         ),

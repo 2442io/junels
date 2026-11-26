@@ -2917,8 +2917,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       routingOf(c) != 'hybrid' ? null : (escalatesToCloud(c) ? cloudProvider : onPremProvider);
 
   /// KI-Modus für den aktuellen Chat setzen (null = wie in den Einstellungen).
-  Future<void> setChatRouting(String? mode) async {
-    final c = _ensureConversation();
+  Future<void> setChatRouting(String? mode, {Conversation? conv}) async {
+    final c = conv ?? _ensureConversation();
     c.routing = mode;
     // Cloud ausdrücklich für diesen Chat gewählt = Freigabe für diesen Chat
     if (mode == 'cloud') c.cloudAllowed = true;

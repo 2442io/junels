@@ -15,6 +15,7 @@ import 'package:offline_agent/state/app_scope.dart';
 import 'package:offline_agent/ui/inbox_page.dart';
 import 'package:offline_agent/ui/sidebar.dart';
 import 'package:offline_agent/ui/skills_page.dart';
+import 'package:offline_agent/ui/chat_view.dart' show ChatView;
 import 'package:offline_agent/state/skills.dart';
 import 'package:offline_agent/ui/device_page.dart';
 import 'package:offline_agent/ui/sync_page.dart';
@@ -146,6 +147,15 @@ Future<void> _demo() async {
   ];
   // Geplante Aufgaben werden zu Skills mit Zeitplan
   await app.adoptScheduledPrompts();
+  // Sammlung „Ergebnisse“
+  final f = app.feed;
+  f.entries.addAll([
+    ChatEntry(role: 'assistant', text: '## KI-News\n- OpenAI stellt neues Modell vor\n- EU AI Act: neue Leitlinien\n- Anthropic veröffentlicht Studie zu Agenten\n- Google zeigt Gemini-Update\n- Microsoft investiert in Rechenzentren in Österreich',
+        origin: '⏱ Morning Briefing News', originId: 'prompt:${app.prompts[1].id}', time: now.subtract(const Duration(hours: 3))),
+    ChatEntry(role: 'user', text: 'Wie wird das Wetter morgen in Wien?', origin: '🎙 Gespräch 17:40', originId: 'voice:1', viaVoice: true, time: now.subtract(const Duration(hours: 2))),
+    ChatEntry(role: 'assistant', text: 'Morgen wird es in Wien bewölkt bei 6 Grad, am Nachmittag kann es regnen.', origin: '🎙 Gespräch 17:40', originId: 'voice:1', time: now.subtract(const Duration(hours: 2))),
+    ChatEntry(role: 'assistant', error: 'Webseite nicht erreichbar (Zeitüberschreitung)', origin: '⚙ Tech-News am Morgen', originId: 'flow:f1', time: now.subtract(const Duration(days: 1, hours: 2))),
+  ]);
   app.skills.forPrompt(app.prompts[1].id)?.output = 'table';
 
   app.watchlist.items.addAll([
@@ -289,6 +299,10 @@ void main() {
       'menu': (const Size(412, 1700), const Scaffold(body: Sidebar())),
       'inbox': (const Size(412, 1700), const InboxPage()),
       'tasks': (const Size(412, 1700), const SkillsPage(filter: 'schedule')),
+      'results': (const Size(412, 1400), Builder(builder: (_) {
+        app.current = app.feed;
+        return const Scaffold(body: ChatView());
+      })),
       'plan_editor': (const Size(412, 2000), SkillEditor(
           draft: Skill(id: 'u-new', name: 'News: KI', instructions: 'Die wichtigsten KI-News in 5 Punkten', auto: false, output: 'cards'),
           plan: (kind: ScheduleKind.weekdays, hour: 7, minute: 30, weekday: 1))),

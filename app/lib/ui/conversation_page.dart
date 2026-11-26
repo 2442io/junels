@@ -68,6 +68,9 @@ class _ConversationPageState extends State<ConversationPage> {
         backgroundColor: Colors.transparent,
         title: const Text('Gespräch'),
         actions: [
+          // KI-Modus (Gerät, Cloud, Hybrid …) auch im Gespräch umschaltbar
+          AiModeMenu(compact: MediaQuery.sizeOf(context).width < 600, target: app.conversation.target),
+          const SizedBox(width: 6),
           const InternetMenu(),
           IconButton(
             tooltip: 'Einstellungen',

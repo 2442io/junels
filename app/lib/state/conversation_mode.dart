@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
 
+import '../data/models.dart' show Conversation;
 import 'app_controller.dart';
 import 'voice_service.dart';
 
@@ -103,6 +104,9 @@ class ConversationMode {
   /// Gespräch ohne offenen Chat → läuft in der Sammlung „Ergebnisse“ (kein neuer Chat je Gespräch)
   bool _inFeed = false;
   String _session = '';
+
+  /// Chat, in dem das Gespräch läuft (Sammlung „Ergebnisse“ oder der offene Chat) – für KI-Modus & Co.
+  Conversation? get target => _inFeed ? app.feed : app.current;
 
   Future<void> start() async {
     if (active) return;

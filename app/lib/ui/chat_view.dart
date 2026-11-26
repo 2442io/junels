@@ -105,9 +105,16 @@ class _ChatViewState extends State<ChatView> {
     if (app.runningHere) _scrollToBottom();
     if (isFeed && app.feedUnread > 0) WidgetsBinding.instance.addPostFrameCallback((_) => app.markFeedSeen());
 
+    // Sammlung „Ergebnisse“: Karten statt Chat-Verlauf, keine Eingabe (Nachfragen je Karte)
+    if (isFeed) {
+      return Column(children: [
+        _FeedFilterBar(app: app),
+        Expanded(child: _FeedView(key: ValueKey(app.feedFilter.value), app: app)),
+      ]);
+    }
+
     return Column(
       children: [
-        if (isFeed) _FeedFilterBar(app: app),
         Expanded(
           child: entries.isEmpty
               ? _EmptyState(app: app)
@@ -175,7 +182,337 @@ class _ChatViewState extends State<ChatView> {
   }
 }
 
-// ------------------------------------------------------ Sammlung „Ergebnisse“
+// ------------------------------------------------------ Sammlung „Ergebnisse“ als Karten
+
+/// Ein Eintrag der Sammlung: Ergebnis eines Laufs oder ein ganzes Gespräch
+class _FeedItem {
+  _FeedItem(this.originId, this.origin);
+  final String originId;
+  final String origin;
+  final List<ChatEntry> entries = [];
+  ChatEntry? get answer => entries.where((e) => e.role == 'assistant').lastOrNull;
+  DateTime get time => entries.last.time;
+  bool get isVoice => originId.startsWith('voice:');
+}
+
+List<_FeedItem> _feedItems(List<ChatEntry> all, String? filter) {
+  final items = <_FeedItem>[];
+  final voice = <String, _FeedItem>{};
+  ChatEntry? pendingQuestion;
+  for (final e in all) {
+    final id = e.originId ?? 'ohne';
+    if (filter != null && !id.startsWith(filter)) continue;
+    if (id.startsWith('voice:')) {
+      final it = voice.putIfAbsent(id, () {
+        final n = _FeedItem(id, e.origin ?? '🎙 Gespräch');
+        items.add(n);
+        return n;
+      });
+      it.entries.add(e);
+      continue;
+    }
+    if (e.role == 'user') {
+      pendingQuestion = e;
+      continue;
+    }
+    final it = _FeedItem(id, e.origin ?? 'Ergebnis');
+    if (pendingQuestion != null && pendingQuestion.originId == e.originId) it.entries.add(pendingQuestion);
+    pendingQuestion = null;
+    it.entries.add(e);
+    items.add(it);
+  }
+  items.sort((a, b) => b.time.compareTo(a.time));
+  return items;
+}
+
+class _FeedView extends StatefulWidget {
+  const _FeedView({super.key, required this.app});
+  final AppController app;
+
+  @override
+  State<_FeedView> createState() => _FeedViewState();
+}
+
+class _FeedViewState extends State<_FeedView> {
+  // Was vor dem Öffnen neu war, bleibt markiert, solange die Ansicht offen ist
+  late final DateTime? _seen = widget.app.settings.feedSeen;
+  final _open = <String>{};
+
+  String _day(DateTime d) {
+    final now = DateTime.now();
+    final diff = DateTime(now.year, now.month, now.day).difference(DateTime(d.year, d.month, d.day)).inDays;
+    if (diff == 0) return 'Heute';
+    if (diff == 1) return 'Gestern';
+    if (diff < 7) return const ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][d.weekday - 1];
+    return '${d.day}.${d.month}.${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final t = Theme.of(context).textTheme;
+    final c = AppColors.of(context);
+    final items = _feedItems(app.feed.entries, app.feedFilter.value);
+    if (items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: EmptyHint(
+            icon: Icons.inbox_outlined,
+            title: app.feedFilter.value == null ? 'Noch keine Ergebnisse' : 'Nichts in dieser Auswahl',
+            text: 'Hier landet alles, was von selbst läuft: geplante Aufgaben, Abläufe, Beobachtungen und Gespräche.',
+          ),
+        ),
+      );
+    }
+    final rows = <Widget>[];
+    String? lastDay;
+    for (final it in items) {
+      final d = _day(it.time);
+      if (d != lastDay) {
+        rows.add(Padding(
+          padding: EdgeInsets.fromLTRB(4, lastDay == null ? 4 : 18, 4, 8),
+          child: Text(d, style: t.titleSmall?.copyWith(color: c.muted)),
+        ));
+        lastDay = d;
+      }
+      final key = '${it.originId}|${it.time.microsecondsSinceEpoch}';
+      rows.add(_FeedCard(
+        item: it,
+        unread: _seen == null || it.time.isAfter(_seen),
+        expanded: _open.contains(key),
+        onToggle: () => setState(() => _open.contains(key) ? _open.remove(key) : _open.add(key)),
+      ));
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 96),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FeedCard extends StatelessWidget {
+  const _FeedCard({required this.item, required this.unread, required this.expanded, required this.onToggle});
+  final _FeedItem item;
+  final bool unread;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  static (IconData, String) _kind(String id) => switch (id) {
+        _ when id.startsWith('flow:') => (Icons.account_tree_outlined, 'Ablauf'),
+        _ when id.startsWith('prompt:') => (Icons.schedule, 'Geplant'),
+        _ when id.startsWith('voice:') => (Icons.graphic_eq, 'Gespräch'),
+        _ when id.startsWith('watch:') => (Icons.radar, 'Beobachtung'),
+        'mcp' => (Icons.electrical_services, 'Extern'),
+        _ => (Icons.inbox_outlined, 'Ergebnis'),
+      };
+
+  static String _title(String origin) => origin.replaceFirst(RegExp(r'^[^\p{L}\d]+', unicode: true), '').trim();
+
+  /// Weiter im Chat: neuer Chat mit diesem Ergebnis als Zusammenhang
+  void _continue(BuildContext context, AppController app) {
+    final c = Conversation(id: newId(), title: 'Nachfrage: ${_title(item.origin)}');
+    for (final e in item.entries) {
+      c.entries.add(ChatEntry.fromJson(e.toJson()));
+    }
+    app.conversations.insert(0, c);
+    app.current = c;
+    app.refreshUi();
+  }
+
+  Future<void> _rerun(BuildContext context, AppController app) async {
+    final id = item.originId;
+    if (id.startsWith('flow:')) {
+      final wf = app.flows.flows.where((f) => f.id == id.substring(5)).firstOrNull;
+      if (wf != null) unawaited(app.flows.run(wf));
+    } else if (id.startsWith('prompt:')) {
+      final p = app.prompts.where((p) => p.id == id.substring(7)).firstOrNull;
+      if (p != null) unawaited(app.runPrompt(p));
+    }
+  }
+
+  bool _canRerun(AppController app) {
+    final id = item.originId;
+    if (id.startsWith('flow:')) return app.flows.flows.any((f) => f.id == id.substring(5));
+    if (id.startsWith('prompt:')) return app.prompts.any((p) => p.id == id.substring(7));
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final (icon, kind) = _kind(item.originId);
+    final a = item.answer;
+    final live = app.running && app.runningConvId == AppController.feedId && a != null && identical(a, app.feed.entries.lastOrNull);
+    final err = a?.error;
+    final time = '${item.time.hour.toString().padLeft(2, '0')}:${item.time.minute.toString().padLeft(2, '0')}';
+    final tint = err != null ? c.red : (item.isVoice ? c.violet : (item.originId.startsWith('flow:') ? c.amber : c.mint));
+    final text = a == null ? '' : cleanModelText(a.text);
+    final long = text.length > 420 || (a?.cards.isNotEmpty ?? false) || (a?.steps.isNotEmpty ?? false) || (a?.actions.isNotEmpty ?? false);
+
+    Widget body;
+    if (item.isVoice) {
+      // Gespräch: Frage und Antwort kompakt untereinander
+      final pairs = item.entries.where((e) => e.text.trim().isNotEmpty || e.reaction != null).toList();
+      final shown = expanded ? pairs : pairs.skip(pairs.length > 4 ? pairs.length - 4 : 0).toList();
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (!expanded && pairs.length > 4)
+          Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('… ${pairs.length - 4} frühere', style: t.bodySmall)),
+        for (final e in shown)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(e.role == 'user' ? Icons.mic_none : Icons.auto_awesome, size: 16, color: e.role == 'user' ? c.muted : tint),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  e.text.trim().isEmpty ? (e.reaction ?? '') : cleanModelText(e.text),
+                  maxLines: expanded ? null : 3,
+                  overflow: expanded ? null : TextOverflow.ellipsis,
+                  style: e.role == 'user' ? t.bodyMedium?.copyWith(color: c.muted) : t.bodyMedium,
+                ),
+              ),
+            ]),
+          ),
+      ]);
+    } else if (expanded && a != null) {
+      final i = app.feed.entries.indexOf(a);
+      body = _AssistantMessage(entry: a, live: live, index: i);
+    } else if (err != null) {
+      body = Text(err, style: t.bodyMedium?.copyWith(color: c.red));
+    } else if (live && text.isEmpty) {
+      body = Row(children: [
+        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 10),
+        Text('läuft …', style: t.bodyMedium),
+      ]);
+    } else {
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (item.entries.first.role == 'user' && item.entries.first.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text('„${item.entries.first.text.trim()}“',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodySmall?.copyWith(color: c.muted)),
+          ),
+        // Vorschau: oben abgeschnitten, weich ausgeblendet
+        ShaderMask(
+          shaderCallback: (r) => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.white, Colors.white, long ? Colors.transparent : Colors.white],
+            stops: const [0, 0.7, 1],
+          ).createShader(r),
+          blendMode: BlendMode.dstIn,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 150),
+            child: ClipRect(
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: MarkdownLite(text, selectable: false),
+              ),
+            ),
+          ),
+        ),
+        if ((a?.cards.isNotEmpty ?? false) || (a?.files.isNotEmpty ?? false))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Wrap(spacing: 6, runSpacing: 6, children: [
+              if (a!.cards.isNotEmpty) StatusChip('${a.cards.length} Treffer', color: c.blue, icon: Icons.view_carousel_outlined, dense: true),
+              for (final f in a.files.take(3))
+                StatusChip(f.split(RegExp(r'[/\\]')).last, color: c.muted, icon: Icons.insert_drive_file_outlined, dense: true),
+            ]),
+          ),
+      ]);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Panel(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 6),
+        borderColor: unread ? tint.withValues(alpha: 0.45) : null,
+        onTap: expanded ? null : onToggle,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(color: tint.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, size: 18, color: tint),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_title(item.origin), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                Text('$kind · $time${err != null ? ' · Fehler' : ''}', style: t.labelSmall?.copyWith(color: err != null ? c.red : c.faint)),
+              ]),
+            ),
+            if (unread)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Container(width: 8, height: 8, decoration: BoxDecoration(color: tint, shape: BoxShape.circle)),
+              ),
+            PopupMenuButton<String>(
+              tooltip: 'Mehr',
+              icon: Icon(Icons.more_horiz, color: c.muted),
+              onSelected: (v) async {
+                switch (v) {
+                  case 'chat':
+                    _continue(context, app);
+                  case 'again':
+                    await _rerun(context, app);
+                  case 'copy':
+                    await Clipboard.setData(ClipboardData(
+                        text: item.entries.map((e) => cleanModelText(e.text)).where((x) => x.trim().isNotEmpty).join('\n\n')));
+                  case 'remove':
+                    for (final e in item.entries) {
+                      app.feed.entries.remove(e);
+                    }
+                    await app.storage.saveConversation(app.feed);
+                    app.refreshUi();
+                }
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'chat', child: ListTile(leading: Icon(Icons.forum_outlined), title: Text('Im Chat weiterführen'))),
+                if (_canRerun(app))
+                  const PopupMenuItem(value: 'again', child: ListTile(leading: Icon(Icons.replay), title: Text('Nochmal ausführen'))),
+                const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy), title: Text('Kopieren'))),
+                const PopupMenuItem(value: 'remove', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Entfernen'))),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Padding(padding: const EdgeInsets.only(right: 8), child: body),
+          Row(children: [
+            if (long || item.isVoice && item.entries.length > 4 || expanded)
+              TextButton.icon(
+                onPressed: onToggle,
+                icon: Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 18),
+                label: Text(expanded ? 'Weniger' : 'Ganz anzeigen'),
+              ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => _continue(context, app),
+              icon: Icon(Icons.reply, size: 18, color: scheme.primary),
+              label: const Text('Nachfragen'),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------ Sammlung „Ergebnisse“ (Filter)
 
 /// Herkunft eines Ergebnisses (Ablauf, geplante Aufgabe, Gespräch …) über dem Eintrag
 class _OriginHeader extends StatelessWidget {
