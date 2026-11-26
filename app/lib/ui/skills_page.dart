@@ -1021,7 +1021,7 @@ class _SkillEditorState extends State<SkillEditor> {
     final known = {for (final x in tools) x.name};
     return Scaffold(
       appBar: JAppBar(
-        title: Text(_isNew ? 'Neuer Skill' : s.name),
+        title: Text(_isNew ? (_planOn ? 'Neue geplante Aufgabe' : 'Neuer Skill') : s.name),
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) async {
