@@ -12,6 +12,7 @@ import '../state/app_scope.dart';
 import '../state/native_files.dart';
 import '../state/skill_import.dart';
 import '../state/skills.dart';
+import 'nav.dart' show ShellNav, AppSection;
 import 'quick_nav.dart';
 import 'theme.dart';
 import 'answer_views.dart' show OutputViewField, outputViewIcon;
@@ -501,7 +502,8 @@ Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) a
       return Padding(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          option('job', Icons.explore_outlined, 'Web-Job jetzt', 'Junels erledigt etwas selbstständig im Browser – plant, führt aus, prüft'),
+          option('job', Icons.explore_outlined, 'Einmal im Web erledigen',
+              'Auftrag in einem Satz – Junels macht es jetzt selbst im Browser (ohne Skill anzulegen)'),
           option('schedule', Icons.schedule, 'Geplante Aufgabe', 'Läuft von selbst zu einer Uhrzeit – Ergebnis unter „Ergebnisse“'),
           option('skill', Icons.auto_awesome, 'Skill', 'Anleitung für eine wiederkehrende Aufgabe, Aufruf per /befehl'),
           option('flow', Icons.account_tree_outlined, 'Ablauf', 'Mehrere Schritte – beschreiben, Junels baut ihn'),
@@ -562,6 +564,7 @@ Future<void> startJobDialog(BuildContext context) async {
   final app = AppScope.read(context);
   app.webJobs.start(goal: goal.trim());
   app.openFeed('job:');
+  context.getInheritedWidgetOfExactType<ShellNav>()?.go(AppSection.chat);
   goHome(context);
 }
 
@@ -957,10 +960,16 @@ class _SkillEditorState extends State<SkillEditor> {
       ..knowledge = _knowledge.text.trim();
   }
 
-  bool _save() {
+  bool _save({bool forRecording = false}) {
     _apply();
-    if (s.name.isEmpty || s.instructions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name und Anleitung ausfüllen')));
+    if (forRecording && s.name.isEmpty) {
+      // Vormachen ohne Namen: vorläufiger Name, der Befehl wird daraus gebildet
+      s.name = 'Vorgemachter Ablauf';
+      s.slug = AppScope.read(context).skills.uniqueSlug(s.name, exceptId: s.id);
+    }
+    // Anleitung oder vorgemachter Ablauf – eins von beiden reicht (aus dem Vormachen wird die Anleitung geschrieben)
+    if (s.name.isEmpty || (s.instructions.isEmpty && s.macro.isEmpty && !forRecording)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name und „Was soll Junels tun?“ ausfüllen – oder vormachen')));
       return false;
     }
     final clash = AppScope.read(context).skills.all.where((o) => o.id != s.id && o.command == s.command).firstOrNull;
@@ -1009,7 +1018,7 @@ class _SkillEditorState extends State<SkillEditor> {
               Text(s.macro.isEmpty ? 'Vormachen' : '${s.macro.length} Schritte vorgemacht', style: t.titleSmall),
               Text(
                   s.macro.isEmpty
-                      ? 'Einmal selbst im Browser zeigen – danach spielt Junels es ab (zuverlässiger, auch mit kleinem Modell).'
+                      ? 'Einmal selbst im Browser zeigen – Junels schreibt daraus die Anleitung und spielt es danach ab.'
                       : params.isEmpty
                           ? 'Wird genauso abgespielt.'
                           : 'Platzhalter: ${params.map((p) => '{$p}').join(', ')} – z. B. /${s.command} ${s.macroParams[params.first]}',
@@ -1073,9 +1082,11 @@ class _SkillEditorState extends State<SkillEditor> {
     );
     if (url == null || url.trim().isEmpty || !context.mounted) return;
     s.job = true;
-    if (!_save()) return;
+    if (!_save(forRecording: true)) return;
     final app = AppScope.read(context);
     final messenger = ScaffoldMessenger.of(context);
+    // zum Chat-Bereich (Desktop: Bereich wechseln), dort erscheint der Browser über „Ergebnisse“
+    context.getInheritedWidgetOfExactType<ShellNav>()?.go(AppSection.chat);
     goHome(context);
     try {
       await app.startRecording(app.skills.byId(s.id) ?? s, url);
@@ -1270,7 +1281,7 @@ class _SkillEditorState extends State<SkillEditor> {
           maxLines: 14,
           decoration: const InputDecoration(
             labelText: 'Was soll Junels tun?',
-            helperText: 'Auftrag oder Anleitung in eigenen Worten – Schritte helfen',
+            helperText: 'In eigenen Worten – oder unten bei „Im Web erledigen“ vormachen, dann schreibt Junels das hier',
             helperMaxLines: 2,
             alignLabelWithHint: true,
             hintText: '1. Suche im Postfach nach Rechnungen dieses Monats\n2. Liste Betrag, Absender, Datum\n3. Erstelle ein Dokument „Rechnungen <Monat>“',

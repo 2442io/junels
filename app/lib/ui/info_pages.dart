@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.67.1', [
+    'Vormachen: „Aufnahme starten“ öffnet jetzt wirklich den Browser (auch am Desktop und bei neuen Skills ohne Namen/Anleitung)',
+    'Aus dem Vorgemachten schreibt Junels die Anleitung selbst (Schritte, Platzhalter) – Name und Befehl werden aus der Seite gebildet, alles änderbar',
+    'Ein Skill braucht Anleitung ODER einen vorgemachten Ablauf – nicht beides',
+    'Vorgemachte Jobs holen am Ende immer das Ergebnis von der Seite',
+    '„Web-Job jetzt“ heißt jetzt „Einmal im Web erledigen“ – ein Auftrag in einem Satz, ohne Skill anzulegen',
+  ]),
   ('1.67.0', [
     'Web-Jobs: Junels erledigt Aufträge selbstständig im eingebauten Browser – planen (Cloud-Modell, wenn erlaubt), Schritt für Schritt ausführen, jeden Schritt prüfen und notfalls anders versuchen',
     'Job-Karte in „Ergebnisse“ (und im Chat): Schritt 3/7, Fortschrittsbalken, aktuelle Seite, Pause, Fortsetzen, Abbrechen, Zusehen – am Ende ein Nachweis (Seite + Uhrzeit)',

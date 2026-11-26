@@ -154,7 +154,7 @@ class WebJobs extends ChangeNotifier {
           for (final s in skill.macro) {
             j.steps.add(JobStep(s.describe));
           }
-          if (skill.instructions.trim().isNotEmpty) j.steps.add(JobStep('Ergebnis zusammenstellen'));
+          j.steps.add(JobStep('Ergebnis von der Seite holen'));
         } else {
           final plan = await _plan(j, skill);
           j.steps.addAll(plan.isEmpty ? [JobStep(j.goal)] : [for (final p in plan) JobStep(p)]);
@@ -195,7 +195,8 @@ class WebJobs extends ChangeNotifier {
         } else {
           final finalStep = i == j.steps.length - 1;
           final prompt = j.macro && skill != null
-              ? 'Die Seite ist offen (vorgemachter Ablauf ist durch). ${skill.instructions.trim()}\nAuftrag: ${j.goal}\n'
+              ? 'Der vorgemachte Ablauf ist durchgespielt, die Ergebnisseite ist im Browser offen. Lies sie (browser read; '
+                  'bei einer Liste browser collect) und gib dem Nutzer das Ergebnis für: ${j.goal}\n'
                   'Beginne mit „ERLEDIGT:“ in der ersten Zeile, danach das vollständige Ergebnis.'
               : jobStepPrompt(j, i);
           answer = await _agentStep(j, entry, skill, prompt, output: finalStep ? j.output : '');

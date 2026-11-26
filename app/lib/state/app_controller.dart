@@ -221,13 +221,36 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (s == null) return null;
     final steps = cleanRecording(browser.recordStart, events);
     final params = autoPlaceholders(steps);
+    final host = SitePolicy.hostOf(browser.recordStart);
     s
       ..macro = steps
       ..macroParams = params
       ..job = true;
+    // Anleitung aus dem Vorgemachten schreiben (leer oder schon automatisch geschrieben → neu)
+    if (s.instructions.trim().isEmpty || s.instructions.startsWith(_recordedHead)) s.instructions = recordedInstructions(steps, params);
+    if (s.name == 'Vorgemachter Ablauf' || s.name.isEmpty) {
+      s.name = 'Ablauf auf $host';
+      s.slug = skills.uniqueSlug(host.split('.').first, exceptId: s.id);
+    }
+    if (s.when.isEmpty) s.when = 'Wenn ich den vorgemachten Ablauf auf $host brauche.';
     skills.upsert(s);
     notifyListeners();
     return s;
+  }
+
+  static const _recordedHead = 'Vorgemacht (wird genau so abgespielt):';
+
+  /// Anleitung aus den aufgenommenen Schritten
+  static String recordedInstructions(List<MacroStep> steps, Map<String, String> params) {
+    final b = StringBuffer('$_recordedHead\n');
+    for (var i = 0; i < steps.length; i++) {
+      b.writeln('${i + 1}. ${steps[i].describe}');
+    }
+    if (params.isNotEmpty) {
+      b.writeln('Platzhalter: ${params.entries.map((e) => '{${e.key}} (z. B. „${e.value}“)').join(', ')} – kommen aus dem Aufruf.');
+    }
+    b.write('Danach: Ergebnis von der Seite holen (bei Listen browser collect) und übersichtlich ausgeben.');
+    return b.toString();
   }
 
   /// In dieser Sitzung schon erlaubt (Ausfüllen mit Rückfrage: einmal je Website)

@@ -30,6 +30,9 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
   /// Aufnahme starten: Seite öffnen, Junels merkt sich Klicks, Eingaben und Auswahl
   Future<void> startRecording(Uri start, {required String conversation}) async {
     recorded.clear();
+    // Erst den Browser erzeugen, dann melden – sonst hängt die Ansicht nicht im Fenster und lädt nichts
+    final first = _c == null;
+    controller;
     recording = true;
     recordStart = start.toString();
     conversationId = conversation;
@@ -37,8 +40,6 @@ class BrowserService extends ChangeNotifier implements BrowserDriver {
     expanded = true;
     activity = 'nimmt auf – mach es einfach vor';
     notifyListeners();
-    final first = _c == null;
-    controller;
     if (first) await Future<void>.delayed(const Duration(milliseconds: 1200));
     await open(start);
     await _injectRecorder();
