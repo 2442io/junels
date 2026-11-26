@@ -8,7 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../state/app_scope.dart';
 import '../state/browser_service.dart';
-import 'skills_page.dart' show openMacroReview;
+import 'skills_page.dart' show MacroReviewPage;
 import '../state/native_files.dart';
 
 class BrowserDock extends StatelessWidget {
@@ -21,12 +21,13 @@ class BrowserDock extends StatelessWidget {
     return ListenableBuilder(
       listenable: browser,
       builder: (context, _) {
-        if (!browser.created) return child;
+        // Beim Vormachen zeigt die eigene Seite den Browser (eine Ansicht darf nur einmal im Fenster hängen)
+        if (!browser.created || browser.recording) return child;
         return LayoutBuilder(builder: (context, c) {
           final show = browser.visible;
           final open = show && browser.expanded;
           // Beim Vormachen fast der ganze Platz für die Seite
-          final pageH = open ? c.maxHeight * (browser.recording ? 0.8 : 0.48) : 0.0;
+          final pageH = open ? c.maxHeight * 0.48 : 0.0;
           return Column(
             children: [
               if (show) _Bar(browser: browser),
@@ -125,32 +126,6 @@ class _Bar extends StatelessWidget {
               ),
             ),
           ),
-          if (browser.recording)
-            Container(
-              width: double.infinity,
-              color: Colors.red.shade700,
-              padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
-              child: Row(children: [
-                const Icon(Icons.fiber_manual_record, size: 16, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Aufnahme · ${browser.recorded.length} Schritte – mach es einfach vor',
-                      style: t.bodySmall?.copyWith(color: Colors.white)),
-                ),
-                TextButton(
-                  onPressed: () => AppScope.read(context).finishRecording(keep: false),
-                  child: const Text('Abbrechen', style: TextStyle(color: Colors.white70)),
-                ),
-                FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.red.shade700),
-                  onPressed: () {
-                    final s = AppScope.read(context).finishRecording();
-                    if (s != null) openMacroReview(context, s);
-                  },
-                  child: const Text('Fertig'),
-                ),
-              ]),
-            ),
           if (browser.watch != null)
             Container(
               width: double.infinity,
@@ -186,5 +161,98 @@ class _Bar extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Vormachen: eigene Seite mit dem Browser – du zeigst den Ablauf, Junels zeichnet auf.
+class RecordPage extends StatelessWidget {
+  const RecordPage({super.key, required this.skillName});
+  final String skillName;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final b = app.browser;
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    void cancel() {
+      app.finishRecording(keep: false);
+      Navigator.of(context).pop();
+    }
+
+    return ListenableBuilder(
+      listenable: b,
+      builder: (context, _) {
+        final steps = b.recorded.reversed.take(3).toList();
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) cancel();
+          },
+          child: Scaffold(
+            appBar: AppBar(
+              leading: IconButton(tooltip: 'Abbrechen', icon: const Icon(Icons.close), onPressed: cancel),
+              title: Row(children: [
+                Icon(Icons.fiber_manual_record, color: Colors.red.shade600, size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Vormachen · ${b.recorded.length} Schritte', overflow: TextOverflow.ellipsis)),
+              ]),
+              actions: [
+                IconButton(tooltip: 'Zurück', icon: const Icon(Icons.arrow_back), onPressed: b.hasPage ? b.back : null),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilledButton(
+                    onPressed: () {
+                      final s = app.finishRecording();
+                      if (s == null) {
+                        Navigator.of(context).pop();
+                      } else {
+                        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => MacroReviewPage(skillId: s.id)));
+                      }
+                    },
+                    child: const Text('Fertig'),
+                  ),
+                ),
+              ],
+            ),
+            body: Column(children: [
+              Container(
+                width: double.infinity,
+                color: scheme.secondaryContainer,
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                child: Text(
+                    '„$skillName“: Mach den Ablauf einfach vor – suchen, filtern, ausfüllen. Dann „Fertig“. '
+                    'Passwörter und 🔒-Felder werden nie aufgezeichnet.',
+                    style: t.bodySmall?.copyWith(color: scheme.onSecondaryContainer)),
+              ),
+              if (b.loading) LinearProgressIndicator(value: b.progress > 0 ? b.progress / 100 : null, minHeight: 2),
+              Expanded(child: WebViewWidget(controller: b.controller)),
+              if (steps.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  color: scheme.surfaceContainerHighest,
+                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Text('Zuletzt aufgezeichnet', style: t.labelSmall),
+                    for (final e in steps)
+                      Text(_label(e), maxLines: 1, overflow: TextOverflow.ellipsis, style: t.bodySmall),
+                  ]),
+                ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
+  static String _label(Map<String, dynamic> e) {
+    final h = (e['hints'] as Map?) ?? const {};
+    final l = '${h['label'] ?? ''}'.isNotEmpty ? '${h['label']}' : '${h['text'] ?? h['name'] ?? ''}';
+    return switch ('${e['kind']}') {
+      'type' => e['secret'] == true ? '🔒 „$l“ (nicht aufgezeichnet)' : '⌨ „$l“ ← ${e['value'] ?? ''}',
+      'select' => '☰ „$l“: ${e['value'] ?? ''}',
+      'check' => '☑ „$l“',
+      _ => '👆 „$l“',
+    };
   }
 }

@@ -200,15 +200,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Skill, für den gerade aufgenommen wird
   String? recordingSkillId;
 
-  /// Aufnahme starten: Browser über „Ergebnisse“ aufklappen, Startseite öffnen
+  /// Aufnahme starten (eigene Seite „Vormachen“ zeigt den Browser), Startseite öffnen
   Future<void> startRecording(Skill s, String url) async {
     var u = url.trim();
     if (!u.contains('://')) u = 'https://$u';
     final uri = Uri.tryParse(u);
     if (uri == null || uri.host.isEmpty) throw Exception('„$url“ ist keine gültige Adresse');
     recordingSkillId = s.id;
-    openFeed();
-    await browser.startRecording(uri, conversation: feedId);
+    await browser.startRecording(uri, conversation: 'vormachen');
   }
 
   /// Aufnahme beenden → Schritte (mit Platzhaltern) im Skill speichern; null = abgebrochen/leer

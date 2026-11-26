@@ -14,6 +14,10 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.67.2', [
+    'Vormachen öffnet eine eigene Seite „Vormachen“ mit dem Browser (statt in „Ergebnisse“): oben Aufnahme-Zähler, Zurück, Fertig; unten die zuletzt aufgezeichneten Schritte',
+    'Nach „Fertig“: Schritte prüfen, dann zurück im Skill – mit der geschriebenen Anleitung, Name und Befehl',
+  ]),
   ('1.67.1', [
     'Vormachen: „Aufnahme starten“ öffnet jetzt wirklich den Browser (auch am Desktop und bei neuen Skills ohne Namen/Anleitung)',
     'Aus dem Vorgemachten schreibt Junels die Anleitung selbst (Schritte, Platzhalter) – Name und Befehl werden aus der Seite gebildet, alles änderbar',

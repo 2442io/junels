@@ -13,6 +13,7 @@ import '../state/native_files.dart';
 import '../state/skill_import.dart';
 import '../state/skills.dart';
 import 'nav.dart' show ShellNav, AppSection;
+import 'browser_panel.dart' show RecordPage;
 import 'quick_nav.dart';
 import 'theme.dart';
 import 'answer_views.dart' show OutputViewField, outputViewIcon;
@@ -950,6 +951,17 @@ class _SkillEditorState extends State<SkillEditor> {
     _knowledge = TextEditingController(text: s.knowledge);
   }
 
+  /// Gespeicherten Stand neu laden (z. B. nach dem Vormachen: Anleitung, Name, Befehl wurden geschrieben)
+  void _reload(AppController app) {
+    s = (app.skills.byId(s.id) ?? s).copy();
+    _name.text = s.name;
+    _slug.text = s.command;
+    _when.text = s.when;
+    _steps.text = s.instructions;
+    _inputs.text = s.inputs;
+    _isNew = false;
+  }
+
   void _apply() {
     s
       ..name = _name.text.trim()
@@ -966,6 +978,8 @@ class _SkillEditorState extends State<SkillEditor> {
       // Vormachen ohne Namen: vorläufiger Name, der Befehl wird daraus gebildet
       s.name = 'Vorgemachter Ablauf';
       s.slug = AppScope.read(context).skills.uniqueSlug(s.name, exceptId: s.id);
+      _name.text = s.name;
+      _slug.text = s.slug;
     }
     // Anleitung oder vorgemachter Ablauf – eins von beiden reicht (aus dem Vormachen wird die Anleitung geschrieben)
     if (s.name.isEmpty || (s.instructions.isEmpty && s.macro.isEmpty && !forRecording)) {
@@ -1039,8 +1053,9 @@ class _SkillEditorState extends State<SkillEditor> {
               label: const Text('Schritte'),
               onPressed: () async {
                 if (!_save()) return;
-                await openMacroReview(context, AppScope.read(context).skills.byId(s.id) ?? s);
-                if (mounted) setState(() => s = (AppScope.read(context).skills.byId(s.id) ?? s).copy());
+                final app = AppScope.read(context);
+                await openMacroReview(context, app.skills.byId(s.id) ?? s);
+                if (mounted) setState(() => _reload(app));
               },
             ),
             TextButton(
@@ -1085,9 +1100,8 @@ class _SkillEditorState extends State<SkillEditor> {
     if (!_save(forRecording: true)) return;
     final app = AppScope.read(context);
     final messenger = ScaffoldMessenger.of(context);
-    // zum Chat-Bereich (Desktop: Bereich wechseln), dort erscheint der Browser über „Ergebnisse“
-    context.getInheritedWidgetOfExactType<ShellNav>()?.go(AppSection.chat);
-    goHome(context);
+    // Eigene Seite „Vormachen“ (gehört zum Einrichten des Skills) – danach zurück hierher
+    final done = Navigator.of(context).push(MaterialPageRoute(builder: (_) => RecordPage(skillName: s.name)));
     try {
       await app.startRecording(app.skills.byId(s.id) ?? s, url);
     } catch (e) {
@@ -1095,6 +1109,8 @@ class _SkillEditorState extends State<SkillEditor> {
       app.recordingSkillId = null;
       messenger.showSnackBar(SnackBar(content: Text('Aufnahme ging nicht: $e')));
     }
+    await done;
+    if (mounted) setState(() => _reload(app));
   }
 
   Widget _planSection(BuildContext context) {
