@@ -31,6 +31,7 @@ class Skill {
     this.model = '',
     this.output = '',
     this.flowId,
+    this.promptId,
     Map<String, String>? files,
     this.license = '',
     this.compatibility = '',
@@ -69,6 +70,9 @@ class Skill {
   /// Ablauf (Prozess) dieses Skills: Auslöser (Zeitplan, Beobachtung, Ereignis) und/oder mehrere Schritte.
   /// Ohne eigene Anleitung ist der Skill der Ablauf selbst (/befehl startet ihn).
   String? flowId;
+
+  /// Zeitplan dieses Skills (geplante Aufgabe = Skill mit Zeitplan); gespeichert als Zeitplan-Eintrag mit dieser Id
+  String? promptId;
 
   /// Nur Export/Import: Rolle des mitgelieferten Ablaufs (ablauf | ausloeser), steht als metadata junels.flow
   String flowExport = '';
@@ -156,6 +160,7 @@ class Skill {
         if (model.isNotEmpty) 'model': model,
         if (output.isNotEmpty) 'output': output,
         if (flowId != null) 'flowId': flowId,
+        if (promptId != null) 'promptId': promptId,
         if (files.isNotEmpty) 'files': files,
         if (license.isNotEmpty) 'license': license,
         if (compatibility.isNotEmpty) 'compatibility': compatibility,
@@ -183,6 +188,7 @@ class Skill {
         model: modelLabels.containsKey(j['model']) ? '${j['model']}' : '',
         output: OutputView.valid('${j['output'] ?? ''}') ? '${j['output'] ?? ''}' : '',
         flowId: j['flowId'] as String?,
+        promptId: j['promptId'] as String?,
         files: {for (final e in ((j['files'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
         license: '${j['license'] ?? ''}',
         compatibility: '${j['compatibility'] ?? ''}',
@@ -537,6 +543,19 @@ class SkillLibrary extends ChangeNotifier {
   List<Skill> get enabled => [for (final s in all) if (s.enabled) s];
 
   Skill? byId(String id) => all.where((s) => s.id == id).firstOrNull;
+
+  /// Skill, dessen Zeitplan dieser Eintrag ist
+  Skill? forPrompt(String promptId) => all.where((s) => s.promptId == promptId).firstOrNull;
+
+  /// Freier Befehl (/name, /name-2 …)
+  String uniqueSlug(String name, {String? exceptId}) {
+    final base = Skill.slugify(name.isEmpty ? 'aufgabe' : name);
+    var slug = base;
+    for (var i = 2; all.any((o) => o.id != exceptId && o.command == slug); i++) {
+      slug = '$base-$i';
+    }
+    return slug;
+  }
   /// Frühere bzw. zweite Namen von Basis-Skills
   static const commandAliases = {'amtsweg': 'begleiten', 'amtswege': 'begleiten', 'amtsweg-lotse': 'begleiten'};
 

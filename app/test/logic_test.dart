@@ -67,6 +67,18 @@ void main() {
     });
   });
 
+  group('Geplante Aufgaben sind Skills', () {
+    test('Zeitplan-Verweis bleibt gespeichert, Befehl eindeutig', () {
+      final s = Skill(id: 'plan-1', name: 'Morgen-Übersicht', instructions: 'x', promptId: 'p1');
+      expect(Skill.fromJson(s.toJson()).promptId, 'p1');
+      final lib = SkillLibrary(File('${Directory.systemTemp.createTempSync('sk').path}/skills.json'));
+      lib.upsert(s);
+      expect(lib.forPrompt('p1')?.id, 'plan-1');
+      expect(lib.uniqueSlug('Morgen-Übersicht'), isNot(s.command));
+      expect(lib.uniqueSlug('Morgen-Übersicht', exceptId: 'plan-1'), s.command);
+    });
+  });
+
   group('Sammlung „Ergebnisse“ & Reaktionen', () {
     test('Herkunft und Reaktion bleiben gespeichert', () {
       final e = ChatEntry(role: 'assistant', text: 'x', origin: '⚙ News', originId: 'flow:1', reaction: '👍');

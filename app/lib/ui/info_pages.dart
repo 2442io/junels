@@ -14,6 +14,15 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.65.0', [
+    'Geplante Aufgaben sind jetzt Skills mit Zeitplan – alles unter „Skills & Abläufe“, bestehende Aufgaben werden automatisch übernommen',
+    'Skills & Abläufe neu gestaltet: Tabs Alle · Geplant · Skills · Abläufe · Beobachtet, klare Karten mit nächstem/letztem Lauf, Format und Status, ▶ und An/Aus direkt an der Karte',
+    '„Neu“ fragt zuerst, was du anlegen willst (geplante Aufgabe, Skill, Ablauf, Beobachtung); ohne Einträge gibt es einen Einstieg „Womit fangen wir an?“',
+    'Editor aufgeräumt: Was soll Junels tun? → Wann (Täglich / Mo–Fr / Wöchentlich, Uhrzeit, Push) → Darstellung; Befehl, Werkzeuge, Modell und Ablauf unter „Erweitert“',
+    'Darstellung auch für geplante Aufgaben wählbar (Karten, Tabelle, Checkliste, Word, Excel …)',
+    'Skills ohne gewählte Werkzeuge nutzen automatisch die passenden – wie im Chat',
+    'Ergebnisse geplanter Aufgaben erscheinen zuverlässig in „Ergebnisse“ (auch Läufe im Android-Hintergrund und „Termine vorbereiten“)',
+  ]),
   ('1.64.0', [
     'Schnellmenü: neben „Zum Chat“ und „Neuer Chat“ jetzt auch „Voice“',
     'Gespräch (Mac): kein stummes „Ich spreche …“ mehr – die Echo-Unterdrückung des Mikrofons hat die eigene Stimme fast lautlos gedreht; am Mac jetzt aus (Schwelle beim Sprechen höher)',

@@ -57,7 +57,6 @@ Future<void> showQuickNav(BuildContext context) async {
   final sections = [
     (AppSection.inbox, app.todoCount > 0 ? '${app.todoCount}' : null),
     (AppSection.skills, null),
-    (AppSection.tasks, null),
     (AppSection.prompts, null),
     (AppSection.knowledge, app.memory.pending.isNotEmpty ? '${app.memory.pending.length}' : null),
     (AppSection.activity, null),

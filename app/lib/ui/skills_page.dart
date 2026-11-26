@@ -1,5 +1,6 @@
 // Skills: eigene Fähigkeiten entwerfen, Basis-Skills anpassen, im Agent-Skills-Standard (SKILL.md) importieren und teilen.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,13 +14,15 @@ import '../state/skill_import.dart';
 import '../state/skills.dart';
 import 'quick_nav.dart';
 import 'theme.dart';
-import 'answer_views.dart' show OutputViewField;
+import 'answer_views.dart' show OutputViewField, outputViewIcon;
 import 'package:agent_engine/agent_engine.dart' show OutputView, Workflow;
-import '../data/models.dart' show ScheduleKind, newId;
+import '../data/models.dart' show ScheduleKind, SavedPrompt, newId;
 import '../state/app_controller.dart';
 import 'flows_page.dart' show FlowCard, describeNewFlow, newEmptyFlow, FlowEditor;
 import 'monitor_page.dart';
-import 'tasks_page.dart';
+import 'tasks_page.dart' show TemplateCard;
+import 'prompt_editor.dart' show editPrompt, runSavedPrompt;
+import 'device_page.dart' show setupMorningBriefing;
 import 'watchlist_page.dart' show showWatchDialog, WatchlistPage;
 
 const skillIcons = <String, IconData>{
@@ -50,226 +53,633 @@ IconData skillIcon(String name) => skillIcons[name] ?? Icons.auto_awesome;
 class SkillsPage extends StatefulWidget {
   const SkillsPage({super.key, this.filter = 'all'});
 
-  /// Start-Filter: all | skill | flow | schedule | watch | problem
+  /// Start-Tab: all | schedule | skill | flow | watch (problem → Alle mit Problemen oben)
   final String filter;
 
   @override
   State<SkillsPage> createState() => _SkillsPageState();
 }
 
+/// Art eines Eintrags – bestimmt den Tab. Reihenfolge: geplant > beobachtet > Ablauf > Skill
+String skillKind(AppController app, Skill s) {
+  final wf = s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
+  final mode = wf?.trigger?.str('mode', 'manual');
+  if (app.planOf(s) != null || mode == 'schedule') return 'schedule';
+  if (mode == 'watch') return 'watch';
+  if (s.runsFlow) return 'flow';
+  return 'skill';
+}
+
+bool skillHasProblem(AppController app, Skill s) {
+  final wf = s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
+  return wf != null && !app.flows.isRunning(wf.id) && (wf.lastStatus == 'Fehler' || app.flows.interrupted.containsKey(wf.id));
+}
+
+String _two(int v) => v.toString().padLeft(2, '0');
+
+/// „heute 07:30“, „morgen 07:30“, „Mo 07:30“, „3.12. 07:30“
+String whenLabel(DateTime d) {
+  final now = DateTime.now();
+  final day = DateTime(d.year, d.month, d.day);
+  final today = DateTime(now.year, now.month, now.day);
+  final diff = day.difference(today).inDays;
+  final t = '${_two(d.hour)}:${_two(d.minute)}';
+  if (diff == 0) return 'heute $t';
+  if (diff == 1) return 'morgen $t';
+  if (diff == -1) return 'gestern $t';
+  if (diff > 1 && diff < 7) return '${const ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][d.weekday - 1]} $t';
+  return '${d.day}.${d.month}. $t';
+}
+
 class _SkillsPageState extends State<SkillsPage> {
-  late String _filter = widget.filter;
+  static const _tabs = [
+    ('all', 'Alle', Icons.dashboard_outlined),
+    ('schedule', 'Geplant', Icons.schedule),
+    ('skill', 'Skills', Icons.auto_awesome),
+    ('flow', 'Abläufe', Icons.account_tree_outlined),
+    ('watch', 'Beobachtet', Icons.radar),
+  ];
   bool _showBasis = false;
+  bool _onlyProblems = false;
 
-  static const _filters = {
-    'all': 'Alle',
-    'skill': 'Anleitung',
-    'flow': 'Mit Ablauf',
-    'schedule': 'Zeitplan',
-    'watch': 'Beobachtet',
-    'problem': 'Probleme',
-  };
+  @override
+  void initState() {
+    super.initState();
+    _onlyProblems = widget.filter == 'problem';
+  }
 
-  Workflow? _flowOf(AppController app, Skill s) => s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
-
-  bool _matches(AppController app, Skill s) {
-    final wf = _flowOf(app, s);
-    final mode = wf?.trigger?.str('mode', 'manual');
-    return switch (_filter) {
-      'skill' => !s.runsFlow,
-      'flow' => wf != null,
-      'schedule' => mode == 'schedule',
-      'watch' => mode == 'watch',
-      'problem' => wf != null && (wf.lastStatus == 'Fehler' || app.flows.interrupted.containsKey(wf.id)),
-      _ => true,
-    };
+  int get _initialTab {
+    final i = _tabs.indexWhere((t) => t.$1 == widget.filter);
+    return i < 0 ? 0 : i;
   }
 
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     final lib = app.skills;
+    return ListenableBuilder(
+      listenable: lib,
+      builder: (context, _) {
+        final own = lib.own;
+        int count(String k) => k == 'all' ? own.length : own.where((s) => skillKind(app, s) == k).length;
+        final legacyPlans = [
+          for (final p in app.prompts)
+            if (p.schedule != ScheduleKind.off && lib.forPrompt(p.id) == null) p
+        ];
+        return DefaultTabController(
+          length: _tabs.length,
+          initialIndex: _initialTab,
+          child: Scaffold(
+            appBar: JAppBar(
+              title: const Text('Skills & Abläufe'),
+              actions: [
+                PopupMenuButton<String>(
+                  tooltip: 'Mehr',
+                  onSelected: (v) async {
+                    switch (v) {
+                      case 'import':
+                        await showSkillImport(context);
+                      case 'export':
+                        final list = [...lib.own, ...lib.basis.where((b) => b.edited)];
+                        if (list.isEmpty) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(const SnackBar(content: Text('Noch keine eigenen oder angepassten Skills')));
+                          return;
+                        }
+                        await shareSkillZip(list, 'junels-skills', flows: app.flows.flows);
+                      case 'monitor':
+                        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage(source: 'flow')));
+                      case 'results':
+                        app.openFeed();
+                        goHome(context);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'results', child: ListTile(leading: Icon(Icons.inbox_outlined), title: Text('Ergebnisse ansehen'))),
+                    PopupMenuItem(value: 'monitor', child: ListTile(leading: Icon(Icons.insights_outlined), title: Text('Überwachung'))),
+                    PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.download_outlined), title: Text('Importieren'))),
+                    PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Exportieren (ZIP)'))),
+                  ],
+                ),
+              ],
+              bottom: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: [
+                  for (final t in _tabs)
+                    Tab(
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(t.$3, size: 18),
+                        const SizedBox(width: 6),
+                        Text(t.$2),
+                        if (count(t.$1) + (t.$1 == 'schedule' ? legacyPlans.length : 0) > 0) ...[
+                          const SizedBox(width: 6),
+                          Text('${count(t.$1) + (t.$1 == 'schedule' || t.$1 == 'all' ? legacyPlans.length : 0)}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400)),
+                        ],
+                      ]),
+                    ),
+                ],
+              ),
+            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+            floatingActionButton: Builder(
+              builder: (context) => FloatingActionButton.extended(
+                heroTag: null,
+                icon: const Icon(Icons.add),
+                label: const Text('Neu'),
+                onPressed: () => showCreateSheet(context, preferred: _tabs[DefaultTabController.of(context).index].$1),
+              ),
+            ),
+            body: TabBarView(children: [
+              for (final t in _tabs) _tabBody(context, app, t.$1, legacyPlans),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _tabBody(BuildContext context, AppController app, String tab, List<SavedPrompt> legacyPlans) {
+    final lib = app.skills;
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
-
-    Widget tile(Skill s) {
-      final wf = _flowOf(app, s);
-      // reiner Ablauf: Karte des Ablaufs (Status, Stoppen, Fortsetzen, Ein/Aus)
-      if (s.runsFlow && wf != null) {
-        return Padding(padding: const EdgeInsets.only(bottom: 8), child: FlowCard(app: app, wf: wf, command: s.command));
-      }
-      final trig = wf?.trigger;
-      return Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        child: ListTile(
-          leading: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(color: s.builtin ? c.raised : c.amberSoft, borderRadius: BorderRadius.circular(10)),
-            child: Icon(skillIcon(s.icon), color: s.builtin ? c.muted : c.amber),
-          ),
-          title: Row(children: [
-            Flexible(child: Text(s.name, overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 6),
-            MonoText('/${s.command}', color: c.muted),
-            if (s.edited) ...[const SizedBox(width: 6), StatusChip('angepasst', color: c.amber, dense: true)],
-            if (wf != null && app.flows.isRunning(wf.id)) ...[const SizedBox(width: 6), StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true)],
-            if (wf != null && wf.lastStatus == 'Fehler' && !app.flows.isRunning(wf.id)) ...[
-              const SizedBox(width: 6),
-              StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true),
-            ],
-          ]),
-          subtitle: Text(
-              [
-                s.when.isEmpty ? '${s.tools.length} Werkzeuge' : s.when,
-                if (trig != null) '⏱ ${trig.summary}${wf!.enabled ? '' : ' (pausiert)'}',
-                if (s.internet == 'allow') '🌐 Internet erlaubt',
-                if (s.internet == 'block') 'offline',
-                if (s.model.isNotEmpty) Skill.modelLabels[s.model]!,
-                if (s.output.isNotEmpty) 'Ausgabe: ${OutputView.labels[s.output]}',
-              ].join(' · '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
-          trailing: Switch(value: s.enabled, onChanged: (v) => lib.setEnabled(s, v)),
-          onTap: () => openSkillEditor(context, s),
-        ),
-      );
-    }
-
-    final own = [for (final s in lib.own) if (_matches(app, s)) s];
+    final own = lib.own;
+    final problems = own.where((s) => skillHasProblem(app, s)).toList();
+    List<Skill> of(String k) => [
+          for (final s in own)
+            if (skillKind(app, s) == k && (!_onlyProblems || problems.contains(s))) s
+        ];
+    final intro = switch (tab) {
+      'schedule' => 'Laufen von selbst zur eingestellten Zeit. Die Ergebnisse findest du gesammelt unter „Ergebnisse“.',
+      'skill' => 'Anleitungen für wiederkehrende Aufgaben – im Chat mit /befehl aufrufen oder automatisch erkennen lassen.',
+      'flow' => 'Mehrere Schritte hintereinander (z. B. suchen → zusammenfassen → als Word speichern → Push).',
+      'watch' => 'Junels meldet sich, wenn sich auf einer Webseite oder zu einem Thema etwas ändert.',
+      _ => 'Alles, was Junels für dich kann und von selbst erledigt – an einem Ort.',
+    };
+    Widget section(String title, List<Widget> children, {Widget? trailing}) => children.isEmpty
+        ? const SizedBox.shrink()
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SectionLabel(title, padding: const EdgeInsets.fromLTRB(4, 18, 4, 8), trailing: trailing),
+            ...children,
+          ]);
+    List<Widget> cards(List<Skill> list) => [for (final s in list) SkillCard(skill: s)];
     final legacyWatch = [for (final w in app.watchlist.items) if (w.flowId == null) w];
-    final scheduled = [for (final p in app.prompts) if (p.schedule != ScheduleKind.off) p];
-
-    return Scaffold(
-      appBar: JAppBar(title: const Text('Skills & Abläufe'), actions: [
-        IconButton(
-            tooltip: 'Überwachung',
-            icon: const Icon(Icons.insights_outlined),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage(source: 'flow')))),
-        IconButton(tooltip: 'Skills importieren', icon: const Icon(Icons.download_outlined), onPressed: () => showSkillImport(context)),
-        IconButton(
-          tooltip: 'Eigene Skills exportieren (ZIP)',
-          icon: const Icon(Icons.ios_share),
-          onPressed: () async {
-            final list = [...lib.own, ...lib.basis.where((b) => b.edited)];
-            if (list.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Noch keine eigenen oder angepassten Skills')));
-              return;
-            }
-            await shareSkillZip(list, 'junels-skills', flows: app.flows.flows);
-          },
-        ),
-        PopupMenuButton<String>(
-          tooltip: 'Neu',
-          icon: const Icon(Icons.add),
-          onSelected: (v) {
-            switch (v) {
-              case 'skill':
-                openSkillEditor(context, null);
-              case 'describe':
-                describeNewFlow(context);
-              case 'watch':
-                showWatchDialog(context);
-              case 'empty':
-                newEmptyFlow(context);
-              case 'import':
-                showSkillImport(context);
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(
-                value: 'skill',
-                child: ListTile(leading: Icon(Icons.auto_awesome), title: Text('Skill entwerfen'), subtitle: Text('Anleitung + Werkzeuge, Aufruf per /befehl'))),
-            PopupMenuItem(
-                value: 'describe',
-                child: ListTile(
-                    leading: Icon(Icons.account_tree_outlined), title: Text('Ablauf beschreiben'), subtitle: Text('Mehrere Schritte, mit Zeitplan – Junels baut ihn'))),
-            PopupMenuItem(
-                value: 'watch',
-                child: ListTile(leading: Icon(Icons.radar), title: Text('Webseite oder Thema beobachten'), subtitle: Text('Melden, wenn sich etwas ändert'))),
-            PopupMenuItem(value: 'empty', child: ListTile(leading: Icon(Icons.add_box_outlined), title: Text('Leerer Ablauf'), subtitle: Text('Selbst aus Bausteinen bauen'))),
-            PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.download_outlined), title: Text('Importieren'), subtitle: Text('SKILL.md, ZIP, Link'))),
-          ],
-        ),
-      ]),
-      body: ListenableBuilder(
-        listenable: lib,
-        builder: (context, _) => ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 32), children: [
-          Text(
-              'Ein Skill ist eine Anleitung plus Werkzeuge – aufrufen mit /befehl im Chat. Mit Ablauf läuft er auch von selbst: '
-              'nach Zeitplan, wenn sich etwas ändert, oder in mehreren Schritten. Gespeichert im offenen Agent-Skills-Standard.',
-              style: t.bodySmall?.copyWith(color: c.muted)),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+    Widget legacyWatchCard() => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Panel(
+            padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WatchlistPage())),
             child: Row(children: [
-              for (final e in _filters.entries)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(e.value),
-                    selected: _filter == e.key,
-                    onSelected: (_) => setState(() => _filter = e.key),
-                  ),
-                ),
+              const Icon(Icons.radar),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('${legacyWatch.length} ältere Beobachtung${legacyWatch.length == 1 ? '' : 'en'}: '
+                    '${legacyWatch.map((w) => w.title).take(3).join(' · ')}', maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
+              const Icon(Icons.chevron_right),
             ]),
           ),
-          if (lib.own.isEmpty) ...[
-            const SizedBox(height: 12),
-            Row(children: [
+        );
+    final children = <Widget>[
+      Text(intro, style: t.bodySmall?.copyWith(color: c.muted)),
+      if (problems.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Panel(
+            color: c.redSoft,
+            borderColor: c.red.withValues(alpha: 0.3),
+            padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+            onTap: () => setState(() => _onlyProblems = !_onlyProblems),
+            child: Row(children: [
+              Icon(Icons.error_outline, color: c.red),
+              const SizedBox(width: 10),
               Expanded(
-                child: FilledButton.icon(icon: const Icon(Icons.add), label: const Text('Skill entwerfen'), onPressed: () => openSkillEditor(context, null)),
+                child: Text(_onlyProblems
+                    ? 'Nur Einträge mit Problemen – tippen für alle'
+                    : '${problems.length} ${problems.length == 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit (Fehler oder unterbrochen)'),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                    icon: const Icon(Icons.account_tree_outlined), label: const Text('Ablauf beschreiben'), onPressed: () => describeNewFlow(context)),
-              ),
+              Icon(_onlyProblems ? Icons.close : Icons.filter_list, size: 20),
             ]),
-          ],
-          SectionLabel('Meine Skills & Abläufe (${own.length})', padding: const EdgeInsets.fromLTRB(4, 16, 4, 6)),
-          if (own.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(_filter == 'all' ? 'Noch keine eigenen Skills oder Abläufe.' : 'Nichts in dieser Auswahl.',
-                  style: t.bodySmall?.copyWith(color: c.muted)),
-            ),
-          for (final s in own) tile(s),
-          if ((_filter == 'all' || _filter == 'watch') && legacyWatch.isNotEmpty) ...[
-            SectionLabel('Beobachtungen (${legacyWatch.length})', padding: const EdgeInsets.fromLTRB(4, 16, 4, 6)),
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: const Icon(Icons.radar),
-                title: Text('${legacyWatch.length} Beobachtung${legacyWatch.length == 1 ? '' : 'en'} ohne eigenen Ablauf'),
-                subtitle: Text(legacyWatch.map((w) => w.title).take(3).join(' · ')),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WatchlistPage())),
+          ),
+        ),
+    ];
+    switch (tab) {
+      case 'all':
+        final groups = [('schedule', 'Geplant'), ('watch', 'Beobachtet'), ('flow', 'Abläufe'), ('skill', 'Skills')];
+        final any = own.isNotEmpty || legacyPlans.isNotEmpty;
+        if (!any) children.add(_welcome(context));
+        for (final g in groups) {
+          children.add(section(g.$2, [
+            ...cards(of(g.$1)),
+            if (g.$1 == 'schedule' && !_onlyProblems) for (final p in legacyPlans) _PlanPromptCard(prompt: p),
+            if (g.$1 == 'watch' && legacyWatch.isNotEmpty && !_onlyProblems) legacyWatchCard(),
+          ]));
+        }
+      case 'schedule':
+        final list = of('schedule');
+        if (list.isEmpty && legacyPlans.isEmpty) {
+          children.add(Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Panel(
+              child: EmptyHint(
+                icon: Icons.alarm_add_outlined,
+                title: 'Noch nichts geplant',
+                text: 'Eine geplante Aufgabe ist ein Skill mit Uhrzeit – z. B. jeden Morgen die wichtigsten News als Tabelle.',
+                action: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Geplante Aufgabe anlegen'),
+                  onPressed: () => openPlanEditor(context),
+                ),
               ),
             ),
-          ],
-          if ((_filter == 'all' || _filter == 'schedule') && scheduled.isNotEmpty) ...[
-            SectionLabel('Geplante Aufgaben (${scheduled.length})', padding: const EdgeInsets.fromLTRB(4, 16, 4, 6)),
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: const Icon(Icons.schedule),
-                title: Text(scheduled.map((p) => p.title).take(3).join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: const Text('Prompts mit Zeitplan'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksPage())),
+          ));
+        }
+        children.add(section('Geplant', [
+          ...cards(list),
+          if (!_onlyProblems) for (final p in legacyPlans) _PlanPromptCard(prompt: p),
+        ]));
+        children.add(_quickSetup(context, app));
+      case 'skill':
+        final list = of('skill');
+        if (list.isEmpty) {
+          children.add(Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Panel(
+              child: EmptyHint(
+                icon: Icons.auto_awesome,
+                title: 'Noch keine eigenen Skills',
+                text: 'Beschreib einmal, wie eine Aufgabe geht – danach reicht /befehl im Chat.',
+                action: FilledButton.icon(
+                    icon: const Icon(Icons.add), label: const Text('Skill entwerfen'), onPressed: () => openSkillEditor(context, null)),
               ),
             ),
-          ],
-          if (_filter == 'all' || _filter == 'skill') ...[
-            InkWell(
-              onTap: () => setState(() => _showBasis = !_showBasis),
-              child: SectionLabel('Basis-Skills (${lib.basis.length})',
-                  padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
-                  trailing: Icon(_showBasis ? Icons.expand_less : Icons.expand_more, size: 20, color: c.muted)),
+          ));
+        }
+        children.add(section('Meine Skills', cards(list)));
+        children.add(InkWell(
+          onTap: () => setState(() => _showBasis = !_showBasis),
+          child: SectionLabel('Basis-Skills (${lib.basis.length})',
+              padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+              trailing: Icon(_showBasis ? Icons.expand_less : Icons.expand_more, size: 20, color: c.muted)),
+        ));
+        if (_showBasis) children.addAll([for (final s in lib.basis) SkillCard(skill: s)]);
+      case 'flow':
+        final list = of('flow');
+        if (list.isEmpty) {
+          children.add(Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Panel(
+              child: EmptyHint(
+                icon: Icons.account_tree_outlined,
+                title: 'Noch keine Abläufe',
+                text: 'Beschreib in einem Satz, was nacheinander passieren soll – Junels baut die Schritte.',
+                action: FilledButton.icon(
+                    icon: const Icon(Icons.auto_fix_high),
+                    label: const Text('Ablauf beschreiben'),
+                    onPressed: () => describeNewFlow(context)),
+              ),
             ),
-            if (_showBasis) for (final s in lib.basis) tile(s),
-          ],
+          ));
+        }
+        children.add(section('Abläufe', cards(list)));
+      case 'watch':
+        final list = of('watch');
+        if (list.isEmpty && legacyWatch.isEmpty) {
+          children.add(Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Panel(
+              child: EmptyHint(
+                icon: Icons.radar,
+                title: 'Noch keine Beobachtungen',
+                text: 'Preis, Termin, Webseite oder Thema – Junels schaut regelmäßig nach und meldet sich bei Änderungen.',
+                action: FilledButton.icon(
+                    icon: const Icon(Icons.add), label: const Text('Etwas beobachten'), onPressed: () => showWatchDialog(context)),
+              ),
+            ),
+          ));
+        }
+        children.add(section('Beobachtet', [...cards(list), if (legacyWatch.isNotEmpty) legacyWatchCard()]));
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 860),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _welcome(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    Widget option(IconData icon, String title, String text, VoidCallback onTap) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Panel(
+            onTap: onTap,
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Icon(icon, size: 26),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: t.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(text, style: t.bodySmall),
+                ]),
+              ),
+              const Icon(Icons.chevron_right),
+            ]),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Womit fangen wir an?', style: t.titleMedium),
+        const SizedBox(height: 10),
+        option(Icons.schedule, 'Etwas regelmäßig erledigen', 'z. B. jeden Morgen News, Wetter und Termine', () => openPlanEditor(context)),
+        option(Icons.auto_awesome, 'Eine Aufgabe beibringen', 'Anleitung einmal schreiben, dann /befehl im Chat',
+            () => openSkillEditor(context, null)),
+        option(Icons.radar, 'Etwas beobachten', 'Melden, wenn sich Preis, Seite oder Thema ändert', () => showWatchDialog(context)),
+        option(Icons.account_tree_outlined, 'Mehrere Schritte verbinden', 'Ablauf beschreiben – Junels baut ihn',
+            () => describeNewFlow(context)),
+      ]),
+    );
+  }
+
+  Widget _quickSetup(BuildContext context, AppController app) {
+    final hasPrep = app.prompts.any((p) => p.id == AppController.meetingPrepId);
+    final hasMorning = app.prompts.any((p) => p.title == 'Morgen-Übersicht') || app.skills.own.any((s) => s.name == 'Morgen-Übersicht');
+    final cards = <Widget>[
+      TemplateCard(
+        icon: Icons.wb_twilight,
+        title: 'Morgen-Übersicht',
+        text: 'Termine, Wetter und Nachrichten jeden Morgen.',
+        done: hasMorning,
+        onTap: () => setupMorningBriefing(context),
+      ),
+      TemplateCard(
+        icon: Icons.event_note_outlined,
+        title: 'Termine vorbereiten',
+        text: 'Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.',
+        done: hasPrep,
+        onTap: () async {
+          await app.createMeetingPrep();
+          if (context.mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30')));
+          }
+        },
+      ),
+      TemplateCard(
+        icon: Icons.newspaper,
+        title: 'News zu einem Thema',
+        text: 'Täglich die wichtigsten Meldungen zu deinem Thema – z. B. als Karten.',
+        onTap: () => openPlanEditor(context,
+            name: 'News: …',
+            task: 'Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.',
+            output: OutputView.cards),
+      ),
+      TemplateCard(
+        icon: Icons.summarize_outlined,
+        title: 'Wochenrückblick',
+        text: 'Freitags: woran du diese Woche gearbeitet hast und was offen ist.',
+        onTap: () => openPlanEditor(context,
+            name: 'Wochenrückblick',
+            task: 'Fasse zusammen, woran ich diese Woche gearbeitet habe (Chats und Aktivitäten), und nenne offene Punkte.',
+            kind: ScheduleKind.weekly,
+            weekday: DateTime.friday,
+            hour: 16,
+            output: OutputView.list),
+      ),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SectionLabel('Schnell einrichten', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+      LayoutBuilder(builder: (context, box) {
+        final cols = box.maxWidth >= 640 ? 2 : 1;
+        final w = (box.maxWidth - (cols - 1) * 10) / cols;
+        return Wrap(spacing: 10, runSpacing: 10, children: [for (final c in cards) SizedBox(width: w, child: c)]);
+      }),
+      const SizedBox(height: 10),
+      Panel(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: SwitchListTile(
+          title: const Text('Nach Terminen Folgemail vorschlagen'),
+          subtitle: const Text('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.'),
+          value: app.settings.meetingFollowUp,
+          onChanged: (v) => app.setMeetingFollowUp(v),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// „Neu“: was möchtest du anlegen?
+Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) async {
+  final picked = await showSheet<String>(
+    context: context,
+    title: 'Neu anlegen',
+    builder: (ctx) {
+      final t = Theme.of(ctx).textTheme;
+      Widget option(String v, IconData icon, String title, String text) => ListTile(
+            leading: Icon(icon),
+            title: Text(title),
+            subtitle: Text(text, style: t.bodySmall),
+            selected: v == preferred || (preferred == 'all' && v == 'schedule'),
+            onTap: () => Navigator.pop(ctx, v),
+          );
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          option('schedule', Icons.schedule, 'Geplante Aufgabe', 'Läuft von selbst zu einer Uhrzeit – Ergebnis unter „Ergebnisse“'),
+          option('skill', Icons.auto_awesome, 'Skill', 'Anleitung für eine wiederkehrende Aufgabe, Aufruf per /befehl'),
+          option('flow', Icons.account_tree_outlined, 'Ablauf', 'Mehrere Schritte – beschreiben, Junels baut ihn'),
+          option('watch', Icons.radar, 'Beobachtung', 'Melden, wenn sich etwas ändert'),
+          option('empty', Icons.add_box_outlined, 'Leerer Ablauf', 'Selbst aus Bausteinen bauen'),
+          option('import', Icons.download_outlined, 'Importieren', 'SKILL.md, ZIP oder Link'),
+        ]),
+      );
+    },
+  );
+  if (picked == null || !context.mounted) return;
+  switch (picked) {
+    case 'schedule':
+      openPlanEditor(context);
+    case 'skill':
+      openSkillEditor(context, null);
+    case 'flow':
+      describeNewFlow(context);
+    case 'watch':
+      showWatchDialog(context);
+    case 'empty':
+      newEmptyFlow(context);
+    case 'import':
+      showSkillImport(context);
+  }
+}
+
+/// Neue geplante Aufgabe = Skill mit Zeitplan (derselbe Editor, Zeitplan schon eingeschaltet)
+void openPlanEditor(BuildContext context,
+    {String name = '', String task = '', String output = '', ScheduleKind kind = ScheduleKind.daily, int weekday = DateTime.monday, int hour = 8}) {
+  final draft = Skill(id: 'u-${DateTime.now().microsecondsSinceEpoch}', name: name, instructions: task, icon: 'alarm', auto: false, output: output);
+  Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SkillEditor(draft: draft, plan: (kind: kind, hour: hour, minute: 0, weekday: weekday))));
+}
+
+/// Karte für einen Skill, Ablauf, eine geplante Aufgabe oder Beobachtung
+class SkillCard extends StatelessWidget {
+  const SkillCard({super.key, required this.skill});
+  final Skill skill;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final s = skill;
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final wf = s.flowId == null ? null : app.flows.flows.where((f) => f.id == s.flowId).firstOrNull;
+    // reiner Ablauf: Karte des Ablaufs (Status, Stoppen, Fortsetzen, Ein/Aus)
+    if (s.runsFlow && wf != null) {
+      return Padding(padding: const EdgeInsets.only(bottom: 8), child: FlowCard(app: app, wf: wf, command: s.command));
+    }
+    final plan = app.planOf(s);
+    final now = DateTime.now();
+    final running = wf != null && app.flows.isRunning(wf.id);
+    final problem = skillHasProblem(app, s);
+    final on = plan != null ? plan.enabled : s.enabled;
+    final next = plan != null && plan.enabled ? plan.nextAfter(now) : null;
+    final chips = <Widget>[
+      if (plan != null) StatusChip(plan.scheduleLabel, color: on ? c.mint : c.muted, soft: on ? c.mintSoft : c.raised, icon: Icons.schedule, dense: true),
+      if (wf?.trigger != null) StatusChip(wf!.trigger!.summary, color: c.violet, icon: Icons.bolt, dense: true),
+      if (s.output.isNotEmpty) StatusChip(OutputView.labels[s.output] ?? s.output, color: c.blue, icon: outputViewIcon(s.output), dense: true),
+      if (running) StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true),
+      if (problem) StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true),
+      if (s.edited) StatusChip('angepasst', color: c.amber, dense: true),
+      if (plan != null && !on) StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
+    ];
+    final line = [
+      if (next != null) 'nächster Lauf ${whenLabel(next)}',
+      if (plan?.lastRun != null) 'zuletzt ${whenLabel(plan!.lastRun!)}',
+      if (plan == null) s.when.isNotEmpty ? s.when : (s.instructions.split('\n').first),
+    ].where((x) => x.trim().isNotEmpty).join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Panel(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        onTap: () => openSkillEditor(context, s),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: s.builtin ? c.raised : (plan != null ? (on ? c.mintSoft : c.raised) : c.amberSoft),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(skillIcon(s.icon), color: s.builtin ? c.muted : (plan != null ? (on ? c.mint : c.faint) : c.amber)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [
+                Text(s.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                MonoText('/${s.command}', color: c.faint),
+              ]),
+              if (line.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(line, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.bodySmall?.copyWith(color: c.muted)),
+              ],
+              if (chips.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 6, children: chips),
+              ],
+            ]),
+          ),
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            Switch(
+              value: on,
+              onChanged: (v) async {
+                if (plan != null) {
+                  plan.enabled = v;
+                  await app.savePrompt(plan);
+                } else {
+                  app.skills.setEnabled(s, v);
+                }
+              },
+            ),
+            IconButton(
+              tooltip: plan != null ? 'Jetzt ausführen' : 'Im Chat starten',
+              icon: const Icon(Icons.play_arrow_rounded),
+              onPressed: app.running
+                  ? null
+                  : () {
+                      if (plan != null) {
+                        app.runPrompt(plan);
+                        goHome(context);
+                      } else {
+                        goHome(context);
+                        app.newConversation();
+                        app.pendingInput.value = '/${s.command} ';
+                      }
+                    },
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Geplanter Eintrag ohne Skill (z. B. „Termine vorbereiten“)
+class _PlanPromptCard extends StatelessWidget {
+  const _PlanPromptCard({required this.prompt});
+  final SavedPrompt prompt;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final p = prompt;
+    final next = p.enabled ? p.nextAfter(DateTime.now()) : null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Panel(
+        padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+        onTap: () => editPrompt(context, prompt: p),
+        child: Row(children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: p.enabled ? c.mintSoft : c.raised, borderRadius: BorderRadius.circular(12)),
+            child: Icon(p.id == AppController.meetingPrepId ? Icons.event_note_outlined : Icons.alarm, color: p.enabled ? c.mint : c.faint),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              const SizedBox(height: 3),
+              Text([
+                p.scheduleLabel,
+                if (next != null) 'nächster Lauf ${whenLabel(next)}',
+                if (p.lastRun != null) 'zuletzt ${whenLabel(p.lastRun!)}',
+              ].join(' · '), style: t.bodySmall?.copyWith(color: c.muted)),
+            ]),
+          ),
+          Switch(
+            value: p.enabled,
+            onChanged: (v) {
+              p.enabled = v;
+              app.savePrompt(p);
+            },
+          ),
+          IconButton(
+            tooltip: 'Jetzt ausführen',
+            icon: const Icon(Icons.play_arrow_rounded),
+            onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
+          ),
         ]),
       ),
     );
@@ -438,9 +848,11 @@ Future<void> showSkillImport(BuildContext context) async {
 }
 
 class SkillEditor extends StatefulWidget {
-  const SkillEditor({super.key, this.skill, this.draft});
+  const SkillEditor({super.key, this.skill, this.draft, this.plan});
   final Skill? skill; // bearbeiten
   final Skill? draft; // neuer Skill mit Vorbelegung (z. B. aus einem Chat)
+  /// Neue geplante Aufgabe: Zeitplan schon eingeschaltet
+  final ({ScheduleKind kind, int hour, int minute, int weekday})? plan;
 
   @override
   State<SkillEditor> createState() => _SkillEditorState();
@@ -451,11 +863,34 @@ class _SkillEditorState extends State<SkillEditor> {
   late final TextEditingController _name, _slug, _when, _steps, _inputs, _knowledge;
   bool _isNew = false;
 
+  // Zeitplan (geplante Aufgabe = Skill mit Zeitplan)
+  bool _planOn = false;
+  ScheduleKind _kind = ScheduleKind.daily;
+  int _hour = 8, _minute = 0, _weekday = DateTime.monday;
+  bool _notify = true;
+  bool _planEnabled = true;
+
   @override
   void initState() {
     super.initState();
     _isNew = widget.skill == null;
     s = (widget.skill ?? widget.draft)?.copy() ?? Skill(id: 'u-${DateTime.now().microsecondsSinceEpoch}', name: '');
+    final existing = AppScope.read(context).planOf(s);
+    if (existing != null) {
+      _planOn = true;
+      _kind = existing.schedule;
+      _hour = existing.hour;
+      _minute = existing.minute;
+      _weekday = existing.weekday;
+      _notify = existing.notify;
+      _planEnabled = existing.enabled;
+    } else if (widget.plan case final p?) {
+      _planOn = true;
+      _kind = p.kind;
+      _hour = p.hour;
+      _minute = p.minute;
+      _weekday = p.weekday;
+    }
     _name = TextEditingController(text: s.name);
     _slug = TextEditingController(text: s.slug);
     _when = TextEditingController(text: s.when);
@@ -485,8 +920,96 @@ class _SkillEditorState extends State<SkillEditor> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('/${s.command} gibt es schon („${clash.name}“) – anderen Befehl wählen')));
       return false;
     }
-    AppScope.read(context).skills.upsert(s);
+    final app = AppScope.read(context);
+    app.skills.upsert(s);
+    // Zeitplan speichern (an, geändert oder entfernt)
+    if (_planOn || app.planOf(s) != null) {
+      unawaited(app.setSkillPlan(s,
+        kind: _planOn ? _kind : ScheduleKind.off,
+        hour: _hour,
+        minute: _minute,
+        weekday: _weekday,
+        notify: _notify,
+        enabled: _planEnabled));
+    }
     return true;
+  }
+
+  Widget _planSection(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = AppColors.of(context);
+    String two(int v) => v.toString().padLeft(2, '0');
+    return Panel(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          secondary: Icon(Icons.schedule, color: _planOn ? c.mint : c.muted),
+          title: const Text('Automatisch ausführen'),
+          subtitle: Text(_planOn ? 'Geplante Aufgabe – Ergebnis kommt in „Ergebnisse“' : 'Nur wenn du es startest (/befehl oder ▶)'),
+          value: _planOn,
+          onChanged: s.builtin ? null : (v) => setState(() => _planOn = v),
+        ),
+        if (_planOn) ...[
+          const SizedBox(height: 4),
+          SegmentedButton<ScheduleKind>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: ScheduleKind.daily, label: Text('Täglich')),
+              ButtonSegment(value: ScheduleKind.weekdays, label: Text('Mo–Fr')),
+              ButtonSegment(value: ScheduleKind.weekly, label: Text('Wöchentlich')),
+            ],
+            selected: {_kind},
+            onSelectionChanged: (v) => setState(() => _kind = v.first),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            if (_kind == ScheduleKind.weekly) ...[
+              Expanded(
+                child: DropdownButtonFormField<int>(
+                  initialValue: _weekday,
+                  isDense: true,
+                  decoration: const InputDecoration(labelText: 'Tag', isDense: true),
+                  items: [
+                    for (var i = 1; i <= 7; i++) DropdownMenuItem(value: i, child: Text(SavedPrompt.weekdayNames[i - 1])),
+                  ],
+                  onChanged: (v) => setState(() => _weekday = v ?? _weekday),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.access_time, size: 18),
+                label: Text('${two(_hour)}:${two(_minute)} Uhr'),
+                onPressed: () async {
+                  final r = await showTimePicker(context: context, initialTime: TimeOfDay(hour: _hour, minute: _minute));
+                  if (r != null) {
+                    setState(() {
+                      _hour = r.hour;
+                      _minute = r.minute;
+                    });
+                  }
+                },
+              ),
+            ),
+          ]),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Push-Nachricht, wenn fertig'),
+            value: _notify,
+            onChanged: (v) => setState(() => _notify = v),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Internet ohne Rückfrage'),
+            subtitle: Text('Beim geplanten Lauf ist niemand da, der „Ja“ sagt', style: t.bodySmall),
+            value: s.internet == 'allow',
+            onChanged: (v) => setState(() => s.internet = v ? 'allow' : 'ask'),
+          ),
+        ],
+      ]),
+    );
   }
 
   @override
@@ -547,6 +1070,7 @@ class _SkillEditorState extends State<SkillEditor> {
                     if (ok != true) return;
                     await app.flows.remove(wf);
                   }
+                  await app.removeSkillPlan(s);
                   app.skills.remove(s);
                   nav.pop();
               }
@@ -588,6 +1112,45 @@ class _SkillEditorState extends State<SkillEditor> {
             ),
           ),
         ]),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _steps,
+          minLines: 5,
+          maxLines: 14,
+          decoration: const InputDecoration(
+            labelText: 'Was soll Junels tun?',
+            helperText: 'Auftrag oder Anleitung in eigenen Worten – Schritte helfen',
+            helperMaxLines: 2,
+            alignLabelWithHint: true,
+            hintText: '1. Suche im Postfach nach Rechnungen dieses Monats\n2. Liste Betrag, Absender, Datum\n3. Erstelle ein Dokument „Rechnungen <Monat>“',
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text('Wann', style: t.titleSmall),
+        const SizedBox(height: 8),
+        _planSection(context),
+        const SizedBox(height: 18),
+        Text('Darstellung', style: t.titleSmall),
+        const SizedBox(height: 8),
+        OutputViewField(
+          value: s.output,
+          label: 'So soll das Ergebnis aussehen',
+          onChanged: (v) => setState(() {
+            s.output = v;
+            // Datei-Format: passendes Werkzeug gleich mit auswählen
+            final tool = OutputView.requiredTool(v);
+            if (tool != null && !s.tools.contains(tool)) s.tools.add(tool);
+          }),
+        ),
+        const SizedBox(height: 12),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 12),
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          initiallyExpanded: _isNew && !_planOn,
+          title: const Text('Aufruf im Chat'),
+          subtitle: Text('/${s.command}${s.auto ? ' · erkennt passende Nachrichten' : ''}'),
+          children: [
         const SizedBox(height: 10),
         TextField(
           controller: _slug,
@@ -613,26 +1176,25 @@ class _SkillEditorState extends State<SkillEditor> {
           value: s.auto,
           onChanged: (v) => setState(() => s.auto = v),
         ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _steps,
-          minLines: 5,
-          maxLines: 14,
-          decoration: const InputDecoration(
-            labelText: 'Anleitung',
-            alignLabelWithHint: true,
-            hintText: '1. Suche im Postfach nach Rechnungen dieses Monats\n2. Liste Betrag, Absender, Datum\n3. Erstelle ein Dokument „Rechnungen <Monat>“',
-          ),
-        ),
         const SizedBox(height: 10),
         TextField(
           controller: _inputs,
           decoration: const InputDecoration(labelText: 'Angaben, nach denen gefragt wird', hintText: 'z. B. Monat, Konto'),
         ),
+          ],
+        ),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 12),
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          initiallyExpanded: false,
+          title: const Text('Werkzeuge, Internet & Modell'),
+          subtitle: Text(s.tools.isEmpty ? 'Werkzeuge automatisch wie im Chat' : '${s.tools.length} Werkzeuge'),
+          children: [
         const SizedBox(height: 16),
         Text('Werkzeuge', style: t.titleSmall),
         const SizedBox(height: 2),
-        Text('Nur diese darf Junels mit dem Skill nutzen – weniger ist verlässlicher.', style: t.bodySmall?.copyWith(color: c.muted)),
+        Text('Keins gewählt = automatisch wie im Chat. Gewählt = nur diese (verlässlicher).', style: t.bodySmall?.copyWith(color: c.muted)),
         const SizedBox(height: 8),
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final x in tools)
@@ -704,21 +1266,17 @@ class _SkillEditorState extends State<SkillEditor> {
           ],
           onChanged: (v) => setState(() => s.model = v ?? ''),
         ),
-        const SizedBox(height: 14),
-        OutputViewField(
-          value: s.output,
-          label: 'Ausgabe',
-          onChanged: (v) => setState(() {
-            s.output = v;
-            // Datei-Format: passendes Werkzeug gleich mit auswählen
-            final tool = OutputView.requiredTool(v);
-            if (tool != null && !s.tools.contains(tool)) s.tools.add(tool);
-          }),
+          ],
         ),
-        const SizedBox(height: 14),
-        const SizedBox(height: 18),
-        Text('Auslöser & Ablauf', style: t.titleSmall),
-        const SizedBox(height: 2),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 12),
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          initiallyExpanded: false,
+          title: const Text('Auslöser & weitere Schritte'),
+          subtitle: Text(s.flowId == null ? 'z. B. bei Änderung, danach als Word speichern' : 'Ablauf verbunden'),
+          children: [
+        const SizedBox(height: 4),
         Text('Soll der Skill auch von selbst laufen – nach Zeitplan, wenn sich etwas ändert, oder mit weiteren Schritten danach?',
             style: t.bodySmall?.copyWith(color: c.muted)),
         const SizedBox(height: 8),
@@ -755,6 +1313,8 @@ class _SkillEditorState extends State<SkillEditor> {
             ),
           ]);
         }),
+          ],
+        ),
         const SizedBox(height: 6),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,

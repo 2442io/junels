@@ -33,7 +33,7 @@ enum AppSection {
 Widget pageFor(AppSection s) => switch (s) {
       AppSection.inbox => const InboxPage(),
       AppSection.skills => const SkillsPage(),
-      AppSection.tasks => const TasksPage(),
+      AppSection.tasks => const SkillsPage(filter: 'schedule'),
       AppSection.flows => const SkillsPage(filter: 'flow'),
       AppSection.watch => const WatchlistPage(),
       AppSection.prompts => const PromptsPage(),

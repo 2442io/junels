@@ -387,6 +387,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await _loadMcpSecrets();
       conversations = await storage.loadConversations();
       await _mergeRoutineChats();
+      await adoptScheduledPrompts();
       await loadDesigns();
       await watchlist.load();
       await flows.load();
@@ -480,6 +481,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       _backgroundSince ??= DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
       unawaited(notifier.syncNative());
+      unawaited(_syncFeedFromDisk());
       final since = _backgroundSince;
       _backgroundSince = null;
       final c = current;
@@ -2388,16 +2390,27 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         .toList();
     scheduleFollowUps(events);
     if (!await _ensureEngine()) return null;
-    final conv = Conversation(id: newId(), title: 'Termine ${now.day}.${now.month}.');
-    conversations.insert(0, conv);
-    if (!automated) current = conv;
+    // Geplant: in die Sammlung „Ergebnisse“; von Hand gestartet: eigener Chat
+    final Conversation conv;
+    if (automated) {
+      conv = feed;
+    } else {
+      conv = Conversation(id: newId(), title: 'Termine ${now.day}.${now.month}.');
+      conversations.insert(0, conv);
+      current = conv;
+    }
+    ChatEntry tagged(ChatEntry e) => automated
+        ? (e
+          ..origin = '⏱ Termine vorbereiten'
+          ..originId = 'prompt:$meetingPrepId')
+        : e;
     if (events.isEmpty) {
-      conv.entries.add(ChatEntry(role: 'assistant', text: 'Heute stehen keine Termine im Kalender – nichts vorzubereiten.'));
+      conv.entries.add(tagged(ChatEntry(role: 'assistant', text: 'Heute stehen keine Termine im Kalender – nichts vorzubereiten.')));
       await storage.saveConversation(conv);
       notifyListeners();
       return conv;
     }
-    conv.internetAllowed = true; // geplante Aufgabe: Internet für die Firmen-Webseiten freigegeben
+    if (!automated) conv.internetAllowed = true; // Internet für die Firmen-Webseiten freigegeben (geplant: ohnehin ohne Rückfrage)
     final fetch = tools.whereType<WebFetchTool>().firstOrNull;
     for (final e in events) {
       final site = meetingWebsite(e);
@@ -2423,11 +2436,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       final file = File('${outputsDir.path}/Vorbereitung ${e.title.replaceAll(RegExp(r'[^\w äöüÄÖÜß-]'), '').trim()} '
           '${now.day}.${now.month}.md');
       await file.writeAsString('# ${e.title} – $time\n\n$text\n');
-      conv.entries.add(ChatEntry(
+      conv.entries.add(tagged(ChatEntry(
         role: 'assistant',
         text: '**$time ${e.title}**${site == null ? '' : ' · $site'}\n\n${text.split('\n').where((l) => l.trim().isNotEmpty).take(6).join('\n')}',
         files: [file.path],
-      ));
+      )));
+      if (automated) trimFeed();
       await storage.saveConversation(conv);
       notifyListeners();
     }
@@ -3303,9 +3317,81 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       prompts.add(p);
     }
     await storage.savePrompts(prompts);
+    if (p.schedule != ScheduleKind.off) await adoptScheduledPrompts();
     if (p.schedule != ScheduleKind.off && p.notify) unawaited(BackgroundWork.requestNotifyPermission());
     unawaited(_syncAlarms());
     notifyListeners();
+  }
+
+  // ------------------------------------------------- Geplante Aufgaben = Skills mit Zeitplan
+
+  /// Geplante Aufgaben (Prompt mit Zeitplan) werden zu Skills mit Zeitplan: der Inhalt steht im Skill
+  /// (Anleitung, Ausgabeformat, Werkzeuge …), der Eintrag hält nur noch Uhrzeit, Benachrichtigung und An/Aus.
+  Future<void> adoptScheduledPrompts() async {
+    var changed = false;
+    for (final p in prompts) {
+      if (p.schedule == ScheduleKind.off || p.id == meetingPrepId || skills.forPrompt(p.id) != null) continue;
+      if (p.text.trim().startsWith('/')) continue; // ruft schon einen Skill auf
+      final s = Skill(
+        id: 'plan-${p.id}',
+        name: p.title,
+        slug: skills.uniqueSlug(p.title),
+        instructions: p.text.trim(),
+        icon: _planIcon(p.title),
+        auto: false,
+        notifyKind: p.notifyKind,
+        internet: p.allowInternet ? 'allow' : 'ask',
+        promptId: p.id,
+      );
+      skills.upsert(s);
+      p.text = '/${s.command}';
+      changed = true;
+    }
+    if (changed) await storage.savePrompts(prompts);
+  }
+
+  static String _planIcon(String title) {
+    final t = title.toLowerCase();
+    if (t.contains('morgen') || t.contains('briefing')) return 'wb_sunny';
+    if (t.contains('news') || t.contains('nachricht')) return 'travel_explore';
+    if (t.contains('mail')) return 'mail';
+    return 'alarm';
+  }
+
+  /// Zeitplan eines Skills (null = keiner)
+  SavedPrompt? planOf(Skill s) => s.promptId == null ? null : prompts.where((p) => p.id == s.promptId).firstOrNull;
+
+  /// Zeitplan eines Skills setzen bzw. ändern (kind off = Zeitplan entfernen)
+  Future<void> setSkillPlan(Skill s,
+      {required ScheduleKind kind, int hour = 8, int minute = 0, int weekday = DateTime.monday, bool notify = true, bool enabled = true}) async {
+    final old = planOf(s);
+    if (kind == ScheduleKind.off) {
+      if (old != null) await deletePrompt(old);
+      s.promptId = null;
+      skills.upsert(s);
+      return;
+    }
+    final p = old ?? SavedPrompt(title: s.name, text: '/${s.command}');
+    p
+      ..title = s.name
+      ..text = '/${s.command}'
+      ..schedule = kind
+      ..hour = hour
+      ..minute = minute
+      ..weekday = weekday
+      ..notify = notify
+      ..notifyKind = s.notifyKind
+      ..allowInternet = s.internet == 'allow'
+      ..enabled = enabled;
+    s.promptId = p.id;
+    skills.upsert(s);
+    await savePrompt(p);
+  }
+
+  /// Skill mitsamt Zeitplan löschen
+  Future<void> removeSkillPlan(Skill s) async {
+    final p = planOf(s);
+    if (p != null) await deletePrompt(p);
   }
 
   Future<void> deletePrompt(SavedPrompt p) async {
@@ -3483,6 +3569,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Nach einem Abgleich: Prompts speichern und Wecker neu setzen.
   Future<void> promptsChangedExternally() async {
+    await adoptScheduledPrompts();
     await storage.savePrompts(prompts);
     unawaited(_syncAlarms());
     notifyListeners();
@@ -3722,6 +3809,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _checkSchedule() {
     if (!initialized) return;
+    unawaited(_syncFeedFromDisk());
     // Watchlist braucht kein Modell (Zusammenfassen wartet selbst auf eine freie Engine); offline pausiert
     if (deviceOnline) unawaited(watchlist.checkDue());
     if (running || status == EngineStatus.loading) return;
@@ -3765,6 +3853,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     p.lastRun = DateTime.now();
     await storage.savePrompts(prompts);
     unawaited(_syncAlarms());
+    // Skill mit Zeitplan: den Skill aufrufen (Anleitung, Format, Werkzeuge kommen aus dem Skill)
+    final planSkill = skills.forPrompt(p.id);
+    final title = planSkill?.name ?? p.title;
+    final runText = planSkill != null ? '/${planSkill.command}' : p.text;
+    if (planSkill != null && !planSkill.enabled) {
+      planSkill.enabled = true;
+      skills.upsert(planSkill);
+    }
     if (!await _ensureEngine()) {
       if (automated && p.notify) {
         await notifyUser(NotifyKind.warnung, '${p.title} fehlgeschlagen', 'Kein Sprachmodell geladen – ohne Modell läuft der Prompt nicht.',
@@ -3791,16 +3887,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (p.allowInternet) conv.internetAllowed = true;
     // von Hand gestartet: den Routinen-Chat zeigen
     if (routine && !automated) {
+      feedFilter.value = 'prompt:${p.id}';
       current = conv;
       notifyListeners();
     }
     final before = conv.entries.length;
     try {
-      await send(p.text, target: routine ? conv : null, noHistory: routine);
+      await send(runText, target: routine ? conv : null, noHistory: routine);
     } finally {
       settings.activeProfileId = previousProfile;
     }
-    if (routine) _keepOnlyOutput(conv, before, 'Ergebnis $stamp', origin: '⏱ ${p.title}', originId: 'prompt:${p.id}');
+    if (routine) _keepOnlyOutput(conv, before, 'Ergebnis $stamp', origin: '⏱ $title', originId: 'prompt:${p.id}');
     if (automated && p.notify) {
       final answer = conv.entries.lastOrNull;
       final text = answer?.error ?? answer?.text ?? '';
@@ -3809,7 +3906,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           answer?.error != null
               ? NotifyKind.warnung
               : (p.notifyKind == 'auto' ? NotifyKind.ergebnis : NotifyKindX.parse(p.notifyKind, fallback: NotifyKind.ergebnis)),
-          answer?.error != null ? '${p.title} fehlgeschlagen' : p.title, short.length > 240 ? '${short.substring(0, 240)}…' : short,
+          answer?.error != null ? '$title fehlgeschlagen' : title, short.length > 240 ? '${short.substring(0, 240)}…' : short,
           target: conv.id, source: 'prompt:${p.id}');
     }
     notifyListeners();
@@ -3894,6 +3991,34 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     trimFeed();
     f.updated = DateTime.now();
     await storage.saveConversation(f);
+  }
+
+  /// Android: geplante Aufgaben laufen auch im Hintergrund-Prozess und schreiben die Sammlung auf die Platte.
+  /// Neue Einträge von dort übernehmen, bevor die offene App sie mit ihrem Stand überschreibt.
+  DateTime? _feedDiskSeen;
+  Future<void> _syncFeedFromDisk() async {
+    if (headless) return;
+    try {
+      final f = File('${storage.chatsDir.path}/$feedId.json');
+      if (!await f.exists()) return;
+      final m = await f.lastModified();
+      if (_feedDiskSeen != null && !m.isAfter(_feedDiskSeen!)) return;
+      _feedDiskSeen = m;
+      final disk = Conversation.fromJson(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+      final mine = feed;
+      String key(ChatEntry e) => '${e.role}|${e.time.microsecondsSinceEpoch}';
+      final have = {for (final e in mine.entries) key(e)};
+      final add = [for (final e in disk.entries) if (!have.contains(key(e)) && e.text.trim().isNotEmpty) e];
+      if (add.isEmpty) return;
+      mine.entries
+        ..addAll(add)
+        ..sort((a, b) => a.time.compareTo(b.time));
+      trimFeed();
+      mine.updated = DateTime.now();
+      await storage.saveConversation(mine);
+      _feedDiskSeen = await f.lastModified();
+      notifyListeners();
+    } catch (_) {}
   }
 
   /// Letzter Eintrag einer Herkunft in der Sammlung (z. B. Ergebnis eines Ablaufs)
@@ -4143,7 +4268,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     var requiredTool = requiredToolFor(gateText,
         hasFiles: conv.artifacts.any((a) => const {'pptx', 'pdf', 'docx', 'xlsx'}.contains(a['kind'])) ||
             attachments.any((a) => RegExp(r'\.(docx|xlsx|pptx)$', caseSensitive: false).hasMatch(a.name)));
-    if (skill != null) requiredTool = skill.requiredTool.isEmpty ? null : skill.requiredTool;
+    if (skill != null) {
+      requiredTool = skill.requiredTool.isNotEmpty ? skill.requiredTool : (skill.tools.isEmpty ? requiredToolFor(skill.instructions) : null);
+    }
     // Ausgabeformat: in der Nachricht verlangt („als Tabelle“) > Skill > Einstellung des Chats
     final view = voice
         ? ''
@@ -4190,7 +4317,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       runTools = [for (final t in runTools) if (t.name != 'site_search') t];
     }
     // Skill: nur seine Werkzeuge (weniger Auswahl = verlässlicher, gerade für kleine Modelle am Gerät)
-    if (skill != null) {
+    if (skill != null && skill.tools.isEmpty) {
+      // Skill ohne feste Werkzeugliste: Werkzeuge wie im Chat, passend zur Anleitung
+      var list = toolsFor('${skill.instructions} $input');
+      if (conv.internetOff || !deviceOnline || skill.internet == 'block') list = [for (final t in list) if (!t.requiresNetwork) t];
+      if (voice || headless) list = [for (final t in list) if (t.name != 'browser') t];
+      if (skill.files.isNotEmpty) list = [...list, skillLoadTool];
+      runTools = list;
+    } else if (skill != null) {
       var list = [for (final t in activeTools) if (skill.tools.contains(t.name)) t];
       if (conv.internetOff || !deviceOnline || skill.internet == 'block') list = [for (final t in list) if (!t.requiresNetwork) t];
       if (voice || headless) list = [for (final t in list) if (t.name != 'browser') t];
@@ -4252,7 +4386,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (skill != null) {
       final rest = turnInput.replaceFirst(RegExp(r'^\s*/[a-z0-9äöüß-]+\s*', caseSensitive: false), '').trim();
       turnInput = '${skill.brief()}\nAufgabe des Nutzers: '
-          '${rest.isEmpty || skillTask.isEmpty ? '(keine weiteren Angaben – frag nach dem Nötigen oder leg mit der Anleitung los)\n$rest' : rest}';
+          '${rest.isEmpty || skillTask.isEmpty ? (noHistory ? '(geplanter Lauf – niemand kann antworten: leg direkt mit der Anleitung los, ohne Rückfragen)' : '(keine weiteren Angaben – frag nach dem Nötigen oder leg mit der Anleitung los)\n$rest') : rest}';
     }
     if (view.isNotEmpty && calc == null) turnInput = '$turnInput\n\n${OutputView.instruction(view)}';
     final system = _systemText(tools: runTools);

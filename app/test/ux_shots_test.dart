@@ -144,6 +144,9 @@ Future<void> _demo() async {
     SavedPrompt(title: 'E-Mail freundlich umformulieren', text: 'Formuliere freundlich: '),
     SavedPrompt(title: 'Protokoll aus Notizen', text: 'Mach aus diesen Notizen ein Protokoll: '),
   ];
+  // Geplante Aufgaben werden zu Skills mit Zeitplan
+  await app.adoptScheduledPrompts();
+  app.skills.forPrompt(app.prompts[1].id)?.output = 'table';
 
   app.watchlist.items.addAll([
     WatchItem(id: 'w1', kind: WatchKind.page, title: 'Karriere – Beispiel GmbH', target: 'https://beispiel.at/karriere', intervalMinutes: 360, lastCheck: now.subtract(const Duration(minutes: 42)), fingerprint: 'x', events: [
@@ -285,7 +288,10 @@ void main() {
     final shots = <String, (Size, Widget)>{
       'menu': (const Size(412, 1700), const Scaffold(body: Sidebar())),
       'inbox': (const Size(412, 1700), const InboxPage()),
-      'tasks': (const Size(412, 1700), const TasksPage()),
+      'tasks': (const Size(412, 1700), const SkillsPage(filter: 'schedule')),
+      'plan_editor': (const Size(412, 2000), SkillEditor(
+          draft: Skill(id: 'u-new', name: 'News: KI', instructions: 'Die wichtigsten KI-News in 5 Punkten', auto: false, output: 'cards'),
+          plan: (kind: ScheduleKind.weekdays, hour: 7, minute: 30, weekday: 1))),
       'flows': (const Size(412, 1700), const FlowsPage()),
       'flow_editor': (const Size(412, 1700), const FlowEditor(id: 'f1')),
       'watch': (const Size(412, 1700), const WatchlistPage()),

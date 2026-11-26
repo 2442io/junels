@@ -12,9 +12,11 @@ import 'monitor_page.dart';
 import 'prompt_editor.dart';
 import 'theme.dart';
 import 'quick_nav.dart';
+import 'skills_page.dart' show SkillsPage;
 
+/// Geplante Aufgaben sind Skills mit Zeitplan → Skills & Abläufe, Tab „Geplant“
 Future<void> openTasks(BuildContext context) =>
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TasksPage()));
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SkillsPage(filter: 'schedule')));
 
 Future<void> openActivity(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ActivityPage()));
@@ -141,14 +143,14 @@ class TasksPage extends StatelessWidget {
                   final cols = box.maxWidth >= 640 ? 2 : 1;
                   final w = (box.maxWidth - (cols - 1) * 10) / cols;
                   final cards = <Widget>[
-                    _TemplateCard(
+                    TemplateCard(
                       icon: Icons.wb_twilight,
                       title: 'Morgen-Übersicht',
                       text: 'Termine, Wetter und Nachrichten jeden Morgen als Push-Nachricht.',
                       done: hasMorning,
                       onTap: () => setupMorningBriefing(context),
                     ),
-                    _TemplateCard(
+                    TemplateCard(
                       icon: Icons.event_note_outlined,
                       title: 'Termine vorbereiten',
                       text: 'Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.',
@@ -161,7 +163,7 @@ class TasksPage extends StatelessWidget {
                         }
                       },
                     ),
-                    _TemplateCard(
+                    TemplateCard(
                       icon: Icons.newspaper,
                       title: 'News zu einem Thema',
                       text: 'Täglich die wichtigsten Meldungen zu deinem Thema, kurz zusammengefasst.',
@@ -169,7 +171,7 @@ class TasksPage extends StatelessWidget {
                           initialText: 'Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.',
                           scheduled: true),
                     ),
-                    _TemplateCard(
+                    TemplateCard(
                       icon: Icons.summarize_outlined,
                       title: 'Wochenrückblick',
                       text: 'Freitags: was diese Woche in deinen Chats und Aktivitäten passiert ist.',
@@ -208,8 +210,8 @@ class TasksPage extends StatelessWidget {
   }
 }
 
-class _TemplateCard extends StatelessWidget {
-  const _TemplateCard({required this.icon, required this.title, required this.text, required this.onTap, this.done = false});
+class TemplateCard extends StatelessWidget {
+  const TemplateCard({required this.icon, required this.title, required this.text, required this.onTap, this.done = false});
   final IconData icon;
   final String title;
   final String text;
@@ -251,7 +253,8 @@ class PromptsPage extends StatelessWidget {
     final app = AppScope.of(context);
     final c = AppColors.of(context);
     // Alle Vorlagen – auch die mit Zeitplan (die stehen zusätzlich unter „Geplant“)
-    final list = app.prompts.toList();
+    // Geplante Aufgaben, die Skills sind, stehen unter Skills & Abläufe → Geplant
+    final list = app.prompts.where((p) => app.skills.forPrompt(p.id) == null).toList();
     return Scaffold(
       appBar: JAppBar(title: const Text('Vorlagen'), actions: [
         Padding(

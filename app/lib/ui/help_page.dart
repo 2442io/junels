@@ -346,6 +346,7 @@ Schreibst du in der Sammlung, startet ein eigener Chat mit dem zuletzt gezeigten
 
 - **Skill mit Anleitung**: Anleitung + Werkzeuge, im Chat per /befehl. Unter **Auslöser & Ablauf** bekommt er einen Zeitplan, eine Beobachtung oder weitere Schritte (z. B. danach Push-Nachricht, als Word speichern).
 - **Ablauf**: mehrere Bausteine im Canvas (Agent, Skill, Team, Plattform, Web-API, Bedingung …). Jeder Ablauf ist automatisch auch ein Skill – „/name Eingabe“ im Chat startet ihn, das Ergebnis erscheint direkt im Chat.
+- **Geplante Aufgaben** sind Skills mit Zeitplan: im Skill unter „Wann“ „Automatisch ausführen“ einschalten, Uhrzeit wählen – fertig. Die Darstellung (Karten, Tabelle, Word …) wählst du unter „Darstellung“. Ergebnisse landen in „Ergebnisse“.
 - **Beobachtungen** sind Abläufe mit dem Auslöser „Beobachten“.
 
 Die Liste hat Filter: Anleitung, Mit Ablauf, Zeitplan, Beobachtet, Probleme (Fehler oder unterbrochen). Überwachung, Fortsetzen nach Unterbrechung und alle Bausteine bleiben wie gewohnt.

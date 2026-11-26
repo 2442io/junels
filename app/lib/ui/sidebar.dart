@@ -47,7 +47,6 @@ class _SidebarState extends State<Sidebar> {
     final nav = ShellNav.maybeOf(context);
     final active = nav?.embedded == true ? nav!.section : null;
 
-    final scheduled = app.prompts.where((p) => p.schedule != ScheduleKind.off).toList();
     final templates = app.prompts.where((p) => p.schedule == ScheduleKind.off).length;
     final q = _query.trim().toLowerCase();
     // Routinen (geplante Aufgaben, Prozesse) haben eine eigene Kategorie
@@ -232,9 +231,6 @@ class _SidebarState extends State<Sidebar> {
                   item(AppSection.skills,
                       count: app.watchlist.unseen > 0 || app.skills.own.isEmpty ? null : '${app.skills.own.length}',
                       dot: app.watchlist.unseen > 0),
-                  if (scheduled.isNotEmpty)
-                    item(AppSection.tasks,
-                        count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
                 ],
                 // ---- Wissen
                 _GroupHeader(
