@@ -358,7 +358,7 @@ class _FeedCard extends StatelessWidget {
     final time = '${item.time.hour.toString().padLeft(2, '0')}:${item.time.minute.toString().padLeft(2, '0')}';
     final tint = err != null ? c.red : (item.isVoice ? c.violet : (item.originId.startsWith('flow:') ? c.amber : c.mint));
     final text = a == null ? '' : cleanModelText(a.text);
-    final long = text.length > 420 || (a?.cards.isNotEmpty ?? false) || (a?.steps.isNotEmpty ?? false) || (a?.actions.isNotEmpty ?? false);
+    final long = text.length > 280 || '\n'.allMatches(text.trim()).length >= 5 || (a?.cards.isNotEmpty ?? false) || (a?.steps.isNotEmpty ?? false) || (a?.actions.isNotEmpty ?? false);
 
     Widget body;
     if (item.isVoice) {
