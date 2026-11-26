@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.62.0', [
+    'Handy: Schnellmenü als runder Knopf rechts unten auf allen Unterseiten – mit einer Hand erreichbar (im Chat sitzt er rechts über der Eingabe)',
+    'Schnellmenü: oben links öffnet das Menü, oben rechts die Leiste mit Artefakten & Metriken',
+    'Anhänge und Bild-Vorschläge (Zusammenfassen, Text abschreiben …) stehen jetzt in einer wischbaren Zeile über der Eingabe statt den halben Bildschirm zu belegen',
+    'Update-Download setzt nach Verbindungsabbruch automatisch fort (bis zu 8 Versuche, an derselben Stelle) statt mit „Connection closed“ abzubrechen; Fehlermeldungen ohne lange Download-Adresse',
+  ]),
   ('1.61.0', [
     'Gespräch: App-Aktionen (z. B. Spotify) werden im Gespräch per Stimme bestätigt („Soll ich „Weihnachtslieder“ in Spotify abspielen?“) statt still als Karte im Chat zu liegen – und Junels behauptet nicht mehr, es laufe schon',
     'Begleiten öffnet die Seite sofort im Browser und liest das Formular selbst – ohne Umweg über Pläne; danach erklärt Junels das Formular und fragt gleich die ersten Angaben ab',

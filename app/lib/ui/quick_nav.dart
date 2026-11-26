@@ -33,6 +33,8 @@ class QuickNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final route = ModalRoute.of(context);
     if (route is PopupRoute) return const SizedBox.shrink();
+    // Handy: der schwebende Knopf rechts unten übernimmt (eine Hand reicht)
+    if (MediaQuery.sizeOf(context).width < 700) return const SizedBox.shrink();
     // überall gleich: auf jeder Seite, auch am Desktop und auf der Startseite
     return IconButton(
       tooltip: 'Schnell wechseln',
@@ -61,9 +63,12 @@ Future<void> showQuickNav(BuildContext context) async {
     (AppSection.settings, null),
     (AppSection.help, null),
   ];
-  final picked = await showSheet<Object>(
+  final canLeft = ShellControls.openLeft != null;
+  final canRight = ShellControls.openRight != null;
+  final picked = await showModalBottomSheet<Object>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     builder: (ctx) => SafeArea(
       child: Center(
         heightFactor: 1,
@@ -73,6 +78,26 @@ Future<void> showQuickNav(BuildContext context) async {
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // oben links: Menü (Seitenleiste), oben rechts: Artefakte & Metriken
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 8),
+            child: Row(children: [
+              TextButton.icon(
+                icon: const Icon(Icons.menu),
+                label: const Text('Menü'),
+                onPressed: canLeft ? () => Navigator.pop(ctx, 'left') : null,
+              ),
+              const Spacer(),
+              IconButton(tooltip: 'Schließen', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.dashboard_outlined),
+                label: const Text('Artefakte'),
+                iconAlignment: IconAlignment.end,
+                onPressed: canRight ? () => Navigator.pop(ctx, 'right') : null,
+              ),
+            ]),
+          ),
           Row(children: [
             Expanded(
               child: FilledButton.icon(
@@ -133,6 +158,13 @@ Future<void> showQuickNav(BuildContext context) async {
   if (picked == null || !rootContext.mounted) return;
   final navigator = Navigator.of(rootContext);
   navigator.popUntil((r) => r.isFirst);
+  if (picked == 'left' || picked == 'right') {
+    shell?.go(AppSection.chat);
+    // nach dem Schließen der Seiten das Menü öffnen
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    (picked == 'left' ? ShellControls.openLeft : ShellControls.openRight)?.call();
+    return;
+  }
   if (picked == 'monitor') {
     if (rootContext.mounted) Navigator.of(rootContext).push(MaterialPageRoute(builder: (_) => const MonitorPage()));
     return;
@@ -167,3 +199,44 @@ String _short(AppSection s) => switch (s) {
       AppSection.help => 'Hilfe',
       _ => s.label,
     };
+
+
+/// Schwebender Schnellmenü-Knopf rechts unten (Handy, auf Unterseiten). Auf dem Chat sitzt er schon über der Eingabe.
+class QuickFabLayer extends StatelessWidget {
+  const QuickFabLayer({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final phone = mq.size.width < 700;
+    return Stack(children: [
+      child,
+      if (phone && mq.viewInsets.bottom == 0)
+        ListenableBuilder(
+          listenable: Listenable.merge([ShellControls.pages, ShellControls.popup]),
+          builder: (context, _) {
+            if (ShellControls.pages.value <= 1 || ShellControls.popup.value > 0) return const SizedBox.shrink();
+            final scheme = Theme.of(context).colorScheme;
+            return Positioned(
+              right: 16,
+              bottom: 16 + mq.padding.bottom,
+              child: Material(
+                color: scheme.primaryContainer,
+                shape: const CircleBorder(),
+                elevation: 4,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    final ctx = ShellControls.navigatorKey.currentState?.overlay?.context;
+                    if (ctx != null) showQuickNav(ctx);
+                  },
+                  child: SizedBox(width: 54, height: 54, child: Icon(Icons.apps_rounded, color: scheme.onPrimaryContainer, semanticLabel: 'Schnellmenü')),
+                ),
+              ),
+            );
+          },
+        ),
+    ]);
+  }
+}

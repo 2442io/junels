@@ -45,6 +45,40 @@ Widget pageFor(AppSection s) => switch (s) {
     };
 
 /// Stellt den aktiven Bereich bereit (nur auf großen Bildschirmen eingebettet).
+/// Steuerung der Hauptseite von überall (auch aus Unterseiten und dem Schnellmenü):
+/// linkes Menü, rechte Leiste, Seitentiefe für den schwebenden Schnellmenü-Knopf.
+class ShellControls {
+  ShellControls._();
+  static VoidCallback? openLeft;
+  static VoidCallback? openRight;
+  static final navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Anzahl offener Seiten (1 = nur Chat) und ob gerade ein Dialog/Blatt offen ist
+  static final pages = ValueNotifier<int>(1);
+  static final popup = ValueNotifier<int>(0);
+}
+
+class ShellObserver extends NavigatorObserver {
+  void _set(Route<dynamic>? r, int delta) {
+    if (r is PopupRoute) {
+      ShellControls.popup.value = (ShellControls.popup.value + delta).clamp(0, 99);
+    } else if (r is PageRoute) {
+      ShellControls.pages.value = (ShellControls.pages.value + delta).clamp(1, 99);
+    }
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) _set(route, 1);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _set(route, -1);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => _set(route, -1);
+}
+
 class ShellNav extends InheritedWidget {
   const ShellNav({super.key, required this.section, required this.go, required this.embedded, required super.child});
   final AppSection section;

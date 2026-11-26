@@ -85,6 +85,8 @@ class _AppsPageState extends State<AppsPage> {
     Future<void> save() => app.saveAllowedApps(list);
     return Scaffold(
       appBar: JAppBar(title: const Text('Apps steuern')),
+      // rechts unten sitzt der Schnellmenü-Knopf
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: const Text('App freigeben')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),

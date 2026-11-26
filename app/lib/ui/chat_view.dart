@@ -1221,28 +1221,6 @@ class _InputBarState extends State<_InputBar> {
                         ]),
                       ),
                     ),
-                  if (app.attachments.any((a) => isImageFile(a.name)) && !app.running)
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _ctrl,
-                      builder: (context, v, _) => v.text.trim().isNotEmpty
-                          ? const SizedBox.shrink()
-                          : Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Wrap(spacing: 6, runSpacing: 4, children: [
-                                for (final (label, text) in const [
-                                  ('Zusammenfassen', 'Was steht auf dem Bild? Fasse es kurz zusammen.'),
-                                  ('Text abschreiben', 'Schreib den Text auf dem Bild vollständig ab.'),
-                                  ('Termin anlegen', 'Lies Datum, Uhrzeit, Ort und Titel vom Bild und trag den Termin in meinen Kalender ein.'),
-                                  ('Kassenbon', 'Lies den Kassenbon: Geschäft, Datum, Positionen und Gesamtbetrag als Tabelle.'),
-                                ])
-                                  ActionChip(
-                                    avatar: const Icon(Icons.auto_awesome, size: 16),
-                                    label: Text(label),
-                                    onPressed: () => _useSuggestion(text),
-                                  ),
-                              ]),
-                            ),
-                    ),
                   // Skills: „/“ tippen zeigt passende Skills
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _ctrl,
@@ -1279,26 +1257,56 @@ class _InputBarState extends State<_InputBar> {
                       );
                     },
                   ),
+                  // Anhänge und Vorschläge in EINER wischbaren Zeile – sonst belegen sie den halben Bildschirm
                   if (app.attachments.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          for (final a in app.attachments)
-                            InputChip(
-                              avatar: a.path != null && isImageFile(a.name)
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: Image.file(File(a.path!), width: 24, height: 24, fit: BoxFit.cover, cacheWidth: 64),
-                                    )
-                                  : Icon(a.name.toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.description_outlined, size: 16),
-                              label: Text(isImageFile(a.name) ? a.name : '${a.name} (${(a.content.length / 1000).toStringAsFixed(1)}k)'),
-                              onDeleted: app.runningHere ? null : () => app.removeAttachment(a),
-                            ),
-                        ],
-                      ),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _ctrl,
+                      builder: (context, v, _) {
+                        final suggest = app.attachments.any((a) => isImageFile(a.name)) && !app.running && v.text.trim().isEmpty;
+                        String short(String n) => n.length > 22 ? '${n.substring(0, 12)}…${n.substring(n.length - 8)}' : n;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: SizedBox(
+                            height: 40,
+                            child: ListView(scrollDirection: Axis.horizontal, children: [
+                              for (final a in app.attachments)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: InputChip(
+                                    visualDensity: VisualDensity.compact,
+                                    avatar: a.path != null && isImageFile(a.name)
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(4),
+                                            child: Image.file(File(a.path!), width: 24, height: 24, fit: BoxFit.cover, cacheWidth: 64),
+                                          )
+                                        : Icon(a.name.toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.description_outlined, size: 16),
+                                    label: Text(short(a.name)),
+                                    tooltip: a.name,
+                                    onDeleted: app.runningHere ? null : () => app.removeAttachment(a),
+                                  ),
+                                ),
+                              if (suggest) ...[
+                                const VerticalDivider(width: 12, indent: 8, endIndent: 8),
+                                for (final (label, text) in const [
+                                  ('Zusammenfassen', 'Was steht auf dem Bild? Fasse es kurz zusammen.'),
+                                  ('Text abschreiben', 'Schreib den Text auf dem Bild vollständig ab.'),
+                                  ('Termin anlegen', 'Lies Datum, Uhrzeit, Ort und Titel vom Bild und trag den Termin in meinen Kalender ein.'),
+                                  ('Kassenbon', 'Lies den Kassenbon: Geschäft, Datum, Positionen und Gesamtbetrag als Tabelle.'),
+                                ])
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ActionChip(
+                                      visualDensity: VisualDensity.compact,
+                                      avatar: const Icon(Icons.auto_awesome, size: 16),
+                                      label: Text(label),
+                                      onPressed: () => _useSuggestion(text),
+                                    ),
+                                  ),
+                              ],
+                            ]),
+                          ),
+                        );
+                      },
                     ),
                   // KI-Weiche, Internet und Schnellmenü direkt über der Eingabe
                   Padding(

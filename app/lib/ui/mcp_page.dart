@@ -22,6 +22,8 @@ class McpPage extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: JAppBar(title: const Text('MCP-Store & Server')),
+      // rechts unten sitzt der Schnellmenü-Knopf
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _editServer(context, app, null),
         icon: const Icon(Icons.add),

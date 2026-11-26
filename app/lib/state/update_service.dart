@@ -71,10 +71,11 @@ class UpdateService {
     await check();
   }
 
-  Future<HttpClientResponse> _get(HttpClient c, Uri url, {bool binary = false, bool auth = true}) async {
+  Future<HttpClientResponse> _get(HttpClient c, Uri url, {bool binary = false, bool auth = true, int from = 0}) async {
     final req = await c.getUrl(url);
     req.followRedirects = false;
     req.headers.set('User-Agent', 'Junels/$appVersion');
+    if (from > 0) req.headers.set('Range', 'bytes=$from-');
     if (auth && hasToken) req.headers.set('Authorization', 'Bearer $_token');
     req.headers.set('Accept', binary ? 'application/octet-stream' : 'application/vnd.github+json');
     final res = await req.close();
@@ -83,7 +84,7 @@ class UpdateService {
       await res.drain<void>();
       if (loc == null) throw Exception('Weiterleitung ohne Ziel');
       // Download-Server (S3) ohne GitHub-Token aufrufen
-      return _get(c, Uri.parse(loc), binary: binary, auth: false);
+      return _get(c, Uri.parse(loc), binary: binary, auth: false, from: from);
     }
     return res;
   }
@@ -164,17 +165,50 @@ class UpdateService {
     try {
       final dir = Directory('${(await getTemporaryDir()).path}/update')..createSync(recursive: true);
       final file = File('${dir.path}/${info.assetName}');
-      final res = await _get(c, Uri.parse(info.assetUrl), binary: true);
-      if (res.statusCode != 200) throw Exception('Download fehlgeschlagen (${res.statusCode})');
-      final total = res.contentLength > 0 ? res.contentLength : info.size;
-      final sink = file.openWrite();
-      var got = 0;
-      await for (final chunk in res) {
-        sink.add(chunk);
-        got += chunk.length;
-        if (total > 0) progress.value = got / total;
+      // Teil-Download je Version merken: bricht die Verbindung ab (Mobilfunk, Standby), geht es an der Stelle weiter
+      final part = File('${dir.path}/${info.assetName}.${info.build}.part');
+      for (final old in dir.listSync().whereType<File>()) {
+        if (old.path.endsWith('.part') && old.path != part.path) old.deleteSync();
       }
-      await sink.close();
+      var got = part.existsSync() ? part.lengthSync() : 0;
+      var total = info.size;
+      Object? lastError;
+      for (var attempt = 1; attempt <= 8; attempt++) {
+        if (total > 0 && got >= total) break;
+        try {
+          final res = await _get(c, Uri.parse(info.assetUrl), binary: true, from: got).timeout(const Duration(seconds: 30));
+          if (res.statusCode == 416) break; // schon vollständig
+          if (res.statusCode != 200 && res.statusCode != 206) throw Exception('Download fehlgeschlagen (${res.statusCode})');
+          if (res.statusCode == 200 && got > 0) got = 0; // Server kann nicht fortsetzen → von vorn
+          if (res.statusCode == 200 && res.contentLength > 0) total = res.contentLength;
+          if (res.statusCode == 206 && total <= 0 && res.contentLength > 0) total = got + res.contentLength;
+          final sink = part.openWrite(mode: got > 0 ? FileMode.append : FileMode.write);
+          try {
+            // hängt die Verbindung 45 s ohne Daten, neu ansetzen
+            await for (final chunk in res.timeout(const Duration(seconds: 45))) {
+              sink.add(chunk);
+              got += chunk.length;
+              if (total > 0) progress.value = got / total;
+            }
+          } finally {
+            await sink.flush();
+            await sink.close();
+          }
+          if (total <= 0 || got >= total) break;
+        } catch (e) {
+          lastError = e;
+          got = part.existsSync() ? part.lengthSync() : 0;
+          status.value = 'Verbindung unterbrochen – setze fort ($attempt/8) …';
+          appLog('Update', 'Download unterbrochen bei ${(got / 1e6).toStringAsFixed(1)} MB: $e');
+          await Future<void>.delayed(Duration(seconds: attempt * 2));
+        }
+      }
+      if (total > 0 && got < total) {
+        throw Exception('Download nicht vollständig (${(got / 1e6).toStringAsFixed(0)} von ${(total / 1e6).toStringAsFixed(0)} MB) – '
+            'bitte nochmal tippen, er setzt an derselben Stelle fort.${lastError == null ? '' : ' (${'$lastError'.split(', uri =').first})'}');
+      }
+      if (file.existsSync()) file.deleteSync();
+      part.renameSync(file.path);
       status.value = Platform.isAndroid
           ? 'Download fertig – bitte die Installation bestätigen.'
           : 'Download fertig – Junels beendet sich jetzt. Im geöffneten Fenster Junels auf „Programme“ ziehen und „Ersetzen“ wählen.';
@@ -195,7 +229,8 @@ class UpdateService {
         }
       }
     } catch (e) {
-      error.value = '$e'.replaceFirst('Exception: ', '');
+      // lange Download-Adressen nicht anzeigen
+      error.value = '$e'.replaceFirst('Exception: ', '').split(', uri =').first;
       status.value = '';
       appLog('Update', 'Installation fehlgeschlagen: $e', error: true);
     } finally {

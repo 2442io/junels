@@ -69,6 +69,8 @@ class DesignsPage extends StatelessWidget {
     final list = DesignLibrary.user;
     return Scaffold(
       appBar: JAppBar(title: const Text('Eigene Designs')),
+      // rechts unten sitzt der Schnellmenü-Knopf
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showSheet(
           context: context,

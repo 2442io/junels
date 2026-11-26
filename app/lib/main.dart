@@ -8,6 +8,8 @@ import 'state/app_scope.dart';
 import 'state/background_work.dart';
 import 'state/voice_service.dart' show appLog;
 import 'ui/home_shell.dart';
+import 'ui/nav.dart' show ShellControls, ShellObserver;
+import 'ui/quick_nav.dart' show QuickFabLayer;
 import 'ui/theme.dart';
 
 void main() {
@@ -64,6 +66,10 @@ class OfflineAgentApp extends StatelessWidget {
             theme: buildTheme(Brightness.light),
             darkTheme: buildTheme(Brightness.dark),
             themeMode: dark == null ? ThemeMode.system : (dark ? ThemeMode.dark : ThemeMode.light),
+            navigatorKey: ShellControls.navigatorKey,
+            navigatorObservers: [_shellObserver],
+            // Schnellmenü als schwebender Knopf rechts unten – mit einer Hand erreichbar (Handy, Unterseiten)
+            builder: (context, child) => QuickFabLayer(child: child ?? const SizedBox()),
             home: const HomeShell(),
           );
         },
@@ -71,3 +77,5 @@ class OfflineAgentApp extends StatelessWidget {
     );
   }
 }
+
+final _shellObserver = ShellObserver();

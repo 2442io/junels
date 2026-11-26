@@ -304,6 +304,18 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ]);
 
+      ShellControls.openLeft = desktop || _focus ? null : () => _scaffold.currentState?.openDrawer();
+      ShellControls.openRight = compact && !_focus
+          ? () {
+              app.clearInspectorAttention();
+              _scaffold.currentState?.openEndDrawer();
+            }
+          : (_focus
+              ? null
+              : () {
+                  app.clearInspectorAttention();
+                  setState(() => _inspectorChoice = !_inspectorVisible);
+                });
       return ShellNav(
         section: section,
         embedded: desktop && !_focus,
