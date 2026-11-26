@@ -221,6 +221,7 @@ return JSON.stringify({state:'ok',type:d.type,disp:d.disp,len:d.data.length});})
   WebViewController _create() {
     final c = WebViewController();
     unawaited(c.setJavaScriptMode(JavaScriptMode.unrestricted).catchError((Object _) {}));
+    unawaited(_setUserAgent(c));
     // Vormachen: die Seite meldet Klicks und Eingaben über diesen Kanal
     unawaited(c.addJavaScriptChannel('JunelsRec', onMessageReceived: (m) {
       if (!recording) return;
@@ -271,6 +272,22 @@ return JSON.stringify({state:'ok',type:d.type,disp:d.disp,len:d.data.length});})
       },
     )).catchError((Object _) {}));
     return c;
+  }
+
+  /// Manche Seiten (Zalando …) lehnen die eingebaute Ansicht als „veralteten Browser“ ab: am Mac fehlt im
+  /// Standard-Kennzeichen „Version/… Safari“, unter Android steht „wv“ (WebView) drin. → wie ein normaler Browser auftreten.
+  static Future<void> _setUserAgent(WebViewController c) async {
+    try {
+      if (Platform.isMacOS || Platform.isIOS) {
+        await c.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) '
+            'Version/18.1 Safari/605.1.15');
+      } else if (Platform.isAndroid) {
+        final ua = await c.getUserAgent() ?? '';
+        if (ua.isNotEmpty) {
+          await c.setUserAgent(ua.replaceAll('; wv)', ')').replaceAll(RegExp(r' Version/\d+\.\d+'), ''));
+        }
+      }
+    } catch (_) {}
   }
 
   @override

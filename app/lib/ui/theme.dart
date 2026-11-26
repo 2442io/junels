@@ -690,6 +690,8 @@ Future<T?> showSheet<T>({
     showModalBottomSheet<T>(
       context: context,
       isScrollControlled: isScrollControlled,
+      // nie höher als 90 % – lange Inhalte scrollen statt abgeschnitten zu werden
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.9, maxWidth: 720),
       showDragHandle: false,
       useSafeArea: true,
       builder: (ctx) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [

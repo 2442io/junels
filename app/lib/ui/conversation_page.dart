@@ -332,12 +332,15 @@ void _showVoiceSettings(BuildContext context) {
   showSheet<void>(
     context: context,
     showDragHandle: true,
+    // lang: bis fast ganz nach oben und scrollbar (sonst unten abgeschnitten)
+    isScrollControlled: true,
     builder: (ctx) {
       final app = AppScope.of(ctx);
       final st = app.settings;
       final t = Theme.of(ctx).textTheme;
       return SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -452,6 +455,7 @@ void _showVoiceSettings(BuildContext context) {
             ],
           ),
         ),
+      ),
       );
     },
   );

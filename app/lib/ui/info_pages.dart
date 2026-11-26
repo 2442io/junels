@@ -14,6 +14,10 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.67.3', [
+    'Eingebauter Browser tritt wie ein normaler Browser auf (Safari am Mac, Chrome unter Android) – Seiten wie Zalando melden nicht mehr „Browser wird nicht unterstützt“',
+    'Gespräch: Einstellungen-Fenster ist scrollbar und wird nicht mehr abgeschnitten; Fenster von unten allgemein höchstens 90 % hoch',
+  ]),
   ('1.67.2', [
     'Vormachen öffnet eine eigene Seite „Vormachen“ mit dem Browser (statt in „Ergebnisse“): oben Aufnahme-Zähler, Zurück, Fertig; unten die zuletzt aufgezeichneten Schritte',
     'Nach „Fertig“: Schritte prüfen, dann zurück im Skill – mit der geschriebenen Anleitung, Name und Befehl',
