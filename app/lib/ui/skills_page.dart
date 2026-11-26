@@ -1099,7 +1099,7 @@ class _SkillEditorState extends State<SkillEditor> {
           title: const Text('Automatisch ausführen'),
           subtitle: Text(_planOn ? 'Geplante Aufgabe – Ergebnis kommt in „Ergebnisse“' : 'Nur wenn du es startest (/befehl oder ▶)'),
           value: _planOn,
-          onChanged: s.builtin ? null : (v) => setState(() => _planOn = v),
+          onChanged: (v) => setState(() => _planOn = v),
         ),
         if (_planOn) ...[
           const SizedBox(height: 4),
