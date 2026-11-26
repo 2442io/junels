@@ -80,3 +80,67 @@ bool onlyPreamble(String text, String question) {
 
 /// Was der Sprachmodus sagt, wenn das Modell nur über die Frage redet (z. B. weil die Spracherkennung sich verhört hat)
 const voiceNotUnderstood = 'Das habe ich leider nicht richtig verstanden. Kannst du es noch einmal sagen?';
+
+// ------------------------------------------------------------------ Reaktionen statt Antworten
+
+final _emojiOnly = RegExp(
+    r'^(?:\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|\p{Emoji_Modifier})*\s*){1,3}$',
+    unicode: true);
+final _leadEmoji =
+    RegExp(r'^((?:\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|\p{Emoji_Modifier})*){1,3})\s*', unicode: true);
+final _ackWords = RegExp(
+    r'^(alles klar|alles klar,? (ich )?(hab|habe) (es|das|dir das|mir das) (mir )?(gemerkt|notiert)|gemerkt|notiert|verstanden|ok(ay)?|'
+    r'danke( dir)?( für die info)?|super|passt|gut zu wissen|(ich )?(hab|habe) (es|das) (mir )?(gemerkt|notiert)|'
+    r'(ist )?(gemerkt|notiert)|got it|noted)[\s.!]*$',
+    caseSensitive: false);
+
+/// Antwort ist nur eine Reaktion (👍, „👍 Notiert.“, bei einer Mitteilung auch „Alles klar.“) → das Emoji, sonst null.
+String? reactionOf(String answer, {bool infoGiven = false}) {
+  final t = answer.replaceAll(RegExp(r'[*_]'), '').trim();
+  if (t.isEmpty || t.length > 80) return null;
+  if (_emojiOnly.hasMatch(t)) return t.replaceAll(RegExp(r'\s+'), '');
+  final m = _leadEmoji.firstMatch(t);
+  if (m != null && _ackWords.hasMatch(t.substring(m.end).trim())) return m.group(1);
+  if (infoGiven && _ackWords.hasMatch(t)) return '👍';
+  return null;
+}
+
+/// Kurze Bestätigung/Dank („danke“, „ok“, „passt“, „super“) – braucht keine Antwort, nur eine Reaktion.
+String? ackReaction(String input) {
+  final t = input.trim().toLowerCase().replaceAll(RegExp(r'[\s.!]+$'), '');
+  if (t.isEmpty || t.length > 40) return null;
+  if (RegExp(r'^(danke|dankeschön|danke schön|vielen dank|danke dir|thx|thanks|merci)( dir| sehr| vielmals| für (die|deine) hilfe)?( ?[🙏😊👍]+)?$').hasMatch(t)) {
+    return '🙏';
+  }
+  if (RegExp(r'^(ok|okay|oki|passt|super|perfekt|top|cool|alles klar|gut|sehr gut|prima|klasse|genial|toll|👍|👌)( danke)?$').hasMatch(t)) {
+    return '👍';
+  }
+  return null;
+}
+
+final _askOrTask = RegExp(
+    r'\?|\bbitte\b|\b(kannst|könntest|kann|könnte|würdest|sollst|soll|sollte|magst|hilf|hilfst|weißt)\b|'
+    r'^(was|wie|wo|wohin|woher|wann|wer|wen|wem|warum|wieso|weshalb|welche[rsmn]?|ob)\b|'
+    r'\b(erstell|schreib|such|find|zeig|sag|erklär|gib|öffne|spiel|plan|rechne|übersetz|fass|lies|schick|send|buch|bestell|'
+    r'recherchier|vergleich|prüf|check|mach|hol|starte|stopp|lösch|erinnere mich)\w*\b.*\b(mir|mich|uns|du)\b|'
+    r'\bich (möchte|will|würde gern|hätte gern|brauche|suche|frage mich|weiß nicht)\b|'
+    r'\b(problem|fehler|kaputt|geht nicht|funktioniert nicht|hilfe|weiß nicht wie|keine ahnung)\b|'
+    r'https?://|^/',
+    caseSensitive: false);
+final _statementStart = RegExp(
+    r'^(ich|mein\w*|wir|unser\w*|übrigens|zur info|nur zur info|nur so|fyi|info:|notiz:|merk dir|merke dir|'
+    r'heute|morgen|übermorgen|gestern|nächste woche|diese woche|am (montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|wochenende)|'
+    r'ab (jetzt|sofort|morgen|montag|nächster woche))\b',
+    caseSensitive: false);
+
+/// Reine Mitteilung („Ich bin morgen im Büro“, „Mein Zahnarzttermin ist am Freitag“, „Merk dir: …“) –
+/// keine Frage, kein Auftrag. Bewusst vorsichtig: im Zweifel false.
+bool isInfoOnly(String input) {
+  final t = input.trim();
+  if (t.length < 8 || t.length > 400 || t.contains('\n\n')) return false;
+  if (_askOrTask.hasMatch(t)) {
+    // „Merk dir …“ ist immer eine Mitteilung, auch wenn darin „du“ vorkommt
+    if (!RegExp(r'^(merk|merke) (dir|es dir)', caseSensitive: false).hasMatch(t) || t.contains('?')) return false;
+  }
+  return _statementStart.hasMatch(t);
+}

@@ -93,11 +93,21 @@ class _ChatViewState extends State<ChatView> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    final entries = app.current?.entries ?? const <ChatEntry>[];
+    final all = app.current?.entries ?? const <ChatEntry>[];
+    final isFeed = app.current?.id == AppController.feedId;
+    // Sammlung „Ergebnisse“: nach Herkunft filtern; Index bleibt der im Chat (für Wiederholen usw.)
+    final filter = isFeed ? app.feedFilter.value : null;
+    final idx = <int>[
+      for (var i = 0; i < all.length; i++)
+        if (filter == null || (all[i].originId ?? '').startsWith(filter)) i
+    ];
+    final entries = [for (final i in idx) all[i]];
     if (app.runningHere) _scrollToBottom();
+    if (isFeed && app.feedUnread > 0) WidgetsBinding.instance.addPostFrameCallback((_) => app.markFeedSeen());
 
     return Column(
       children: [
+        if (isFeed) _FeedFilterBar(app: app),
         Expanded(
           child: entries.isEmpty
               ? _EmptyState(app: app)
@@ -117,12 +127,20 @@ class _ChatViewState extends State<ChatView> {
                               );
                             }
                             final e = entries[i];
-                            final live = app.runningHere && i == entries.length - 1;
+                            final live = app.runningHere && idx[i] == all.length - 1;
+                            // Nur eine Reaktion (👍) – sitzt schon an deiner Nachricht
+                            if (e.role == 'assistant' && !live && e.reaction != null && e.text.trim().isEmpty && e.error == null && e.actions.isEmpty) {
+                              return SizedBox.shrink(key: ObjectKey(e));
+                            }
+                            final showOrigin = isFeed && e.origin != null && (i == 0 || entries[i - 1].originId != e.originId);
                             return Center(
                               key: ObjectKey(e),
                               child: ConstrainedBox(
                                 constraints: const BoxConstraints(maxWidth: 820),
-                                child: e.role == 'user' ? _UserBubble(entry: e, index: i) : _AssistantMessage(entry: e, live: live, index: i),
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                  if (showOrigin) _OriginHeader(entry: e),
+                                  e.role == 'user' ? _UserBubble(entry: e, index: idx[i]) : _AssistantMessage(entry: e, live: live, index: idx[i]),
+                                ]),
                               ),
                             );
                           },
@@ -153,6 +171,92 @@ class _ChatViewState extends State<ChatView> {
         ),
         _InputBar(onSent: () => _scrollToBottom(force: true)),
       ],
+    );
+  }
+}
+
+// ------------------------------------------------------ Sammlung „Ergebnisse“
+
+/// Herkunft eines Ergebnisses (Ablauf, geplante Aufgabe, Gespräch …) über dem Eintrag
+class _OriginHeader extends StatelessWidget {
+  const _OriginHeader({required this.entry});
+  final ChatEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final t = Theme.of(context).textTheme;
+    final d = entry.time;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final when = d.year == now.year && d.month == now.month && d.day == now.day
+        ? '${two(d.hour)}:${two(d.minute)}'
+        : '${d.day}.${d.month}. ${two(d.hour)}:${two(d.minute)}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 2),
+      child: Row(children: [
+        Expanded(child: Divider(color: c.border, height: 1)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text('${entry.origin} · $when',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: t.labelMedium?.copyWith(color: c.faint)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: c.border, height: 1)),
+      ]),
+    );
+  }
+}
+
+/// Filter der Sammlung nach Herkunft
+class _FeedFilterBar extends StatelessWidget {
+  const _FeedFilterBar({required this.app});
+  final AppController app;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = app.feed.entries;
+    // Herkünfte in der Reihenfolge des letzten Auftretens (neueste zuerst)
+    final seen = <String, String>{};
+    for (final e in entries.reversed) {
+      final id = e.originId;
+      if (id == null || e.origin == null || seen.containsKey(id)) continue;
+      seen[id] = e.origin!;
+    }
+    int count(String prefix) => entries.where((e) => e.role == 'assistant' && (e.originId ?? '').startsWith(prefix)).length;
+    final kinds = <(String, String)>[
+      ('flow:', '⚙ Abläufe'),
+      ('prompt:', '⏱ Geplant'),
+      ('voice:', '🎙 Gespräche'),
+      ('watch:', '👁 Beobachtungen'),
+      ('mcp', '🔌 Extern'),
+    ].where((k) => count(k.$1) > 0).toList();
+    final f = app.feedFilter.value;
+    Widget chip(String label, String? value) => Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: ChoiceChip(
+            visualDensity: VisualDensity.compact,
+            label: Text(label),
+            selected: f == value,
+            onSelected: (_) {
+              app.feedFilter.value = value;
+              app.refreshUi();
+            },
+          ),
+        );
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+        children: [
+          chip('Alle', null),
+          for (final k in kinds) chip(k.$2, k.$1),
+          // einzelne Abläufe/Aufgaben (die neuesten), wenn es mehrere gibt
+          if (seen.length > 1)
+            for (final e in seen.entries.where((e) => !e.key.startsWith('voice:')).take(8)) chip(e.value, e.key),
+        ],
+      ),
     );
   }
 }
@@ -564,7 +668,9 @@ class _UserBubble extends StatelessWidget {
                   ],
                 ),
               ),
+            Stack(clipBehavior: Clip.none, children: [
             Container(
+              margin: EdgeInsets.only(bottom: entry.reaction == null ? 0 : 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
               decoration: BoxDecoration(
                 color: AppColors.of(context).raised,
@@ -590,6 +696,24 @@ class _UserBubble extends StatelessWidget {
                   ]),
                   style: Theme.of(context).textTheme.bodyLarge),
             ),
+            if (entry.reaction != null)
+              Positioned(
+                left: -6,
+                bottom: 0,
+                child: Tooltip(
+                  message: '${AppScope.of(context).settings.agentName} hat reagiert',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.of(context).border),
+                    ),
+                    child: Text(entry.reaction!, style: const TextStyle(fontSize: 15)),
+                  ),
+                ),
+              ),
+            ]),
             actions,
           ],
         ),

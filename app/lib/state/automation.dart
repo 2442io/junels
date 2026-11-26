@@ -908,9 +908,13 @@ class FlowService {
     // Jeder Prozess hat seinen eigenen Chat (Kategorie „Routinen“) – nur die Ergebnisse
     final conv = app.routineConversation('flowrun-${wf.id}', '⚙ ${wf.name}');
     final why = resumeIdx > 0 ? 'fortgesetzt' : (input.isEmpty ? 'gestartet' : 'ausgelöst durch Beobachtung');
-    final log = ChatEntry(role: 'assistant', via: '${now.day}.${now.month}. ${_two(now.hour)}:${_two(now.minute)} · $why');
+    final log = ChatEntry(
+        role: 'assistant',
+        via: '${now.day}.${now.month}. ${_two(now.hour)}:${_two(now.minute)} · $why',
+        origin: '⚙ ${wf.name}',
+        originId: 'flow:${wf.id}');
     conv.entries.add(log);
-    if (conv.entries.length > 40) conv.entries.removeRange(0, conv.entries.length - 40);
+    app.trimFeed();
     app.refreshUi();
     final sw = Stopwatch()..start();
     final meter = _meters[wf.id] = RunMeter();
@@ -1175,7 +1179,7 @@ class FlowService {
           live[wf.id] = '↪ Ablauf „${sub.name}“ läuft …';
           app.refreshUi();
           await run(sub, input: task, event: 'Ablauf ${wf.name}');
-          return app.routineConversation('flowrun-${sub.id}', '⚙ ${sub.name}').entries.lastOrNull?.text ?? '';
+          return app.lastFeedEntry('flow:${sub.id}')?.text ?? '';
         }
         final lines = <String>[];
         void progress(String line) {

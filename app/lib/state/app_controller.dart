@@ -386,6 +386,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       mcpServers = await storage.loadMcpServers();
       await _loadMcpSecrets();
       conversations = await storage.loadConversations();
+      await _mergeRoutineChats();
       await loadDesigns();
       await watchlist.load();
       await flows.load();
@@ -2139,6 +2140,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       system.write('\nWenn der Nutzer etwas Wichtiges über sich erzählt oder dich bittet, '
           'dir etwas zu merken, nutze das Tool remember.');
     }
+    system.write('\n\nREAKTIONEN: Teilt der Nutzer nur etwas mit (keine Frage, kein Auftrag), antworte nur mit einem passenden '
+        'Emoji wie 👍 (im Gesprächsmodus: „Alles klar.“) – ist es für später wichtig, merke es dir vorher. '
+        'Frag nur nach, wenn wirklich etwas Wesentliches fehlt; sonst handle mit sinnvollen Annahmen.');
     system.write('\n\nQUELLEN: Stütze dich auf Auszüge aus der Wissensbasis, angehängte Dokumente oder '
         'Webseiten, wenn vorhanden, und nenne sie im Text (Titel oder Adresse). Nutzt du nur dein eigenes '
         'Wissen, sag das nicht extra – die App ergänzt die Quellenangabe automatisch.');
@@ -2934,7 +2938,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final sw = Stopwatch()..start();
     await flows.run(wf, input: task, event: 'Chat');
-    final log = routineConversation('flowrun-${wf.id}', '⚙ ${wf.name}').entries.lastOrNull;
+    final log = lastFeedEntry('flow:${wf.id}');
     answer.steps
       ..clear()
       ..addAll([for (final s in log?.steps ?? const <StepLog>[]) StepLog.fromJson(s.toJson())]);
@@ -3517,15 +3521,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Chat, in dem Prozess-Läufe protokolliert werden.
-  Conversation automationConversation() {
-    const id = 'automatik';
-    var c = conversations.where((x) => x.id == id).firstOrNull;
-    if (c == null) {
-      c = Conversation(id: id, title: '⚙ Automatik');
-      conversations.insert(0, c);
-    }
-    return c;
-  }
+  Conversation automationConversation() => feed;
 
   /// Modell für Hintergrund-Aufgaben: folgt der Einstellung „Wer antwortet?“,
   /// fragt aber nie nach Cloud-Freigabe (dafür ist niemand da).
@@ -3802,7 +3798,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     } finally {
       settings.activeProfileId = previousProfile;
     }
-    if (routine) _keepOnlyOutput(conv, before, 'Ergebnis $stamp');
+    if (routine) _keepOnlyOutput(conv, before, 'Ergebnis $stamp', origin: '⏱ ${p.title}', originId: 'prompt:${p.id}');
     if (automated && p.notify) {
       final answer = conv.entries.lastOrNull;
       final text = answer?.error ?? answer?.text ?? '';
@@ -3823,31 +3819,101 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   static const _morningNewsLine = 'dann Nachrichten: 2–3 Sätze Überblick ohne Links und ohne Liste der Meldungen – '
       'die Meldungen sieht der Nutzer als Karten nach Thema. Erfinde keine Meldungen oder Links.';
 
-  /// Chats von Routinen (geplante Aufgaben, Prozesse) – eigene Kategorie in der Seitenleiste.
-  static bool isRoutineChat(Conversation c) => c.id.startsWith('routine-') || c.id.startsWith('flowrun-') || c.id == 'automatik';
+  /// Die zentrale Sammlung: alles, was von selbst läuft (Abläufe, geplante Aufgaben, Beobachtungen, externe Aufrufe)
+  /// und Gespräche, die ohne offenen Chat begonnen werden – statt je einem eigenen Chat.
+  static const feedId = 'ergebnisse';
+  static const feedTitle = '📥 Ergebnisse';
+  static const feedMax = 300;
 
-  /// Chat einer Routine: immer derselbe, wird nicht zum aktuellen Chat.
-  Conversation routineConversation(String id, String title) {
-    var c = conversations.where((x) => x.id == id).firstOrNull;
+  static bool isRoutineChat(Conversation c) =>
+      c.id == feedId || c.id.startsWith('routine-') || c.id.startsWith('flowrun-') || c.id == 'automatik' || c.id == 'mcp-extern';
+
+  Conversation get feed {
+    var c = conversations.where((x) => x.id == feedId).firstOrNull;
     if (c == null) {
-      c = Conversation(id: id, title: title);
+      c = Conversation(id: feedId, title: feedTitle);
       conversations.insert(0, c);
-    } else {
-      c.title = title;
     }
     return c;
   }
 
+  /// Früher: ein Chat je Routine. Jetzt landet alles in der Sammlung „Ergebnisse“ (Name bleibt für alte Aufrufer).
+  Conversation routineConversation(String id, String title) => feed;
+
+  /// Herkunft für Gespräche, die in der Sammlung laufen (Gesprächsmodus ohne offenen Chat)
+  ({String origin, String id})? feedTag;
+
+  /// Filter der Sammlung (originId-Präfix wie 'flow:', 'prompt:', 'voice:', 'watch:', 'mcp') – null = alles
+  final feedFilter = ValueNotifier<String?>(null);
+
+  /// Ungelesene Ergebnisse (seit dem letzten Öffnen der Sammlung)
+  int get feedUnread {
+    final seen = settings.feedSeen;
+    final f = conversations.where((x) => x.id == feedId).firstOrNull;
+    if (f == null) return 0;
+    return f.entries.where((e) => e.role == 'assistant' && (seen == null || e.time.isAfter(seen))).length;
+  }
+
+  void markFeedSeen() {
+    if (feedUnread == 0) return;
+    settings.feedSeen = DateTime.now();
+    unawaited(storage.saveSettings(settings));
+    notifyListeners();
+  }
+
+  void openFeed([String? filter]) {
+    feedFilter.value = filter;
+    current = feed;
+    notifyListeners();
+  }
+
+  /// Kürzen auf die neuesten Einträge
+  void trimFeed() {
+    final f = feed;
+    if (f.entries.length > feedMax) f.entries.removeRange(0, f.entries.length - feedMax);
+  }
+
+  /// Einmalig: alte Routinen-Chats in die Sammlung übernehmen (Herkunft = alter Chat-Titel)
+  Future<void> _mergeRoutineChats() async {
+    final old = conversations.where((c) => c.id != feedId && isRoutineChat(c)).toList();
+    if (old.isEmpty) return;
+    final f = feed;
+    for (final c in old) {
+      for (final e in c.entries) {
+        e.origin ??= c.title;
+        if (c.id.startsWith('flowrun-')) e.originId ??= 'flow:${c.id.substring(8)}';
+        if (c.id.startsWith('routine-')) e.originId ??= 'prompt:${c.id.substring(8)}';
+      }
+      f.entries.addAll(c.entries);
+      conversations.remove(c);
+      await storage.deleteConversation(c.id);
+    }
+    f.entries.sort((a, b) => a.time.compareTo(b.time));
+    trimFeed();
+    f.updated = DateTime.now();
+    await storage.saveConversation(f);
+  }
+
+  /// Letzter Eintrag einer Herkunft in der Sammlung (z. B. Ergebnis eines Ablaufs)
+  ChatEntry? lastFeedEntry(String originId) => feed.entries.where((e) => e.originId == originId && e.role == 'assistant').lastOrNull;
+
   /// Nur das Ergebnis behalten: die Frage (Prompt) der Routine entfernen, Zeitpunkt vermerken, ältere Läufe kürzen.
-  void _keepOnlyOutput(Conversation conv, int before, String label) {
+  void _keepOnlyOutput(Conversation conv, int before, String label, {String? origin, String? originId}) {
     final added = conv.entries.sublist(before.clamp(0, conv.entries.length));
     for (final e in added.where((e) => e.role == 'user').toList()) {
       conv.entries.remove(e);
     }
     for (final e in added.where((e) => e.role == 'assistant')) {
-      e.via = label;
+      e
+        ..via = label
+        ..origin = origin ?? e.origin
+        ..originId = originId ?? e.originId;
     }
-    if (conv.entries.length > 40) conv.entries.removeRange(0, conv.entries.length - 40);
+    if (conv.id == feedId) {
+      trimFeed();
+    } else if (conv.entries.length > 40) {
+      conv.entries.removeRange(0, conv.entries.length - 40);
+    }
     conv.updated = DateTime.now();
     unawaited(storage.saveConversation(conv));
     notifyListeners();
@@ -3875,6 +3941,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final c = conversations.where((x) => x.id == id).firstOrNull;
+    if (c == null && (id.startsWith('routine-') || id.startsWith('flowrun-') || id == 'automatik' || id == 'mcp-extern')) {
+      openFeed(id.startsWith('routine-') ? 'prompt:${id.substring(8)}' : id.startsWith('flowrun-') ? 'flow:${id.substring(8)}' : null);
+      return;
+    }
     if (c != null && !running) {
       current = c;
       notifyListeners();
@@ -3991,7 +4061,27 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       return;
     }
+    // In der Sammlung getippt: eigener Chat zur Nachfrage, mit dem zuletzt angezeigten Ergebnis als Zusammenhang
+    if (target == null && !voice && current?.id == feedId) {
+      final f = feedFilter.value;
+      final ctx = feed.entries
+          .where((e) => e.role == 'assistant' && e.text.trim().isNotEmpty && (f == null || (e.originId ?? '').startsWith(f)))
+          .lastOrNull;
+      final c = Conversation(id: newId(), title: ctx?.origin == null ? 'Neuer Chat' : 'Nachfrage: ${ctx!.origin}');
+      if (ctx != null) c.entries.add(ChatEntry.fromJson(ctx.toJson()));
+      conversations.insert(0, c);
+      current = c;
+    }
     final conv = target ?? _ensureConversation();
+    // „Danke“, „passt“, „ok“ nach einer Antwort: nur reagieren, kein Modell nötig
+    final ack = voice || onAnswer != null || headless || noHistory ? null : ackReaction(input);
+    if (ack != null && conv.entries.isNotEmpty && conv.entries.last.role == 'assistant' && attachments.isEmpty && withDocs == null) {
+      conv.entries.add(ChatEntry(role: 'user', text: input.trim(), reaction: ack));
+      conv.updated = DateTime.now();
+      await storage.saveConversation(conv);
+      notifyListeners();
+      return;
+    }
     // Skill: /befehl am Anfang oder automatisch erkannt (eigene Skills)
     // Amtsweg/Lebenslage ohne Adresse → Begleiten (offizielle Infos, dann gemeinsam durchs Formular)
     final skillHit = skills.match(input) ??
@@ -4031,10 +4121,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     final AgentBackend eng = eng0;
 
+    // In der Sammlung zählt nur das eigene Gespräch als Verlauf (nicht die Ergebnisse der Abläufe)
+    final inFeed = conv.id == feedId;
     var history = <ChatMessage>[
       for (final e in conv.entries)
-        if (e.text.trim().isNotEmpty && e.error == null)
-          ChatMessage(e.role, e.role == 'assistant' ? cleanModelText(e.text) : e.text),
+        if ((!inFeed || (feedTag != null && e.originId == feedTag!.id)) && !(e.role == 'user' && e.reaction != null && ackReaction(e.text) != null))
+          if (e.text.trim().isNotEmpty && e.error == null)
+            ChatMessage(e.role, e.role == 'assistant' ? cleanModelText(e.text) : e.text)
+          else if (e.role == 'assistant' && e.reaction != null)
+            ChatMessage('assistant', e.reaction!),
     ];
     // kurze Nachfrage („wien“, „und morgen?“): Werkzeuge auch nach der vorigen Frage wählen
     final prevUser = conv.entries.lastWhere((e) => e.role == 'user', orElse: () => ChatEntry(role: 'user')).text;
@@ -4116,7 +4211,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         viaVoice: voice,
         files: [for (final d in docs) if (d.path != null && isImageFile(d.name)) d.path!]);
     final answer = ChatEntry(role: 'assistant', via: via, skill: skill?.name, view: view.isEmpty || OutputView.isFile(view) ? null : view);
+    if (inFeed && !noHistory && feedTag != null) {
+      for (final e in [user, answer]) {
+        e
+          ..origin = feedTag!.origin
+          ..originId = feedTag!.id;
+      }
+    }
     conv.entries..add(user)..add(answer);
+    if (inFeed) trimFeed();
     _runningAnswer = answer;
     _noteEntries.clear();
     if (conv.title == 'Neuer Chat') {
@@ -4163,6 +4266,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (!deviceOnline) {
       turnInput = '$turnInput\n\n[Hinweis: Das Gerät ist gerade offline. Antworte mit deinem Wissen und sag kurz dazu, '
           'wenn aktuelle Informationen (Wetter, Nachrichten, Preise) erst wieder online abrufbar sind.]';
+    }
+    // Reine Mitteilung: merken (wenn wichtig) und nur reagieren – nachfragen nur, wenn wirklich etwas fehlt
+    final infoGiven = skill == null && !guideNow && calc == null && docs.isEmpty && view.isEmpty && isInfoOnly(input);
+    if (infoGiven) {
+      turnInput = '$turnInput\n\n[Das ist eine Mitteilung, keine Frage. Ist sie für später wichtig, speichere sie mit remember. '
+          '${voice ? 'Antworte dann nur mit „Alles klar.“' : 'Antworte dann NUR mit einem passenden Emoji (meist 👍), ohne weiteren Text.'} '
+          'Frag nur nach, wenn etwas Wesentliches fehlt, das du später brauchst.]';
     }
     if (voice) turnInput = '$turnInput\n\n${voiceTurnHint()}';
     var runner = _makeRunner(eng, system, tools: runTools, requiredTool: requiredTool);
@@ -4466,6 +4576,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       // Hat das Modell lange Adressen geschrieben, die schon als Karte da sind: aus dem Text nehmen
       if (answer.cards.isNotEmpty) answer.text = _stripCardLinks(answer.text);
       if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));
+      // Nur eine Reaktion (👍): als Reaktion an deiner Nachricht zeigen statt als eigene Antwort
+      if (!voice && answer.error == null && answer.cards.isEmpty && answer.text != '_(gestoppt)_' &&
+          !answer.steps.any((st) => const {'create_document', 'create_word', 'create_excel', 'create_presentation', 'create_chart', 'generate_image'}.contains(st.tool))) {
+        final r = reactionOf(answer.text, infoGiven: infoGiven);
+        if (r != null) {
+          user.reaction = r;
+          answer
+            ..reaction = r
+            ..text = '';
+        }
+      }
       if (runStarted != null) answer.durationMs = DateTime.now().difference(runStarted!).inMilliseconds;
       onAnswer?.call(answer.text, true);
       running = false;
@@ -4497,7 +4618,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     }
     // Nicht dabei (App im Hintergrund oder anderer Chat offen) → Push-Nachricht, wenn fertig
     final away = WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed || current?.id != conv.id;
-    if (!voice && !headless && away && answer.text.trim().isNotEmpty) {
+    if (!voice && !headless && away && answer.text.trim().isNotEmpty && !(inFeed && noHistory)) {
       final body = cleanModelText(answer.text).replaceAll(RegExp(r'[*_#>`]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
       unawaited(notifyUser(answer.error == null ? NotifyKind.ergebnis : NotifyKind.warnung,
           answer.error == null ? 'Antwort ist fertig: ${conv.title}' : 'Fehler in „${conv.title}“',
@@ -4508,7 +4629,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // Schnelles Modell ist gescheitert → automatisch mit dem starken Modell wiederholen
     final pairNow = modelPair;
     if (!usedCloud && !forceStrong && !voice && !headless && pairNow != null && via == _modelLabel(pairNow.$1) &&
-        current?.id == conv.id && answer.text != '_(gestoppt)_' && (answer.error != null || answer.text.trim().isEmpty)) {
+        current?.id == conv.id && answer.text != '_(gestoppt)_' && answer.reaction == null && (answer.error != null || answer.text.trim().isEmpty)) {
       final i = conv.entries.indexOf(answer);
       if (i > 0) {
         appLog('Modellwahl', 'Schnelles Modell ohne Antwort – wiederhole mit ${pairNow.$2.displayName}');

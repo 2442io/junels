@@ -120,10 +120,14 @@ class JunelsMcpServer {
     if (skillId != null && skill == null) throw Exception('Skill gibt es nicht mehr.');
     final conv = app.routineConversation('mcp-extern', '🔌 Externe Aufrufe');
     final now = DateTime.now();
-    conv.entries.add(ChatEntry(role: 'user', text: task, via: 'Extern · $label'));
-    final entry = ChatEntry(role: 'assistant', via: '${now.day}.${now.month}. ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} · extern');
+    conv.entries.add(ChatEntry(role: 'user', text: task, via: 'Extern · $label', origin: '🔌 Extern', originId: 'mcp'));
+    final entry = ChatEntry(
+        role: 'assistant',
+        via: '${now.day}.${now.month}. ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} · extern',
+        origin: '🔌 Extern',
+        originId: 'mcp');
     conv.entries.add(entry);
-    if (conv.entries.length > 60) conv.entries.removeRange(0, conv.entries.length - 60);
+    app.trimFeed();
     final meter = RunMeter();
     final sw = Stopwatch()..start();
     var status = 'ok';

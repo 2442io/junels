@@ -14,6 +14,14 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.63.0', [
+    'Neu: „Ergebnisse“ – Abläufe, geplante Aufgaben, externe Aufrufe und Gespräche ohne offenen Chat landen an einem Ort statt in vielen einzelnen Chats',
+    'Ergebnisse zeigen ihre Herkunft (⚙ Ablauf, ⏱ Geplant, 🎙 Gespräch, 🔌 Extern) und lassen sich filtern; Zahl neuer Ergebnisse in der Seitenleiste',
+    'Bisherige Routinen-Chats werden automatisch in die Sammlung übernommen',
+    'In der Sammlung tippen startet einen Chat mit dem Ergebnis als Zusammenhang',
+    'Reaktionen: auf reine Mitteilungen antwortet der Agent mit 👍 an deiner Nachricht (und merkt sich Wichtiges), auf „Danke“/„passt“ sofort ohne Modell',
+    'Rückfragen nur noch, wenn wirklich etwas fehlt',
+  ]),
   ('1.62.0', [
     'Handy: Schnellmenü als runder Knopf rechts unten auf allen Unterseiten – mit einer Hand erreichbar (im Chat sitzt er rechts über der Eingabe)',
     'Schnellmenü: oben links öffnet das Menü, oben rechts die Leiste mit Artefakten & Metriken',

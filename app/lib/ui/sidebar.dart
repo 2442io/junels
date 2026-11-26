@@ -26,7 +26,6 @@ class _SidebarState extends State<Sidebar> {
   String _query = '';
   final _openFolders = <String>{};
   bool _showAll = false;
-  bool _showAllRoutines = false;
 
   /// Aufgeklappte Gruppen – bleiben für die Sitzung gemerkt (Standard: alles zu, nur Chats offen)
   static final Set<String> _open = {'chats'};
@@ -147,6 +146,21 @@ class _SidebarState extends State<Sidebar> {
                         },
                 ),
               ]),
+              if (routines.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                // Alles, was von selbst läuft (Abläufe, geplante Aufgaben, Gespräche), an einem Ort
+                _NavItem(
+                  icon: Icons.inbox_outlined,
+                  label: 'Ergebnisse',
+                  count: app.feedUnread > 0 ? '${app.feedUnread}' : null,
+                  dot: app.feedUnread > 0,
+                  selected: app.current?.id == AppController.feedId && (active == null || active == AppSection.chat),
+                  onTap: () {
+                    app.openFeed();
+                    _go(AppSection.chat);
+                  },
+                ),
+              ],
               const SizedBox(height: 12),
               TextField(
                 controller: _search,
@@ -221,18 +235,6 @@ class _SidebarState extends State<Sidebar> {
                   if (scheduled.isNotEmpty)
                     item(AppSection.tasks,
                         count: scheduled.where((p) => p.enabled).isEmpty ? null : '${scheduled.where((p) => p.enabled).length}'),
-                  if (routines.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 2),
-                      child: Text('Ergebnisse', style: t.labelSmall?.copyWith(color: c.faint)),
-                    ),
-                    for (final conv in routines.take(_showAllRoutines ? 50 : 5)) row(conv),
-                    if (routines.length > 5)
-                      TextButton(
-                        onPressed: () => setState(() => _showAllRoutines = !_showAllRoutines),
-                        child: Text(_showAllRoutines ? 'Weniger anzeigen' : 'Alle ${routines.length} anzeigen'),
-                      ),
-                  ],
                 ],
                 // ---- Wissen
                 _GroupHeader(

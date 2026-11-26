@@ -99,9 +99,18 @@ class ConversationMode {
 
   String get _language => app.settings.sttLanguage == 'auto' ? 'de' : app.settings.sttLanguage;
 
+  /// Gespräch ohne offenen Chat → läuft in der Sammlung „Ergebnisse“ (kein neuer Chat je Gespräch)
+  bool _inFeed = false;
+  String _session = '';
+
   Future<void> start() async {
     if (active) return;
     error.value = null;
+    final cur = app.current;
+    _inFeed = cur == null || cur.id == AppController.feedId || cur.entries.isEmpty;
+    final now = DateTime.now();
+    _session = 'voice:${now.millisecondsSinceEpoch}';
+    app.feedTag = _inFeed ? (origin: '🎙 Gespräch ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}', id: _session) : null;
     timing.value = '';
     if (app.engine == null) throw Exception('Bitte zuerst ein Sprachmodell laden.');
     final stt = app.sttModelPath;
@@ -159,6 +168,7 @@ class ConversationMode {
     _watchdog?.cancel();
     _watchdog = null;
     app.onConsentAsk = null;
+    app.feedTag = null;
     app.voiceConsentHandler = null;
     answerConsent(NetworkChoice.deny);
     _turn++;
@@ -517,7 +527,7 @@ class ConversationMode {
     final sw = Stopwatch()..start();
     var firstMs = -1;
     var saidWait = false;
-    await app.send(text, voice: true, onToolStart: (tool) {
+    await app.send(text, voice: true, target: _inFeed ? app.feed : null, onToolStart: (tool) {
       // Werkzeuge (Internet) brauchen Zeit: kurz Bescheid geben statt stumm zu warten
       if (myTurn != _turn || _speakingStarted || saidWait) return;
       saidWait = true;

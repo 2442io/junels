@@ -590,6 +590,16 @@ Future<void> main() async {
     check(d.contains('ersetzt') && src.content.contains('Neue Zahlen') && src.content.contains('Text C') && !src.content.contains('Text B'), 'Abschnitt im Dokument ersetzt');
   });
 
+  await group('Reaktionen statt Antworten', () async {
+    check(reactionOf('👍') == '👍' && reactionOf('👍 Notiert.') == '👍' && reactionOf('✅ Gemerkt!') == '✅', 'Emoji-Antwort → Reaktion');
+    check(reactionOf('Alles klar.') == null && reactionOf('Alles klar.', infoGiven: true) == '👍', '„Alles klar.“ nur nach Mitteilung');
+    check(reactionOf('👍 Das Wetter morgen: sonnig, 18 Grad.') == null && reactionOf('Das Wetter wird schön.') == null, 'echte Antwort bleibt');
+    check(isInfoOnly('Ich bin morgen im Büro') && isInfoOnly('Merk dir: Anna mag keine Pilze') && isInfoOnly('Mein Sohn heißt Leo'), 'Mitteilungen erkannt');
+    check(!isInfoOnly('Wie wird das Wetter morgen?') && !isInfoOnly('Ich möchte nach Rom fliegen') && !isInfoOnly('Erstelle mir eine PDF') &&
+        !isInfoOnly('Ich habe ein Problem mit meinem Laptop') && !isInfoOnly('Ich brauche eine Excel-Tabelle'), 'Fragen/Aufträge/Probleme nicht');
+    check(ackReaction('Danke!') == '🙏' && ackReaction('passt') == '👍' && ackReaction('okay mach weiter') == null, 'Dank/OK → Reaktion ohne Modell');
+  });
+
   await group('2442 API: Fragelänge', () async {
     final parts = [
       ('Anweisungen', 'A' * 6000),

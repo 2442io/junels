@@ -323,6 +323,19 @@ Am Ende steht eine Liste, das Dringendste zuerst, mit je einem nächsten Schritt
 - Vor dem Absenden prüft Junels offene Pflichtfelder und Fehlermeldungen und fragt dich.''',
   ),
   HelpArticle(
+    id: 'ergebnisse',
+    category: 'Chat',
+    icon: Icons.inbox_outlined,
+    title: 'Ergebnisse & Reaktionen',
+    summary: 'Alles, was von selbst läuft, an einem Ort – und 👍 statt langer Antworten auf Mitteilungen.',
+    keywords: 'ergebnisse sammlung routine ablauf geplant gespräch voice verlauf reaktion daumen emoji mitteilung nachfragen',
+    body: '''**Ergebnisse** (Seitenleiste, ganz oben): Abläufe, geplante Aufgaben, externe Aufrufe und Gespräche, die ohne offenen Chat beginnen, landen alle hier – statt in je einem eigenen Chat. Jeder Eintrag zeigt, woher er kommt (⚙ Ablauf, ⏱ Geplant, 🎙 Gespräch, 🔌 Extern). Oben filterst du nach Art oder nach einem einzelnen Ablauf. Die Zahl zeigt neue Ergebnisse.
+
+Schreibst du in der Sammlung, startet ein eigener Chat mit dem zuletzt gezeigten Ergebnis als Zusammenhang („Nachfrage: …“).
+
+**Reaktionen**: Erzählst du nur etwas („Ich bin morgen im Büro“, „Merk dir: Anna mag keine Pilze“), merkt sich der Agent das bei Bedarf und reagiert mit 👍 an deiner Nachricht – statt einer langen Antwort. Auf „Danke“ oder „passt“ reagiert er sofort mit 🙏/👍, ohne das Modell zu fragen. Nachgefragt wird nur, wenn wirklich etwas fehlt. Im Gespräch sagt er kurz „Alles klar.“''',
+  ),
+  HelpArticle(
     id: 'skills-ablaeufe',
     category: 'Chat',
     icon: Icons.account_tree_outlined,

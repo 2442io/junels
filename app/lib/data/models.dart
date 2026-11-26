@@ -231,6 +231,9 @@ class ChatEntry {
     this.skill,
     this.view,
     List<int>? checked,
+    this.origin,
+    this.originId,
+    this.reaction,
   })  : steps = steps ?? [],
         checked = checked ?? [],
         actions = actions ?? [],
@@ -273,6 +276,13 @@ class ChatEntry {
   /// Checkliste: abgehakte Punkte (Index)
   final List<int> checked;
 
+  /// Herkunft in der Sammlung „Ergebnisse“ (z. B. „⚙ Tech-News“, „⏱ Morgen-Briefing“, „🎙 Gespräch“) und ihre Id
+  String? origin;
+  String? originId;
+
+  /// Reaktion des Agenten auf eine Nutzer-Nachricht (z. B. 👍) – statt einer Antwort
+  String? reaction;
+
   Map<String, Object?> toJson() => {
         'role': role,
         if (via != null) 'via': via,
@@ -280,6 +290,9 @@ class ChatEntry {
         if (skill != null) 'skill': skill,
         if (view != null) 'view': view,
         if (checked.isNotEmpty) 'checked': checked,
+        if (origin != null) 'origin': origin,
+        if (originId != null) 'originId': originId,
+        if (reaction != null) 'reaction': reaction,
         'text': text,
         'steps': steps.map((s) => s.toJson()).toList(),
         'attachments': attachments,
@@ -315,6 +328,9 @@ class ChatEntry {
         cloudOffer: j['cloudOffer'] as bool? ?? false,
         view: j['view'] as String?,
         checked: [for (final x in (j['checked'] as List? ?? const [])) (x as num).toInt()],
+        origin: j['origin'] as String?,
+        originId: j['originId'] as String?,
+        reaction: j['reaction'] as String?,
       );
 }
 
@@ -478,6 +494,8 @@ class AppSettings {
   // Sprache
   String? sttModelId; // Katalog-ID des Whisper-Modells
   String? ttsVoiceId; // Katalog-ID der Piper-Stimme ('__system__' = Stimme des Geräts)
+  /// Sammlung „Ergebnisse“ zuletzt angesehen (für die Zahl ungelesener Ergebnisse)
+  DateTime? feedSeen;
   String systemVoice; // Stimme des Geräts: „Name|Locale“ (leer = Standard)
   String slowVoice; // (veraltet) früher: Stimme zu langsam → Gerätestimme
   /// Gemessenes Tempo der lokalen Stimmen (Ordner → ms je Zeichen), fürs Puffern beim Vorlesen.
@@ -566,6 +584,7 @@ class AppSettings {
 
   Map<String, Object?> toJson() => {
         'contextSize': contextSize,
+        if (feedSeen != null) 'feedSeen': feedSeen!.toIso8601String(),
         'contextAuto': contextAuto,
         'activeProfileId': activeProfileId,
         'lastModelId': lastModelId,
@@ -621,7 +640,8 @@ class AppSettings {
         'toolsVersion': toolsVersion,
       };
 
-  factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
+  factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings._fromJson(j)..feedSeen = DateTime.tryParse(j['feedSeen'] as String? ?? '');
+  factory AppSettings._fromJson(Map<String, dynamic> j) => AppSettings(
         contextSize: (j['contextSize'] as num?)?.toInt() ?? 2048,
         contextAuto: j['contextAuto'] as bool? ?? true,
         activeProfileId: j['activeProfileId'] as String? ?? 'assistant',

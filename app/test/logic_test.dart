@@ -67,6 +67,22 @@ void main() {
     });
   });
 
+  group('Sammlung „Ergebnisse“ & Reaktionen', () {
+    test('Herkunft und Reaktion bleiben gespeichert', () {
+      final e = ChatEntry(role: 'assistant', text: 'x', origin: '⚙ News', originId: 'flow:1', reaction: '👍');
+      final r = ChatEntry.fromJson(e.toJson());
+      expect([r.origin, r.originId, r.reaction], ['⚙ News', 'flow:1', '👍']);
+      final st = AppSettings()..feedSeen = DateTime(2026, 11, 26, 9);
+      expect(AppSettings.fromJson(st.toJson()).feedSeen, DateTime(2026, 11, 26, 9));
+    });
+    test('alte Routinen-Chats zählen zur Sammlung', () {
+      for (final id in ['ergebnisse', 'routine-a', 'flowrun-b', 'automatik', 'mcp-extern']) {
+        expect(AppController.isRoutineChat(Conversation(id: id)), isTrue, reason: id);
+      }
+      expect(AppController.isRoutineChat(Conversation(id: 'c1')), isFalse);
+    });
+  });
+
   group('Vorlagen & Kopien', () {
     test('Kopie-Namen', () {
       expect(copyName('Morgen', {'Morgen (Kopie)'}), 'Morgen (Kopie 2)');
