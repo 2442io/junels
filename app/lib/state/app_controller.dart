@@ -1868,14 +1868,25 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Ordner (Projekte) in der Seitenleiste: aus den Chats – plus angeheftete/gestaltete, auch wenn leer.
+  /// Ordner (Projekte) in der Seitenleiste: aus den Chats – plus angeheftete/gestaltete/angelegte, auch wenn leer.
+  /// Unterordner als Pfad „Eltern/Kind“; Elternordner sind immer mit dabei.
   List<String> get chatFolders {
     final set = <String>{
       for (final c in conversations) if (c.folder != null && c.folder!.trim().isNotEmpty) c.folder!,
       ...settings.folderMeta.keys,
     };
+    for (final f in set.toList()) {
+      final parts = f.split('/');
+      for (var i = 1; i < parts.length; i++) {
+        set.add(parts.take(i).join('/'));
+      }
+    }
     return set.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
+
+  static String folderName(String path) => path.split('/').last;
+  static String? folderParent(String path) => path.contains('/') ? path.substring(0, path.lastIndexOf('/')) : null;
+  static bool inFolder(String? folder, String path) => folder != null && (folder == path || folder.startsWith('$path/'));
 
   Map<String, dynamic> folderMeta(String f) => settings.folderMeta[f] ?? const {};
   bool folderPinned(String f) => folderMeta(f)['pinned'] == true;
@@ -1898,6 +1909,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> setFolderPinned(String f, bool pinned) => _setFolderMeta(f, 'pinned', pinned);
 
+  /// Leeren Ordner anlegen (bleibt sichtbar, auch ohne Chats)
+  Future<void> createFolder(String path) async {
+    final p = path.split('/').map((x) => x.trim()).where((x) => x.isNotEmpty).join('/');
+    if (p.isEmpty) return;
+    await _setFolderMeta(p, 'keep', true);
+  }
+
   /// Symbol und Farbmarke eines Ordners (null = keins)
   Future<void> setFolderStyle(String f, {String? icon, String? color}) async {
     await _setFolderMeta(f, 'icon', icon);
@@ -1913,13 +1931,19 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Ordner auflösen: Chats bleiben, nur ohne Ordner
+  /// Ordner auflösen: Chats und Unterordner rutschen eine Ebene nach oben
   Future<void> dissolveFolder(String f) async {
-    for (final c in conversations.where((c) => c.folder == f)) {
-      c.folder = null;
+    final parent = folderParent(f);
+    String up(String path) => path == f ? (parent ?? '') : '${parent == null ? '' : '$parent/'}${path.substring(f.length + 1)}';
+    for (final c in conversations.where((c) => inFolder(c.folder, f))) {
+      final n = up(c.folder!);
+      c.folder = n.isEmpty ? null : n;
       await storage.saveConversation(c);
     }
     settings.folderMeta.remove(f);
+    for (final k in settings.folderMeta.keys.where((k) => k.startsWith('$f/')).toList()) {
+      settings.folderMeta[up(k)] = settings.folderMeta.remove(k)!;
+    }
     await storage.saveSettings(settings);
     notifyListeners();
   }
@@ -1931,17 +1955,33 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Ordner umbenennen bzw. verschieben (Pfad ändern) – mit allen Unterordnern und Chats
   Future<void> renameFolder(String from, String to) async {
-    final t = to.trim();
-    for (final c in conversations.where((c) => c.folder == from)) {
-      c.folder = t.isEmpty ? null : t;
+    final t = to.split('/').map((x) => x.trim()).where((x) => x.isNotEmpty).join('/');
+    if (t == from || t.startsWith('$from/')) return; // nicht in sich selbst
+    String move(String path) => t.isEmpty ? '' : t + path.substring(from.length);
+    for (final c in conversations.where((c) => inFolder(c.folder, from))) {
+      final n = move(c.folder!);
+      c.folder = n.isEmpty ? null : n;
       await storage.saveConversation(c);
     }
     // Anheften, Symbol und Farbe ziehen mit um
-    final meta = settings.folderMeta.remove(from);
-    if (meta != null && t.isNotEmpty) settings.folderMeta[t] = meta;
-    if (meta != null) await storage.saveSettings(settings);
+    var changed = false;
+    for (final k in settings.folderMeta.keys.where((k) => k == from || k.startsWith('$from/')).toList()) {
+      final meta = settings.folderMeta.remove(k)!;
+      if (t.isNotEmpty) settings.folderMeta[move(k)] = meta;
+      changed = true;
+    }
+    if (changed) await storage.saveSettings(settings);
     notifyListeners();
+  }
+
+  /// Ordner in einen anderen verschieben (null = oberste Ebene)
+  Future<void> moveFolder(String from, String? into) async {
+    if (into != null && (into == from || into.startsWith('$from/'))) return;
+    final to = into == null ? folderName(from) : '$into/${folderName(from)}';
+    if (to == from) return;
+    await renameFolder(from, to);
   }
 
   Future<void> renameConversation(Conversation c, String title) async {

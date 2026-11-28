@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.76.0', [
+    'Ordner in Ordnern: im Ordner-Menü „Unterordner anlegen …“ und „Verschieben nach …“',
+    'Ziehen & Ablegen: Chats und Ordner auf einen Ordner ziehen (Mac mit der Maus, Handy seitlich ziehen); unten „oberste Ebene“ nimmt sie wieder heraus',
+    'Behoben: Ordner mit dem geöffneten Chat ließ sich nicht zuklappen',
+    'Mitschrift mit Tonwelle, die sich mit der Stimme bewegt',
+  ]),
   ('1.75.1', [
     'Behoben: grauer Block unter „Konto, Datenschutz & Abgleich“, wenn auf dem Server (noch) keine Daten liegen',
   ]),

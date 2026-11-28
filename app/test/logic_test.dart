@@ -129,6 +129,16 @@ void main() {
     });
   });
 
+  group('Ordner in Ordnern', () {
+    test('Pfade', () {
+      expect(AppController.folderName('Tests/Mitschriften'), 'Mitschriften');
+      expect(AppController.folderParent('Tests/Mitschriften'), 'Tests');
+      expect(AppController.folderParent('Tests'), isNull);
+      expect(AppController.inFolder('Tests/Mitschriften', 'Tests'), isTrue);
+      expect(AppController.inFolder('Testsuite', 'Tests'), isFalse);
+    });
+  });
+
   group('Sprache & Skills per Stimme', () {
     test('Übersetzung', () {
       appLang = 'en';

@@ -792,4 +792,10 @@ const enStrings = <String, String>{
   'Skills per Stimme: „Skill Preis-Scout, RTX 4070“ – oder unten wählen.': 'Skills by voice: “Skill Price Scout, RTX 4070” – or pick one below.',
   'Nächste Frage mit': 'Next question with',
   'Skill für die nächste Frage': 'Skill for the next question',
+  'Unterordner anlegen …': 'New subfolder …',
+  'Verschieben nach …': 'Move to …',
+  'Neuer Unterordner': 'New subfolder',
+  'Ordner verschieben nach': 'Move folder to',
+  'Oberste Ebene': 'Top level',
+  'Hier ablegen: oberste Ebene': 'Drop here: top level',
 };

@@ -1,3 +1,4 @@
+import 'dart:io';
 // Linke Seitenleiste: Marke, Modellstatus, Schnellaktionen, Arbeitsbereiche,
 // Chats (durchsuchbar) und unten Einstellungen & Hilfe.
 
@@ -27,6 +28,7 @@ class _SidebarState extends State<Sidebar> {
   final _search = TextEditingController();
   String _query = '';
   final _openFolders = <String>{};
+  final _closedFolders = <String>{}; // ausdrücklich zugeklappt (auch wenn der aktuelle Chat darin liegt)
   bool _showAll = false;
 
   /// Aufgeklappte Gruppen – bleiben für die Sitzung gemerkt (Standard: alles zu, nur Chats offen)
@@ -65,7 +67,11 @@ class _SidebarState extends State<Sidebar> {
     final folders = app.chatFolders;
     final looseAll = normal.where((c) => !c.pinned && c.folder == null).toList();
     final loose = _showAll ? looseAll.take(200).toList() : looseAll.take(5).toList();
-    Widget row(Conversation conv) => _ChatRow(
+    Widget row(Conversation conv) => _draggable(
+        context,
+        _Drag(chat: conv.id),
+        conv.title,
+        _ChatRow(
           key: ValueKey(conv.id),
           conv: conv,
           selected: app.current?.id == conv.id && (active == null || active == AppSection.chat),
@@ -75,16 +81,39 @@ class _SidebarState extends State<Sidebar> {
             _go(AppSection.chat);
           },
           onDelete: () => app.deleteConversation(conv),
-        );
+        ));
 
-    Widget folder(String f) => _FolderGroup(
+    bool isOpen(String f) =>
+        !_closedFolders.contains(f) &&
+        (_openFolders.contains(f) || normal.any((c) => AppController.inFolder(c.folder, f) && c.id == app.current?.id));
+    late Widget Function(String f) folder;
+    folder = (String f) => _FolderGroup(
           key: ValueKey('folder:$f'),
           name: f,
           meta: app.folderMeta(f),
-          count: normal.where((c) => c.folder == f).length,
-          open: _openFolders.contains(f) || normal.any((c) => c.folder == f && c.id == app.current?.id),
-          onToggle: () => setState(() => _openFolders.contains(f) ? _openFolders.remove(f) : _openFolders.add(f)),
-          children: [for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv)],
+          count: normal.where((c) => AppController.inFolder(c.folder, f)).length,
+          open: isOpen(f),
+          onToggle: () => setState(() {
+            if (isOpen(f)) {
+              _openFolders.remove(f);
+              _closedFolders.add(f);
+            } else {
+              _closedFolders.remove(f);
+              _openFolders.add(f);
+            }
+          }),
+          onExpand: () {
+            if (!isOpen(f)) {
+              setState(() {
+                _closedFolders.remove(f);
+                _openFolders.add(f);
+              });
+            }
+          },
+          children: [
+            for (final sub in folders.where((x) => AppController.folderParent(x) == f)) folder(sub),
+            for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv),
+          ],
         );
 
     Widget item(AppSection s, {String? count, bool dot = false}) => _NavItem(
@@ -210,7 +239,7 @@ class _SidebarState extends State<Sidebar> {
                   for (final conv in visible) row(conv)
                 else ...[
                   // angeheftet: Ordner und Chats
-                  if (pinned.isNotEmpty || folders.any(app.folderPinned))
+                  if (pinned.isNotEmpty || folders.any((f) => !f.contains('/') && app.folderPinned(f)))
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
                       child: Row(children: [
@@ -219,11 +248,13 @@ class _SidebarState extends State<Sidebar> {
                         Text(tr('Angeheftet'), style: t.labelSmall?.copyWith(color: c.faint)),
                       ]),
                     ),
-                  for (final f in folders.where(app.folderPinned)) folder(f),
+                  for (final f in folders.where((f) => !f.contains('/') && app.folderPinned(f))) folder(f),
                   for (final conv in pinned) row(conv),
-                  if (pinned.isNotEmpty || folders.any(app.folderPinned)) Divider(height: 14, color: c.border),
-                  // Ordner / Projekte
-                  for (final f in folders.where((f) => !app.folderPinned(f))) folder(f),
+                  if (pinned.isNotEmpty || folders.any((f) => !f.contains('/') && app.folderPinned(f))) Divider(height: 14, color: c.border),
+                  // Ordner / Projekte (oberste Ebene; Unterordner stecken darin)
+                  for (final f in folders.where((f) => !f.contains('/') && !app.folderPinned(f))) folder(f),
+                  // Ablegen hier = aus dem Ordner nehmen / Ordner auf oberste Ebene
+                  _TopDrop(),
                   for (final conv in loose) row(conv),
                 ],
                 if (q.isEmpty && looseAll.length > 5)
@@ -530,19 +561,32 @@ class _ChatRowState extends State<_ChatRow> {
 
 
 /// Ordner wählen oder neu anlegen. '-' = aus dem Ordner nehmen.
-Future<String?> _pickFolder(BuildContext context, List<String> folders, String? current) => showDialog<String>(
+Future<String?> _pickFolder(BuildContext context, List<String> folders, String? current, {String? title, bool topLevel = false}) =>
+    showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text(tr('In Ordner verschieben')),
+        title: Text(title ?? tr('In Ordner verschieben')),
         children: [
+          if (topLevel)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, '-'),
+              child: Row(children: [
+                Icon(current == null ? Icons.check : Icons.vertical_align_top, size: 18),
+                const SizedBox(width: 10),
+                Expanded(child: Text(tr('Oberste Ebene'))),
+              ]),
+            ),
           for (final f in folders)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, f),
-              child: Row(children: [
-                Icon(f == current ? Icons.folder : Icons.folder_outlined, size: 18),
-                const SizedBox(width: 10),
-                Expanded(child: Text(f)),
-              ]),
+              child: Padding(
+                padding: EdgeInsets.only(left: 16.0 * ('/'.allMatches(f).length)),
+                child: Row(children: [
+                  Icon(f == current ? Icons.folder : Icons.folder_outlined, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(AppController.folderName(f))),
+                ]),
+              ),
             ),
           SimpleDialogOption(
             onPressed: () async {
@@ -551,7 +595,7 @@ Future<String?> _pickFolder(BuildContext context, List<String> folders, String? 
             },
             child: Row(children: [Icon(Icons.create_new_folder_outlined, size: 18), SizedBox(width: 10), Text(tr('Neuer Ordner …'))]),
           ),
-          if (current != null)
+          if (current != null && !topLevel)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, '-'),
               child: Row(children: [Icon(Icons.folder_off_outlined, size: 18), SizedBox(width: 10), Text(tr('Aus dem Ordner nehmen'))]),
@@ -587,7 +631,9 @@ class _FolderGroup extends StatefulWidget {
     required this.open,
     required this.onToggle,
     required this.children,
+    this.onExpand,
   });
+  final VoidCallback? onExpand;
   final String name;
   final Map<String, dynamic> meta;
   final int count;
@@ -610,7 +656,9 @@ class _FolderGroupState extends State<_FolderGroup> {
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: const Icon(Icons.folder_outlined), title: Text(f, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ListTile(leading: const Icon(Icons.folder_outlined), title: Text(f.replaceAll('/', ' › '), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ListTile(leading: const Icon(Icons.create_new_folder_outlined), title: Text(tr('Unterordner anlegen …')), onTap: () => Navigator.pop(ctx, 'sub')),
+          ListTile(leading: const Icon(Icons.drive_file_move_outline), title: Text(tr('Verschieben nach …')), onTap: () => Navigator.pop(ctx, 'move')),
           ListTile(
             leading: Icon(pinned ? Icons.push_pin_outlined : Icons.push_pin),
             title: Text(pinned ? tr('Lösen') : tr('Anheften')),
@@ -634,9 +682,22 @@ class _FolderGroupState extends State<_FolderGroup> {
       case 'style':
         final s = await pickStyle(context, title: f, icon: widget.meta['icon'] as String?, color: widget.meta['color'] as String?);
         if (s != null) await app.setFolderStyle(f, icon: s.$1, color: s.$2);
+      case 'sub':
+        final t = await _askText(context, tr('Neuer Unterordner'), '');
+        if (t != null) {
+          await app.createFolder('$f/${t.replaceAll('/', '-')}');
+          widget.onExpand?.call();
+        }
+      case 'move':
+        final to = await _pickFolder(context, app.chatFolders.where((x) => x != f && !x.startsWith('$f/')).toList(), AppController.folderParent(f),
+            title: tr('Ordner verschieben nach'), topLevel: true);
+        if (to != null) await app.moveFolder(f, to == '-' ? null : to);
       case 'rename':
-        final t = await _askText(context, tr('Ordner umbenennen'), f);
-        if (t != null) await app.renameFolder(f, t);
+        final t = await _askText(context, tr('Ordner umbenennen'), AppController.folderName(f));
+        if (t != null) {
+          final parent = AppController.folderParent(f);
+          await app.renameFolder(f, parent == null ? t.replaceAll('/', '-') : '$parent/${t.replaceAll('/', '-')}');
+        }
       case 'dissolve':
         await app.dissolveFolder(f);
     }
@@ -651,8 +712,32 @@ class _FolderGroupState extends State<_FolderGroup> {
     final tint = tagColor(color);
     final mark = styleMark(context, icon: icon, color: color, size: 17) ??
         Icon(open ? Icons.folder_open_outlined : Icons.folder_outlined, size: 17, color: c.muted);
+    final app = AppScope.read(context);
+    final f = widget.name;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      MouseRegion(
+      DragTarget<_Drag>(
+        onWillAcceptWithDetails: (d) {
+          final x = d.data;
+          final ok = x.chat != null
+              ? app.conversations.any((c) => c.id == x.chat && c.folder != f)
+              : (x.folder != null && x.folder != f && !f.startsWith('${x.folder}/') && AppController.folderParent(x.folder!) != f);
+          if (ok) widget.onExpand?.call();
+          return ok;
+        },
+        onAcceptWithDetails: (d) async {
+          final x = d.data;
+          if (x.chat != null) {
+            final conv = app.conversations.where((c) => c.id == x.chat).firstOrNull;
+            if (conv != null) await app.setFolder(conv, f);
+          } else if (x.folder != null) {
+            await app.moveFolder(x.folder!, f);
+          }
+        },
+        builder: (context, cand, _) => Container(
+          decoration: cand.isEmpty
+              ? null
+              : BoxDecoration(color: c.mintSoft, borderRadius: BorderRadius.circular(10), border: Border.all(color: c.mint, width: 1.5)),
+          child: _draggable(context, _Drag(folder: f), AppController.folderName(f), MouseRegion(
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: InkWell(
@@ -666,7 +751,7 @@ class _FolderGroupState extends State<_FolderGroup> {
               if (icon == null && tint != null) Icon(open ? Icons.folder_open : Icons.folder, size: 17, color: tint) else mark,
               const SizedBox(width: 10),
               Expanded(
-                child: Text(widget.name,
+                child: Text(AppController.folderName(widget.name),
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
               ),
               MonoText('${widget.count}', size: 11, color: c.faint),
@@ -680,6 +765,8 @@ class _FolderGroupState extends State<_FolderGroup> {
               Icon(open ? Icons.expand_less : Icons.expand_more, size: 17, color: c.faint),
             ]),
           ),
+        ),
+      )),
         ),
       ),
       if (open)
@@ -727,6 +814,91 @@ class _GroupHeader extends StatelessWidget {
             if (onTap != null) Icon(open ? Icons.expand_less : Icons.expand_more, size: 18, color: c.faint),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+
+/// Was gezogen wird: ein Chat oder ein Ordner
+class _Drag {
+  const _Drag({this.chat, this.folder});
+  final String? chat;
+  final String? folder;
+}
+
+bool get _touch => Platform.isAndroid || Platform.isIOS;
+
+/// Läuft gerade ein Ziehen? (zeigt die Ablagefläche „oberste Ebene“)
+final _dragging = ValueNotifier<bool>(false);
+
+/// Ziehbar machen: am Mac sofort mit der Maus, am Handy seitlich ziehen (senkrecht bleibt Scrollen)
+Widget _draggable(BuildContext context, _Drag data, String label, Widget child) {
+  final c = AppColors.of(context);
+  final feedback = Material(
+    color: Colors.transparent,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.mint),
+        boxShadow: const [BoxShadow(blurRadius: 12, color: Color(0x33000000))],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(data.folder != null ? Icons.folder_outlined : Icons.chat_bubble_outline, size: 16, color: c.mint),
+        const SizedBox(width: 8),
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      ]),
+    ),
+  );
+  return Draggable<_Drag>(
+    data: data,
+    affinity: _touch ? Axis.horizontal : null,
+    dragAnchorStrategy: pointerDragAnchorStrategy,
+    feedback: feedback,
+    childWhenDragging: Opacity(opacity: 0.4, child: child),
+    onDragStarted: () => _dragging.value = true,
+    onDragEnd: (_) => _dragging.value = false,
+    onDraggableCanceled: (_, __) => _dragging.value = false,
+    child: child,
+  );
+}
+
+/// Ablagefläche unter den Ordnern: Chat aus dem Ordner nehmen bzw. Ordner auf die oberste Ebene
+class _TopDrop extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.read(context);
+    final c = AppColors.of(context);
+    return DragTarget<_Drag>(
+      onWillAcceptWithDetails: (d) =>
+          d.data.chat != null ? app.conversations.any((x) => x.id == d.data.chat && x.folder != null) : (d.data.folder?.contains('/') ?? false),
+      onAcceptWithDetails: (d) async {
+        if (d.data.chat != null) {
+          final conv = app.conversations.where((x) => x.id == d.data.chat).firstOrNull;
+          if (conv != null) await app.setFolder(conv, null);
+        } else if (d.data.folder != null) {
+          await app.moveFolder(d.data.folder!, null);
+        }
+      },
+      builder: (context, cand, _) => ValueListenableBuilder<bool>(
+        valueListenable: _dragging,
+        builder: (context, dragging, _) => !dragging
+          ? const SizedBox(height: 6)
+          : Container(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: cand.isEmpty ? Colors.transparent : c.mintSoft,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: c.mint.withValues(alpha: cand.isEmpty ? 0.4 : 1))),
+              child: Row(children: [
+                Icon(Icons.vertical_align_top, size: 16, color: c.mint),
+                const SizedBox(width: 8),
+                Text(tr('Hier ablegen: oberste Ebene'), style: TextStyle(color: c.mint, fontWeight: FontWeight.w600, fontSize: 13)),
+              ]),
+            ),
       ),
     );
   }

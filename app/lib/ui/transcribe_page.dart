@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // Mitschrift: Gespräch mitschreiben (auf dem Gerät), danach auswerten lassen.
 
 import 'package:flutter/material.dart';
@@ -123,22 +125,18 @@ class _TranscribePageState extends State<TranscribePage> {
                   const SizedBox(width: 8),
                   Text(MeetingTranscriber.stamp(trn.elapsed), style: t.titleLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: app.voice.mic.level,
-                      builder: (context, lvl, _) => ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: trn.active && !trn.paused ? lvl.clamp(0, 1).toDouble() : 0,
-                          minHeight: 6,
-                          backgroundColor: c.raised,
-                        ),
-                      ),
-                    ),
-                  ),
+                  const Spacer(),
                   const SizedBox(width: 12),
                   Text('${trn.words} Wörter', style: t.bodySmall),
                 ]),
+              ),
+              // Tonwelle: bewegt sich mit der Lautstärke, ruhig in der Pause
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: app.voice.mic.level,
+                  builder: (context, lvl, _) => LevelWave(level: trn.active && !trn.paused ? lvl.clamp(0, 1).toDouble() : 0, live: trn.active && !trn.paused),
+                ),
               ),
               if (trn.error != null)
                 Padding(padding: const EdgeInsets.all(16), child: Text(trn.error!, style: t.bodyMedium?.copyWith(color: scheme.error))),
@@ -247,6 +245,62 @@ class _ModelsCard extends StatelessWidget {
               ? FilledButton.tonal(onPressed: trn.downloadModels, child: Text(tr('Laden')))
               : TextButton(onPressed: trn.cancelDownload, child: Text(tr('Abbrechen'))),
         ]),
+      ),
+    );
+  }
+}
+
+
+/// Tonwelle wie ein Sprachmemo: Balken in der Mitte höher, bewegen sich mit der Lautstärke.
+class LevelWave extends StatefulWidget {
+  const LevelWave({super.key, required this.level, this.live = true, this.height = 96});
+  final double level;
+  final bool live;
+  final double height;
+
+  @override
+  State<LevelWave> createState() => _LevelWaveState();
+}
+
+class _LevelWaveState extends State<LevelWave> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+  double _smooth = 0;
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    const bars = 13;
+    // Form: in der Mitte am höchsten
+    const shape = [0.28, 0.36, 0.5, 0.78, 0.66, 0.92, 1.0, 0.7, 0.86, 0.6, 0.55, 0.4, 0.3];
+    return Container(
+      height: widget.height + 24,
+      decoration: BoxDecoration(color: c.redSoft, borderRadius: BorderRadius.circular(Ui.rLg)),
+      child: AnimatedBuilder(
+        animation: _ctl,
+        builder: (context, _) {
+          // Pegel weich nachführen (sonst zappelt es)
+          final target = widget.live ? (0.18 + widget.level * 1.6).clamp(0.0, 1.0) : 0.0;
+          _smooth += (target - _smooth) * 0.25;
+          final t = _ctl.value * 2 * math.pi;
+          return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var i = 0; i < bars; i++)
+              Container(
+                width: 9,
+                margin: const EdgeInsets.symmetric(horizontal: 3.5),
+                height: 12 +
+                    (widget.height - 12) *
+                        shape[i] *
+                        (widget.live ? _smooth * (0.65 + 0.35 * math.sin(t * (1 + i % 3 * 0.35) + i * 0.9)) : 0.08),
+                decoration: BoxDecoration(color: c.red.withValues(alpha: widget.live ? 0.9 : 0.45), borderRadius: BorderRadius.circular(9)),
+              ),
+          ]);
+        },
       ),
     );
   }
