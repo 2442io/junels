@@ -873,7 +873,7 @@ class SkillLibrary extends ChangeNotifier {
   (Skill, String)? matchSpoken(String input) {
     final t = input.trim();
     final m = RegExp(
-            r'^(?:bitte\s+|please\s+)?(?:(?:mit\s+(?:dem\s+)?|nutze\s+(?:den\s+)?|starte\s+(?:den\s+)?|use\s+(?:the\s+)?|run\s+(?:the\s+)?|start\s+(?:the\s+)?)?'
+            r'^(?:bitte\s+|please\s+)?(?:mit\s+(?:dem\s+)?|nutze\s+(?:den\s+)?|starte\s+(?:den\s+)?|use\s+(?:the\s+)?|run\s+(?:the\s+)?|start\s+(?:the\s+)?)?'
             r'(?:skill|slash|schrägstrich)\b[\s,:]*',
             caseSensitive: false)
         .firstMatch(t);
