@@ -12,6 +12,10 @@ import 'package:offline_agent/state/skill_import.dart';
 import 'package:agent_engine/agent_engine.dart';
 import 'package:offline_agent/state/run_stats.dart';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:offline_agent/state/meeting_audio.dart';
+import 'package:offline_agent/state/transcriber.dart';
 
 void main() {
   group('Werkzeug-Pflicht (Präsentation statt Folienliste)', () {
@@ -64,6 +68,63 @@ void main() {
       expect(s.inQuiet(DateTime(2026, 1, 1, 6)), isTrue);
       expect(s.inQuiet(DateTime(2026, 1, 1, 12)), isFalse);
       expect(s.quietEnd(DateTime(2026, 1, 1, 23)), DateTime(2026, 1, 2, 7));
+    });
+  });
+
+  group('Mitschrift: Sprecher, Musik, Geräusche', () {
+    Float32List v(List<double> x) {
+      final f = Float32List.fromList(x);
+      var n = 0.0;
+      for (final e in f) {
+        n += e * e;
+      }
+      for (var i = 0; i < f.length; i++) {
+        f[i] /= math.sqrt(n);
+      }
+      return f;
+    }
+
+    test('Stimmen werden Sprechern zugeordnet', () {
+      final t = SpeakerTracker();
+      final a = v([1, 0, 0, 0.1]), a2 = v([0.95, 0.05, 0, 0.12]), b = v([0, 1, 0.1, 0]);
+      expect(t.assign(a, seconds: 4), 0);
+      expect(t.assign(b, seconds: 4), 1);
+      expect(t.assign(a2, seconds: 4), 0);
+      // kurz und unklar: beim vorigen Sprecher bleiben
+      expect(t.assign(v([0, 0, 1, 0]), seconds: 1, previous: 1), 1);
+    });
+
+    test('Musik und Geräusche erkennen', () {
+      expect(soundKind([('Music', 0.8), ('Speech', 0.1)])?.$1, 'music');
+      expect(soundKind([('Singing', 0.6), ('Music', 0.5), ('Speech', 0.3)])?.$2, 'Gesang');
+      expect(soundKind([('Speech', 0.9), ('Music', 0.2)]), isNull);
+      expect(soundKind([('Applause', 0.7)])?.$2, 'Applaus');
+      expect(whisperMarker('[Musik]')?.$1, 'music');
+      expect(whisperMarker('(Applaus)')?.$2, 'Applaus');
+      expect(whisperMarker('Untertitel im Auftrag des ZDF, 2021')?.$1, 'skip');
+      expect(whisperMarker('Ganz normaler Satz.'), isNull);
+    });
+
+    test('Interview-Darstellung mit Namen', () {
+      final t = MeetingTranscript(title: 'Test', speakers: ['Anna', 'Max'], lines: [
+        TranscriptLine(const Duration(seconds: 1), 'Hallo zusammen.', speaker: 0),
+        TranscriptLine(const Duration(seconds: 4), 'Wir starten.', speaker: 0),
+        TranscriptLine(const Duration(seconds: 8), '', kind: 'music', label: 'Musik'),
+        TranscriptLine(const Duration(seconds: 20), 'Super.', speaker: 1),
+      ]);
+      final s = t.interview();
+      expect(s, contains('Anna: Hallo zusammen. Wir starten.'));
+      expect(s, contains('♪ Musik'));
+      expect(s, contains('Max: Super.'));
+      expect(t.usedSpeakers, [0, 1]);
+    });
+
+    test('Aufnahme als WAV', () {
+      final f = File('${Directory.systemTemp.createTempSync('wav').path}/a.wav');
+      final w = WavWriter(f)..open();
+      w.add(Float32List(16000));
+      w.close();
+      expect(f.lengthSync(), 44 + 32000);
     });
   });
 

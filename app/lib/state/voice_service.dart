@@ -952,6 +952,9 @@ class SileroClassifier {
 
 bool _sherpaReady = false;
 
+/// sherpa-onnx laden (für weitere Modelle wie Sprecher- und Geräuscherkennung).
+void ensureSherpa() => _initSherpa();
+
 /// Lädt die sherpa-onnx-Bibliothek; probiert mehrere Orte (macOS-App-Bundle).
 void _initSherpa() {
   if (_sherpaReady) return;

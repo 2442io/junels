@@ -1,5 +1,6 @@
 // Anzeige von Dateien im Chat: Bild-Vorschauen und Dateikarten mit Öffnen/Teilen/Speichern.
 
+import 'transcript_view.dart' show TranscriptCard;
 import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart' show XlsxBook, officeText, colName;
@@ -75,7 +76,7 @@ class FileGallery extends StatelessWidget {
           Wrap(spacing: 8, runSpacing: 8, children: [for (final p in images) _aiAware(p)]),
         if (images.isNotEmpty && others.isNotEmpty) const SizedBox(height: 8),
         for (final p in others) ...[
-          FileCard(p),
+          if (p.endsWith('.mitschrift.json')) TranscriptCard(p) else FileCard(p),
           if (RegExp(r'\.(docx|xlsx)$', caseSensitive: false).hasMatch(p)) OfficePreview(p, key: ValueKey(p)),
         ],
       ]),

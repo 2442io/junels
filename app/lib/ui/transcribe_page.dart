@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
+import '../state/meeting_audio.dart' show MeetingModels;
 import '../state/transcriber.dart';
 import 'theme.dart';
+import 'transcript_view.dart';
 
 Future<void> openTranscriber(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TranscribePage()));
@@ -149,23 +151,26 @@ class _TranscribePageState extends State<TranscribePage> {
                             : 'Hört zu – alles bleibt auf dem Gerät.',
                     style: t.bodySmall?.copyWith(color: c.muted)),
               ),
-              const Divider(height: 20),
+              if (!tr.models.installed) _ModelsCard(tr: tr),
+              const SizedBox(height: 6),
+              SpeakerBar(lines: tr.lines, speakers: tr.speakers, onRename: tr.renameSpeaker),
+              const Divider(height: 16),
               Expanded(
                 child: tr.lines.isEmpty
                     ? Center(child: Text('Sprich einfach – der Text erscheint hier.', style: t.bodyMedium?.copyWith(color: c.muted)))
-                    : ListView.builder(
+                    : TranscriptLinesView(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        itemCount: tr.lines.length,
-                        itemBuilder: (context, i) {
-                          final l = tr.lines[i];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              SizedBox(width: 52, child: MonoText(MeetingTranscriber.stamp(l.at), size: 11, color: c.faint)),
-                              Expanded(child: SelectableText(l.text, style: t.bodyLarge)),
-                            ]),
-                          );
+                        lines: tr.lines,
+                        speakers: tr.speakers,
+                        onChangeSpeaker: (block, s) {
+                          if (block.isEmpty) {
+                            tr.renameSpeaker(s, tr.speakers[s]);
+                            return;
+                          }
+                          final to = MeetingTranscriber.reassignIn(tr.speakers, block.first, s);
+                          for (final l in block) {
+                            tr.reassign(l, to);
+                          }
                         },
                       ),
               ),
@@ -199,6 +204,49 @@ class _TranscribePageState extends State<TranscribePage> {
           ),
         );
       },
+    );
+  }
+}
+
+
+/// Hinweis: Sprecher, Musik und Geräusche erkennen – Zusatzmodelle einmal laden
+class _ModelsCard extends StatelessWidget {
+  const _ModelsCard({required this.tr});
+  final MeetingTranscriber tr;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = AppColors.of(context);
+    final p = tr.downloadProgress;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: c.blueSoft, borderRadius: BorderRadius.circular(Ui.r)),
+        child: Row(children: [
+          Icon(Icons.record_voice_over_outlined, color: c.blue),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Sprecher, Musik & Geräusche erkennen', style: t.titleSmall),
+              const SizedBox(height: 2),
+              if (p == null)
+                Text('Einmal ca. ${MeetingModels.sizeMb} MB laden – danach alles auf dem Gerät. Gilt ab jetzt auch für diese Aufnahme.',
+                    style: t.bodySmall?.copyWith(color: c.muted))
+              else ...[
+                Text('${tr.downloadWhat} … ${(p * 100).round()} %', style: t.bodySmall?.copyWith(color: c.muted)),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(value: p, minHeight: 4),
+              ],
+            ]),
+          ),
+          const SizedBox(width: 8),
+          p == null
+              ? FilledButton.tonal(onPressed: tr.downloadModels, child: const Text('Laden'))
+              : TextButton(onPressed: tr.cancelDownload, child: const Text('Abbrechen')),
+        ]),
+      ),
     );
   }
 }

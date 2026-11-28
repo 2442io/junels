@@ -1000,6 +1000,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   StoredModel? storedModelFor(CatalogEntry e) =>
       models.where((m) => m.catalogId == e.id || m.fileName == e.fileName).firstOrNull;
 
+  /// Archiv entpacken (im Hintergrund-Isolate)
+  Future<void> extractArchive(String archivePath, String targetDir) => _extractInBackground(archivePath, targetDir);
+
   /// Startet (oder setzt fort) den Download eines Katalog-Modells.
   Future<void> startDownload(CatalogEntry e) async {
     final running = downloads[e.id];

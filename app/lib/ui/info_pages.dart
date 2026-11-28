@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.73.0', [
+    'Mitschrift erkennt Sprecher: Darstellung wie ein Interview-Transkript, Sprecher per Tipp benennen oder Abschnitte umzuordnen (einmal ca. 57 MB laden, dann alles auf dem Gerät)',
+    'Musik, Gesang und Geräusche (Applaus, Lachen, Telefon …) werden erkannt und als Hinweis gezeigt statt als Text',
+    'Die Aufnahme wird mitgespeichert: im Chat „Mitschrift öffnen“ – nachlesen, Stellen anhören, Namen korrigieren und korrigiert an den Chat schicken',
+    'Karten im Karussell zeigen auch Bilder vom Gerät',
+  ]),
   ('1.72.0', [
     'Neuer Farbstil „Junels · warm“ (Einstellungen → Erscheinungsbild): hell und freundlich wie die Webseite agent.2442.io',
     'Neues Design „Junels“ für Präsentationen, Word und PDF – einfach „im Junels-Design“ dazusagen',
