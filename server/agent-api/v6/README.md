@@ -36,7 +36,9 @@ Daten liegen im Kanal-Speicher (`shared/<kanal>/storage/junels/`), nie im Versio
   (30 Minuten, einmal gültig, nur für dieselbe Person, höchstens 3 Anfragen pro Stunde). Erst nach Klick auf
   „Jetzt zurücksetzen“ werden die Serverdaten gelöscht und das Passwort freigegeben – auch `POST /wipe` aus der App
   verschickt nur noch die E-Mail.
-- Absender: `MAIL_FROM=…` (oder `JUNELS_MAIL_FROM`) optional in der env, sonst `noreply@<domain>`. Versand über PHP `mail()` – keine SMTP-Daten nötig.
+- E-Mail wie in den anderen Projekten per SMTP aus der env (`env/prod.env`):
+  `MAIL_HOST`, `MAIL_PORT` (465 = SSL, 587 = STARTTLS), `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_ENCRYPTION`.
+  Ohne `MAIL_HOST` wird PHP `mail()` verwendet. Fehler stehen im Log („E-Mail fehlgeschlagen: …“, ohne Passwort).
 - Der Abgleich liefert `epoch` (Kennung des Datenbestands): nach einem Zurücksetzen lädt die App alles neu hoch.
 
 ## Neu in v4

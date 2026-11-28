@@ -398,16 +398,16 @@ final class Api
         $host = (string)($_SERVER['HTTP_HOST'] ?? 'agent.2442.io');
         $base = defined('JUNELS_BASE') ? (string)JUNELS_BASE : '';
         $link = 'https://' . $host . $base . '/admin/bestaetigen/' . $code;
-        $fromAddr = defined('JUNELS_MAIL_FROM') ? (string)JUNELS_MAIL_FROM
-            : (string)(getenv('JUNELS_MAIL_FROM') ?: getenv('MAIL_FROM') ?: ($_ENV['MAIL_FROM'] ?? '') ?: ('noreply@' . preg_replace('/^(agent|q|t)\./', '', $host)));
-        $subject = '=?UTF-8?B?' . base64_encode('Junels: Sync-Passwort zurücksetzen bestätigen') . '?=';
         $text = "Hallo" . ($name !== '' ? " $name" : '') . ",\n\n"
             . "jemand (hoffentlich du, über: $from) möchte das Sync-Passwort deines Junels-Kontos zurücksetzen.\n"
             . "Dabei werden alle Daten dieses Kontos auf dem Server gelöscht. Auf deinen Geräten bleibt alles erhalten.\n\n"
             . "Zum Bestätigen diesen Link öffnen (30 Minuten gültig, Anmeldung mit deinem SSO-Konto nötig):\n$link\n\n"
             . "Warst du das nicht? Dann ignoriere diese E-Mail – es passiert nichts.\n\nJunels";
-        $headers = "From: Junels <$fromAddr>\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\nMIME-Version: 1.0";
-        if (!@mail($email, $subject, $text, $headers)) self::fail(500, 'E-Mail konnte nicht gesendet werden');
+        $err = null;
+        if (!Mailer::send($email, 'Junels: Sync-Passwort zurücksetzen bestätigen', $text, $err, 'noreply@' . preg_replace('/^(agent|q|t)\./', '', $host))) {
+            if (class_exists('Weiche')) Weiche::log('[junels-api] E-Mail fehlgeschlagen: ' . $err);
+            self::fail(500, 'E-Mail konnte nicht gesendet werden');
+        }
         if (class_exists('Weiche')) Weiche::log('[junels-api] Zurücksetzen angefordert (' . $from . ')');
         return $email;
     }

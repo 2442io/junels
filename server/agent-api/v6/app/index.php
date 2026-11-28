@@ -7,6 +7,7 @@ define('JUNELS_API_VERSION', '6');
 
 require __DIR__ . '/Api.php';
 require __DIR__ . '/Site.php';
+require __DIR__ . '/Mailer.php';
 
 $base = defined('JUNELS_BASE') ? (string)JUNELS_BASE : '';
 $uri = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
