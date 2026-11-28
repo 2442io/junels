@@ -376,6 +376,17 @@ void main() {
       'm_desktop': (const Size(1440, 900), chat('c6')),
       'm_desktop_cards': (const Size(1440, 900), chat('c5')),
     };
+    // Vorwärmen: Kartenbilder einmal laden, damit sie in allen Bildern sichtbar sind
+    for (final id in ['c6', 'c5', 'c1']) {
+      try {
+        await _shot(tester, 'warmup_$id', const Size(1440, 900), chat(id), warm: true);
+        for (var k = 0; k < 6; k++) {
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      } catch (_) {}
+      FlutterError.onError = FlutterError.presentError;
+    }
     for (final e in shots.entries) {
       try {
         await _shot(tester, e.key, e.value.$1, e.value.$2, warm: true, dpr: 2);
