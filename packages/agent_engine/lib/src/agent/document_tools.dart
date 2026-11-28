@@ -367,7 +367,7 @@ class CreatePresentationTool extends AgentTool {
       '![kurze Bildbeschreibung auf Englisch](auto) – es wird automatisch erzeugt (Bildmodell), oder ![](name.png) für ein vorhandenes Bild. '
       'Vorher mit generate_image erzeugte Bilder kommen automatisch auf Folien ohne Bild. '
       'Baue einen roten Faden: Einstieg → Etappen → Abschluss, Folientitel als Stationen. '
-      'design: passender Stil (reise, reise-landschaft, reise-vintage, reise-nacht, natur, business, technik, warm, elegant, bildung, gesundheit) oder auto. '
+      'design: passender Stil (reise, reise-landschaft, reise-vintage, reise-nacht, natur, business, technik, warm, elegant, bildung, gesundheit, junels = hell, freundlich, modern wie die Junels-Webseite) oder auto. '
       'vorlage: Links oder Dateinamen von Beispielbildern oder PowerPoint/Word/Excel-Vorlagen des Nutzers – Farben, Schriften und Folienmaster werden übernommen.'
       '${DesignLibrary.describe}';
   @override
@@ -378,7 +378,7 @@ class CreatePresentationTool extends AgentTool {
           'auto',
           ...DesignLibrary.user.map((u) => u.id),
           'reise', 'reise-landschaft', 'reise-vintage', 'reise-nacht', 'natur', 'business', 'technik', 'warm', 'elegant', 'bildung',
-          'gesundheit', 'standard'
+          'gesundheit', 'junels', 'standard'
         ]),
         const ToolParam('vorlage', ParamType.string, 'Design-Vorlagen: Links/Dateinamen (optional)'),
       ];

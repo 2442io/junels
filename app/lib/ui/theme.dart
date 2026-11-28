@@ -99,6 +99,28 @@ class AppColors extends ThemeExtension<AppColors> {
     dots: Color(0xFFDADDE2),
   );
 
+  /// „Junels“: hell und warm wie die Webseite agent.2442.io
+  static const warm = AppColors(
+    canvas: Color(0xFFFFFAF3),
+    panel: Color(0xFFFFFDF9),
+    raised: Color(0xFFF7F1E8),
+    border: Color(0xFFECE6DC),
+    borderStrong: Color(0xFFD9D0C2),
+    muted: Color(0xFF5D6577),
+    faint: Color(0xFF8C93A3),
+    mint: Color(0xFF12B886),
+    mintSoft: Color(0xFFE3F8F0),
+    amber: Color(0xFFD98A00),
+    amberSoft: Color(0xFFFFF3DC),
+    red: Color(0xFFFF6B5B),
+    redSoft: Color(0xFFFFE9E5),
+    blue: Color(0xFF3B82F6),
+    blueSoft: Color(0xFFE6EFFF),
+    violet: Color(0xFF8B5CF6),
+    violetSoft: Color(0xFFF0EAFF),
+    dots: Color(0xFFE9E1D4),
+  );
+
   static AppColors of(BuildContext context) => Theme.of(context).extension<AppColors>() ?? dark;
 
   @override
@@ -139,11 +161,11 @@ abstract final class Ui {
   static const font = 'Inter';
 }
 
-ThemeData buildTheme(Brightness b) {
+ThemeData buildTheme(Brightness b, {bool warm = false}) {
   final dark = b == Brightness.dark;
-  final c = dark ? AppColors.dark : AppColors.light;
+  final c = dark ? AppColors.dark : (warm ? AppColors.warm : AppColors.light);
   final surface = dark ? const Color(0xFF222328) : Colors.white;
-  final onSurface = dark ? const Color(0xFFECEDEF) : const Color(0xFF16171A);
+  final onSurface = dark ? const Color(0xFFECEDEF) : (warm ? const Color(0xFF1D2433) : const Color(0xFF16171A));
   final scheme = ColorScheme(
     brightness: b,
     primary: c.mint,

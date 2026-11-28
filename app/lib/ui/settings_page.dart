@@ -968,6 +968,17 @@ class _SettingsSection extends StatelessWidget {
             _ => null,
           }),
         ),
+        const SizedBox(height: 14),
+        const _SectionTitle('Farbstil (helles Erscheinungsbild)'),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'standard', label: Text('Klassisch'), icon: Icon(Icons.contrast, size: 18)),
+            ButtonSegment(value: 'junels', label: Text('Junels · warm'), icon: Icon(Icons.wb_sunny_outlined, size: 18)),
+          ],
+          selected: {app.settings.uiStyle == 'junels' ? 'junels' : 'standard'},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) => app.setUiStyle(s.first),
+        ),
       ],
     );
   }

@@ -353,6 +353,19 @@ const builtInDesigns = <SlideDesign>[
   SlideDesign(id: 'elegant', name: 'Elegant', primary: '2D2A32', secondary: 'B08D57', light: 'F4F1EC', font: 'Garamond', headFont: 'Georgia', motif: DesignMotif.lines),
   SlideDesign(id: 'bildung', name: 'Bildung', primary: '6A3FA0', secondary: 'F2B134', light: 'F3EEF9', font: 'Calibri', motif: DesignMotif.dots),
   SlideDesign(id: 'gesundheit', name: 'Gesundheit', primary: '1E7F8C', secondary: '7CC6A3', light: 'EAF6F4', font: 'Calibri', motif: DesignMotif.waves),
+  // wie die Webseite agent.2442.io: warmes Weiß, Mint/Blau/Violett, freundlich
+  SlideDesign(
+      id: 'junels',
+      name: 'Junels',
+      primary: '12B886',
+      secondary: '3B82F6',
+      accent: '8B5CF6',
+      light: 'E3F8F0',
+      background: 'FFFAF3',
+      text: '1D2433',
+      muted: '5D6577',
+      font: 'Segoe UI',
+      motif: DesignMotif.dots),
 ];
 
 SlideDesign designById(String id) =>
@@ -361,6 +374,7 @@ SlideDesign designById(String id) =>
 final _topics = <String, RegExp>{
   'reise': RegExp(r'reise|urlaub|travel|tour\b|touris|flug|hotel|ausflug|trip|journey|städtetrip|wander|kreuzfahrt|roadtrip|ferien|destination|sightseeing',
       caseSensitive: false),
+  'junels': RegExp(r'junels|freundlich und modern|hell und freundlich', caseSensitive: false),
   'natur': RegExp(r'natur|umwelt|nachhaltig|klima|wald|garten|pflanz|ökolog|bio\b|landwirtschaft', caseSensitive: false),
   'technik': RegExp(r'\bki\b|künstliche intelligenz|software|technik|technolog|digital|daten|cloud|cyber|\bit\b|app\b|startup', caseSensitive: false),
   'business': RegExp(r'unternehmen|strategie|quartal|umsatz|finanz|business|vertrieb|markt|investor|bilanz|management', caseSensitive: false),

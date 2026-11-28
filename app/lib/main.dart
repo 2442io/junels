@@ -16,8 +16,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   final prev = FlutterError.onError;
   FlutterError.onError = (d) {
-    appLog('App', '${d.exceptionAsString()}${d.stack == null ? '' : ' @ ${d.stack.toString().split('\n').take(3).join(' | ')}'}',
-        error: true);
+    appLog('App', '${d.exceptionAsString()}${d.stack == null ? '' : ' @ ${d.stack.toString().split('\n').take(3).join(' | ')}'}', error: true);
     prev?.call(d);
   };
   PlatformDispatcher.instance.onError = (e, st) {
@@ -59,20 +58,23 @@ class OfflineAgentApp extends StatelessWidget {
       controller: controller,
       child: ValueListenableBuilder<bool?>(
         valueListenable: controller.darkMode,
-        builder: (context, dark, _) {
-          return MaterialApp(
-            title: 'Junels',
-            debugShowCheckedModeBanner: false,
-            theme: buildTheme(Brightness.light),
-            darkTheme: buildTheme(Brightness.dark),
-            themeMode: dark == null ? ThemeMode.system : (dark ? ThemeMode.dark : ThemeMode.light),
-            navigatorKey: ShellControls.navigatorKey,
-            navigatorObservers: [_shellObserver],
-            // Schnellmenü als schwebender Knopf rechts unten – mit einer Hand erreichbar (Handy, Unterseiten)
-            builder: (context, child) => QuickFabLayer(child: child ?? const SizedBox()),
-            home: const HomeShell(),
-          );
-        },
+        builder: (context, dark, _) => ValueListenableBuilder<String>(
+          valueListenable: controller.uiStyle,
+          builder: (context, style, _) {
+            return MaterialApp(
+              title: 'Junels',
+              debugShowCheckedModeBanner: false,
+              theme: buildTheme(Brightness.light, warm: style == 'junels'),
+              darkTheme: buildTheme(Brightness.dark),
+              themeMode: dark == null ? ThemeMode.system : (dark ? ThemeMode.dark : ThemeMode.light),
+              navigatorKey: ShellControls.navigatorKey,
+              navigatorObservers: [_shellObserver],
+              // Schnellmenü als schwebender Knopf rechts unten – mit einer Hand erreichbar (Handy, Unterseiten)
+              builder: (context, child) => QuickFabLayer(child: child ?? const SizedBox()),
+              home: const HomeShell(),
+            );
+          },
+        ),
       ),
     );
   }

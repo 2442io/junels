@@ -14,6 +14,11 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.72.0', [
+    'Neuer Farbstil „Junels · warm“ (Einstellungen → Erscheinungsbild): hell und freundlich wie die Webseite agent.2442.io',
+    'Neues Design „Junels“ für Präsentationen, Word und PDF – einfach „im Junels-Design“ dazusagen',
+    'Agent-API v7: freundliche Webseite mit Animationen, E-Mail per SMTP aus der env',
+  ]),
   ('1.71.0', [
     'Skills mitten im Satz: „Wichtig wäre im /dossier unter Personas …“ – „/“ schlägt auch mitten im Text passende Skills vor',
     'Karussell aus Text: Karten bekommen echte Links und Vorschaubilder aus dem Web (mit Internet-Freigabe); ohne Internet öffnet ein Tipp wenigstens die Suche',

@@ -349,6 +349,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Getrennt vom restlichen Zustand, damit nicht die ganze App bei jedem Token neu baut.
   final ValueNotifier<bool?> darkMode = ValueNotifier(null);
+  final ValueNotifier<String> uiStyle = ValueNotifier('standard');
 
   bool initialized = false;
   String? initError;
@@ -471,6 +472,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       voice.output.speedByDir.addAll(settings.voiceSpeed);
       await _loadDeviceSetup();
       darkMode.value = settings.darkMode;
+      uiStyle.value = settings.uiStyle;
       settings.contextSize = device.clampContext(settings.contextSize, null);
       profiles = await storage.loadProfiles();
       if (!profiles.any((p) => p.id == settings.activeProfileId)) {
@@ -1408,6 +1410,13 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       ..internetAllowed = m == InternetMode.allowed;
     await storage.saveConversation(c);
     appLog('Internet', 'Chat „${c.title}“: ${m.label}');
+    notifyListeners();
+  }
+
+  Future<void> setUiStyle(String value) async {
+    settings.uiStyle = value;
+    uiStyle.value = value;
+    await storage.saveSettings(settings);
     notifyListeners();
   }
 
