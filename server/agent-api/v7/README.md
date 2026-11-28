@@ -26,6 +26,7 @@ Nur Klar-URLs, keine Parameter in Adressen:
 Daten liegen im Kanal-Speicher (`shared/<kanal>/storage/junels/`), nie im Versionsordner.
 
 ## Neu in v7
+- Webseite auf Deutsch (`/`) und Englisch (`/en`), mit echten App-Bildern (`app/img`, ausgeliefert unter `/img/…`)
 - Webseite im hellen, freundlichen Junels-Design mit Animationen (Handy-Vorschau, Lauftext, bewegte Bilder, Fragen & Antworten)
 - E-Mail per SMTP aus der env (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_ENCRYPTION`)
 
