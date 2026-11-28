@@ -14,6 +14,10 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.74.0', [
+    'Neu: Auswertung (Kontrolle → Auswertung) – Nutzung, Themengebiete, Funktionen, Tokens, Nutzungszeit und geschätzte Ersparnis an Arbeitsstunden',
+    'Auf Wunsch im Admin-Bereich der Agent-API sichtbar (nur Zahlen, keine Inhalte)',
+  ]),
   ('1.73.0', [
     'Mitschrift erkennt Sprecher: Darstellung wie ein Interview-Transkript, Sprecher per Tipp benennen oder Abschnitte umzuordnen (einmal ca. 57 MB laden, dann alles auf dem Gerät)',
     'Musik, Gesang und Geräusche (Applaus, Lachen, Telefon …) werden erkannt und als Hinweis gezeigt statt als Text',

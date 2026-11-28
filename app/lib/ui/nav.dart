@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'analytics_page.dart';
 import 'help_page.dart';
 import 'inbox_page.dart';
 import 'skills_page.dart';
@@ -22,6 +23,7 @@ enum AppSection {
   prompts('Vorlagen', Icons.bolt_outlined),
   knowledge('Wissen & Gedächtnis', Icons.local_library_outlined),
   activity('Aktivität & Überwachung', Icons.history),
+  analytics('Auswertung', Icons.insights_outlined),
   settings('Einstellungen', Icons.settings_outlined),
   help('Hilfe', Icons.help_outline);
 
@@ -39,6 +41,7 @@ Widget pageFor(AppSection s) => switch (s) {
       AppSection.prompts => const PromptsPage(),
       AppSection.knowledge => const KnowledgePage(),
       AppSection.activity => const ActivityPage(),
+      AppSection.analytics => const AnalyticsPage(),
       AppSection.settings => const SettingsPage(),
       AppSection.help => const HelpPage(),
       AppSection.chat => const SizedBox(),

@@ -1,6 +1,7 @@
 // Abgleich von Chats, Gedächtnis, Prompts, Profilen, MCP-Servern und Wissensbasis
 // zwischen den eigenen Geräten – über den eigenen Server (PHP) oder direkt im WLAN.
 
+import 'usage_stats.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -67,6 +68,7 @@ class SyncConfig {
     Set<String>? categories,
     this.deviceName = '',
     this.deviceId = '',
+    this.shareStats = true,
   }) : categories = categories ?? SyncCategory.values.map((c) => c.prefix).toSet();
 
   /// Datenschutz-Stufe 0–4 (-1 = eigene Auswahl der Kategorien, wie bisher)
@@ -82,6 +84,9 @@ class SyncConfig {
   /// Zufällige Kennung dieses Geräts (für die Geräteliste auf dem Server)
   String deviceId;
 
+  /// Auswertung (nur Zahlen) im Admin-Bereich zeigen
+  bool shareStats;
+
   Map<String, Object> toJson() => {
         'serverUrl': serverUrl,
         'auto': auto,
@@ -89,6 +94,7 @@ class SyncConfig {
         'categories': categories.toList(),
         'deviceName': deviceName,
         if (deviceId.isNotEmpty) 'deviceId': deviceId,
+        'shareStats': shareStats,
         'level': level,
         if (ssoName.isNotEmpty) 'ssoName': ssoName,
         if (ssoEmail.isNotEmpty) 'ssoEmail': ssoEmail,
@@ -100,6 +106,7 @@ class SyncConfig {
         categories: (j['categories'] as List?)?.cast<String>().toSet(),
         deviceName: j['deviceName'] as String? ?? '',
         deviceId: j['deviceId'] as String? ?? '',
+        shareStats: j['shareStats'] as bool? ?? true,
         level: (j['level'] as num?)?.toInt() ?? -1,
         ssoName: j['ssoName'] as String? ?? '',
         ssoEmail: j['ssoEmail'] as String? ?? '',
@@ -271,6 +278,8 @@ class SyncService implements SyncSource {
   }
 
   /// Mit dem eigenen Server abgleichen.
+  DateTime _statsAt = DateTime(2000);
+
   Future<void> syncServer({bool quiet = false}) async {
     if (config.serverUrl.trim().isEmpty) {
       lastError.value = 'Keine Server-Adresse eingetragen.';
@@ -304,6 +313,11 @@ class SyncService implements SyncSource {
           }
         }),
         quiet: quiet);
+    // Auswertung (nur Zahlen) für den Admin-Bereich – höchstens alle 6 Stunden
+    if (lastError.value == null && DateTime.now().difference(_statsAt) > const Duration(hours: 6)) {
+      _statsAt = DateTime.now();
+      unawaited(uploadStats());
+    }
   }
 
   // ---------------------------------------------------------------- Konto (SSO) & Datenschutz-Stufe
@@ -462,6 +476,19 @@ class SyncService implements SyncSource {
       return r['ok'] == true ? r : null;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Auswertung (nur Zahlen, keine Inhalte) an die Agent-API für den Admin-Bereich
+  Future<void> uploadStats() async {
+    if (!config.shareStats || config.serverUrl.trim().isEmpty || _legacyServer) return;
+    final token = await Vault.read('sso:token');
+    if (token == null || token.isEmpty) return;
+    try {
+      final stats = UsageStats.compute(app).toJson(device: config.deviceName.isEmpty ? defaultName : config.deviceName);
+      await syncHttpPost(_api('stats'), {'token': token, 'stats': stats});
+    } catch (e) {
+      appLog('Sync', 'Auswertung nicht übertragen: $e');
     }
   }
 

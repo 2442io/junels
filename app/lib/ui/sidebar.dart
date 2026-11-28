@@ -263,7 +263,7 @@ class _SidebarState extends State<Sidebar> {
                   dot: app.runStats.records.isNotEmpty && app.runStats.records.last.status == 'error' ? c.red : null,
                   onTap: () => _toggle('control'),
                 ),
-                if (_open.contains('control')) item(AppSection.activity),
+                if (_open.contains('control')) ...[item(AppSection.activity), item(AppSection.analytics)],
               ],
             ],
           ),
