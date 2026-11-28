@@ -798,4 +798,6 @@ const enStrings = <String, String>{
   'Ordner verschieben nach': 'Move folder to',
   'Oberste Ebene': 'Top level',
   'Hier ablegen: oberste Ebene': 'Drop here: top level',
+  'Als Text weiter': 'Continue as text',
+  'Als Gespräch weiterführen': 'Continue as conversation',
 };

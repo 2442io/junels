@@ -1918,9 +1918,12 @@ class _InputBarState extends State<_InputBar> {
                       ),
                       _MicButton(onTap: app.running ? null : _toggleVoice),
                       IconButton(
-                        tooltip: tr('Gesprächsmodus – freihändig sprechen'),
+                        tooltip: (app.current?.entries.isNotEmpty ?? false) ? tr('Als Gespräch weiterführen') : tr('Gesprächsmodus – freihändig sprechen'),
                         icon: const Icon(Icons.record_voice_over_outlined),
-                        onPressed: ready && !app.running ? () => openConversation(context) : null,
+                        // aus einem Chat heraus: im selben Chat mit Stimme weiter
+                        onPressed: ready && !app.running
+                            ? () => openConversation(context, inChat: app.current != null && app.current!.id != AppController.feedId && app.current!.entries.isNotEmpty)
+                            : null,
                       ),
                     ];
                     final c = AppColors.of(context);

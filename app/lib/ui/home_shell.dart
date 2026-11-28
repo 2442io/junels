@@ -118,6 +118,9 @@ class _HomeShellState extends State<HomeShell> {
     app.openTranscriberRequest.addListener(() {
       if (mounted) openTranscriber(context);
     });
+    app.showChatRequest.addListener(() {
+      if (mounted) _go(AppSection.chat);
+    });
     app.pendingLaunch.addListener(() => _launch(app));
     if (app.pendingLaunch.value != null) WidgetsBinding.instance.addPostFrameCallback((_) => _launch(app));
     if (app.needsSystemCheck) {

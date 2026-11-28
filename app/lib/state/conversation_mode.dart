@@ -15,7 +15,7 @@ import 'dart:io';
 import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
 
-import '../data/models.dart' show Conversation;
+import '../data/models.dart' show Conversation, ChatEntry, newId;
 import 'app_controller.dart';
 import 'voice_service.dart';
 
@@ -113,11 +113,19 @@ class ConversationMode {
   /// Chat, in dem das Gespräch läuft (Sammlung „Ergebnisse“ oder der offene Chat) – für KI-Modus & Co.
   Conversation? get target => _inFeed ? app.feed : app.current;
 
-  Future<void> start() async {
+  /// [inChat]: im gerade offenen Chat weitersprechen (Wechsel Text → Gespräch); ohne Chat wird einer angelegt.
+  Future<void> start({bool inChat = false}) async {
     if (active) return;
     error.value = null;
-    final cur = app.current;
-    _inFeed = cur == null || cur.id == AppController.feedId || cur.entries.isEmpty;
+    var cur = app.current;
+    if (inChat && (cur == null || cur.id == AppController.feedId)) {
+      final now = DateTime.now();
+      cur = Conversation(id: newId(), title: '🎙 ${isEnglish ? 'Conversation' : 'Gespräch'} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
+      app.conversations.insert(0, cur);
+      app.current = cur;
+      app.refreshUi();
+    }
+    _inFeed = !inChat && (cur == null || cur.id == AppController.feedId || cur.entries.isEmpty);
     final now = DateTime.now();
     _session = 'voice:${now.millisecondsSinceEpoch}';
     app.feedTag = _inFeed ? (origin: '🎙 Gespräch ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}', id: _session) : null;
@@ -172,6 +180,33 @@ class ConversationMode {
     } finally {
       _restartingMic = false;
     }
+  }
+
+  /// Wechsel Gespräch → Text: liefert den Chat, in dem es schriftlich weitergeht.
+  /// Lief das Gespräch in „Ergebnisse“, wird daraus ein eigener Chat mit dem bisherigen Verlauf.
+  Future<Conversation?> toText() async {
+    if (!_inFeed) return app.current;
+    final entries = app.feed.entries.where((e) => e.originId == _session).toList();
+    final now = DateTime.now();
+    final c = Conversation(
+      id: newId(),
+      title: '🎙 ${isEnglish ? 'Conversation' : 'Gespräch'} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+    );
+    for (final e in entries) {
+      c.entries.add(ChatEntry.fromJson(e.toJson())
+        ..origin = null
+        ..originId = null);
+    }
+    if (entries.isNotEmpty) {
+      final firstUser = entries.where((e) => e.role == 'user').firstOrNull;
+      if (firstUser != null && firstUser.text.trim().isNotEmpty) {
+        final t = firstUser.text.trim();
+        c.title = t.length > 48 ? '${t.substring(0, 48)}…' : t;
+      }
+    }
+    app.conversations.insert(0, c);
+    await app.storage.saveConversation(c);
+    return c;
   }
 
   Future<void> stop() async {

@@ -14,6 +14,10 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.77.0', [
+    'Wechsel Text ↔ Gespräch: im Chat mit 🗣 „Als Gespräch weiterführen“ – mit Stimme im selben Chat weiter; im Gespräch „Als Text weiter“ – zurück in den Chat, der bisherige Verlauf bleibt',
+    'Mitschrift: Tonwelle wieder als Balken, jetzt freundlich in Mint, Blau und Violett und mit weicher Bewegung',
+  ]),
   ('1.76.1', [
     'Mitschrift: neue, freundliche Tonwelle – weiche, ineinanderfließende Wellen in Mint, Blau und Violett, die mit der Stimme mitschwingen',
   ]),

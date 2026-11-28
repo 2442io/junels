@@ -192,6 +192,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Oberfläche soll die Mitschrift öffnen (zählt hoch)
   final openTranscriberRequest = ValueNotifier<int>(0);
 
+  /// Zum Chat wechseln (z. B. nach „Als Text weiter“ im Gespräch)
+  final showChatRequest = ValueNotifier<int>(0);
+
   /// Dialog mit drei Antworten (Nein / Einmal / Immer) – setzt die Oberfläche
   Future<String> Function(String title, String detail)? choiceHandler;
 

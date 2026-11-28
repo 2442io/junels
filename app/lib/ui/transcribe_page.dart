@@ -251,10 +251,10 @@ class _ModelsCard extends StatelessWidget {
 }
 
 
-/// Tonwelle: weiche, ineinanderfließende Wellen in den Junels-Farben (Mint → Blau → Violett).
-/// Bewegen sich mit der Stimme; in der Pause atmen sie nur ruhig.
+/// Tonwelle wie ein Sprachmemo: runde Balken, in der Mitte höher – freundlich in den Junels-Farben
+/// (Mint → Blau → Violett). Bewegen sich weich mit der Stimme; in der Pause atmen sie ruhig.
 class LevelWave extends StatefulWidget {
-  const LevelWave({super.key, required this.level, this.live = true, this.height = 110});
+  const LevelWave({super.key, required this.level, this.live = true, this.height = 104});
   final double level;
   final bool live;
   final double height;
@@ -264,8 +264,12 @@ class LevelWave extends StatefulWidget {
 }
 
 class _LevelWaveState extends State<LevelWave> with SingleTickerProviderStateMixin {
-  late final AnimationController _ctl = AnimationController(vsync: this, duration: const Duration(seconds: 6))..repeat();
+  late final AnimationController _ctl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
   double _smooth = 0;
+  static const _bars = 15;
+  // Grundform: in der Mitte am höchsten, leicht unregelmäßig wie echte Sprache
+  static const _shape = [0.26, 0.34, 0.46, 0.62, 0.55, 0.78, 0.9, 1.0, 0.86, 0.72, 0.8, 0.6, 0.48, 0.36, 0.26];
+  final _bar = List<double>.filled(_bars, 0.12);
 
   @override
   void dispose() {
@@ -277,91 +281,52 @@ class _LevelWaveState extends State<LevelWave> with SingleTickerProviderStateMix
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(Ui.rLg),
-      child: Container(
-        height: widget.height,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: dark
-                ? [c.mint.withValues(alpha: 0.10), c.blue.withValues(alpha: 0.10), c.violet.withValues(alpha: 0.12)]
-                : [c.mintSoft, c.blueSoft, c.violetSoft],
-          ),
+    final colors = [c.mint, c.blue, c.violet];
+    Color at(double u) => u < 0.5 ? Color.lerp(colors[0], colors[1], u * 2)! : Color.lerp(colors[1], colors[2], (u - 0.5) * 2)!;
+    return Container(
+      height: widget.height + 20,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(Ui.rLg),
+        gradient: LinearGradient(
+          colors: dark
+              ? [c.mint.withValues(alpha: 0.08), c.blue.withValues(alpha: 0.08), c.violet.withValues(alpha: 0.10)]
+              : [c.mintSoft, c.blueSoft, c.violetSoft],
         ),
-        child: AnimatedBuilder(
-          animation: _ctl,
-          builder: (context, _) {
-            // Pegel weich nachführen (sonst zappelt es)
-            final target = widget.live ? (0.15 + widget.level * 2.2).clamp(0.0, 1.0) : 0.0;
-            _smooth += (target - _smooth) * 0.12;
-            return CustomPaint(
-              size: Size.infinite,
-              painter: _WavePainter(
-                phase: _ctl.value * 2 * math.pi,
-                level: _smooth,
-                live: widget.live,
-                colors: [c.mint, c.blue, c.violet],
-              ),
-            );
-          },
-        ),
+      ),
+      child: AnimatedBuilder(
+        animation: _ctl,
+        builder: (context, _) {
+          final target = widget.live ? (0.16 + widget.level * 2.0).clamp(0.0, 1.0) : 0.0;
+          _smooth += (target - _smooth) * 0.18;
+          final t = _ctl.value * 2 * math.pi;
+          return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            for (var i = 0; i < _bars; i++)
+              Builder(builder: (context) {
+                // jeder Balken schwingt etwas anders; ohne Stimme sanftes Atmen
+                final wobble = 0.72 + 0.28 * math.sin(t * (1.0 + (i % 4) * 0.23) + i * 0.8);
+                final idle = 0.10 + 0.05 * (0.5 + 0.5 * math.sin(t + i * 0.45));
+                final goal = widget.live ? math.max(idle, _smooth * wobble) : idle;
+                _bar[i] += (goal - _bar[i]) * 0.3;
+                final h = 10 + (widget.height - 10) * _shape[i] * _bar[i];
+                final col = at(i / (_bars - 1));
+                return Container(
+                  width: 10,
+                  height: h,
+                  margin: const EdgeInsets.symmetric(horizontal: 3.5),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [col.withValues(alpha: 0.65), col, col.withValues(alpha: 0.65)],
+                    ),
+                    boxShadow: [if (widget.live) BoxShadow(color: col.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 2))],
+                  ),
+                );
+              }),
+          ]);
+        },
       ),
     );
   }
-}
-
-class _WavePainter extends CustomPainter {
-  _WavePainter({required this.phase, required this.level, required this.live, required this.colors});
-  final double phase;
-  final double level;
-  final bool live;
-  final List<Color> colors;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final mid = size.height / 2;
-    // ruhiges Atmen, auch ohne Stimme
-    final breathe = 0.06 + 0.03 * math.sin(phase);
-    final amp = (size.height / 2 - 10) * (live ? math.max(breathe, level) : breathe * 0.6);
-    const waves = [(1.0, 1.3, 0.0, 0.55), (0.75, 1.9, 2.1, 0.45), (0.55, 2.6, 4.2, 0.4)];
-    for (var k = 0; k < waves.length; k++) {
-      final (scale, freq, offset, alpha) = waves[k];
-      final path = Path()..moveTo(0, mid);
-      final pathBack = <Offset>[];
-      for (double x = 0; x <= size.width; x += 3) {
-        final u = x / size.width;
-        // an den Rändern sanft auslaufen
-        final env = math.pow(math.sin(math.pi * u), 1.6).toDouble();
-        final y = amp * scale * env * math.sin(u * freq * 2 * math.pi + phase * (1 + k * 0.4) + offset);
-        path.lineTo(x, mid - y);
-        pathBack.add(Offset(x, mid + y * 0.6));
-      }
-      for (final o in pathBack.reversed) {
-        path.lineTo(o.dx, o.dy);
-      }
-      path.close();
-      final paint = Paint()
-        ..shader = LinearGradient(colors: [
-          colors[k % 3].withValues(alpha: alpha),
-          colors[(k + 1) % 3].withValues(alpha: alpha),
-          colors[(k + 2) % 3].withValues(alpha: alpha * 0.8),
-        ]).createShader(Offset.zero & size)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5);
-      canvas.drawPath(path, paint);
-    }
-    // feine Mittellinie mit Glanzpunkt, der mitwandert
-    final line = Paint()
-      ..shader = LinearGradient(colors: [colors[0].withValues(alpha: 0), colors[1].withValues(alpha: 0.5), colors[2].withValues(alpha: 0)])
-          .createShader(Offset.zero & size)
-      ..strokeWidth = 1.5;
-    canvas.drawLine(Offset(0, mid), Offset(size.width, mid), line);
-    if (live) {
-      final gx = size.width * (0.5 + 0.35 * math.sin(phase * 0.5));
-      canvas.drawCircle(Offset(gx, mid), 5 + 6 * level,
-          Paint()..color = Colors.white.withValues(alpha: 0.7)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
-    }
-  }
-
-  @override
-  bool shouldRepaint(_WavePainter old) => true;
 }

@@ -14,7 +14,8 @@ import 'internet_menu.dart';
 import 'system_check.dart';
 import '../l10n.dart';
 
-Future<void> openConversation(BuildContext context) async {
+/// [inChat]: im offenen Chat als Gespräch weitermachen (Wechsel Text → Sprache)
+Future<void> openConversation(BuildContext context, {bool inChat = false}) async {
   final app = AppScope.read(context);
   final messenger = ScaffoldMessenger.of(context);
   if (app.sttModelPath == null) {
@@ -26,12 +27,13 @@ Future<void> openConversation(BuildContext context) async {
   }
   await Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
-    builder: (_) => const ConversationPage(),
+    builder: (_) => ConversationPage(inChat: inChat),
   ));
 }
 
 class ConversationPage extends StatefulWidget {
-  const ConversationPage({super.key});
+  const ConversationPage({super.key, this.inChat = false});
+  final bool inChat;
 
   @override
   State<ConversationPage> createState() => _ConversationPageState();
@@ -46,7 +48,7 @@ class _ConversationPageState extends State<ConversationPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        await conv.start();
+        await conv.start(inChat: widget.inChat);
       } catch (e) {
         if (mounted) setState(() => _startError = e.toString());
       }
@@ -57,6 +59,16 @@ class _ConversationPageState extends State<ConversationPage> {
   void dispose() {
     conv.stop();
     super.dispose();
+  }
+
+  Future<void> _toText() async {
+    final app = AppScope.read(context);
+    final nav = Navigator.of(context);
+    final c = await conv.toText();
+    await conv.stop();
+    if (c != null) app.selectConversation(c);
+    nav.popUntil((r) => r.isFirst);
+    app.showChatRequest.value++;
   }
 
   @override
@@ -70,6 +82,12 @@ class _ConversationPageState extends State<ConversationPage> {
         backgroundColor: Colors.transparent,
         title: Text(tr('Gespräch')),
         actions: [
+          // Wechsel Gespräch → Text: im selben Chat schriftlich weiter
+          TextButton.icon(
+            onPressed: _toText,
+            icon: const Icon(Icons.keyboard_outlined, size: 18),
+            label: Text(tr('Als Text weiter')),
+          ),
           // KI-Modus (Gerät, Cloud, Hybrid …) auch im Gespräch umschaltbar
           AiModeMenu(compact: MediaQuery.sizeOf(context).width < 600, target: app.conversation.target),
           const SizedBox(width: 6),
