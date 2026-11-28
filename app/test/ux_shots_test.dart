@@ -83,6 +83,9 @@ String? _flutterRoot() {
 
 late AppController app;
 
+/// Beispielbilder für Karten (test/assets/demo/*.jpg)
+String _img(String n) => '${Directory.current.path}/test/assets/demo/$n.jpg';
+
 ChatEntry _a(String text, {List<StepLog>? steps, String? via, int ms = 4200, List<Map<String, String>>? cards}) =>
     ChatEntry(role: 'assistant', text: text, steps: steps, via: via, durationMs: ms, tokensPerSecond: 38.4, cards: cards);
 
@@ -125,9 +128,9 @@ Future<void> _demo() async {
           ],
           ms: 9400,
           cards: [
-            {'title': 'Offenes Modell schlägt Größere bei Code', 'link': 'https://futurezone.at/a', 'note': 'futurezone.at'},
-            {'title': 'AI Act: Leitlinien für Hochrisiko-KI', 'link': 'https://derstandard.at/b', 'note': 'derstandard.at'},
-            {'title': 'Smartphone-Chips verdoppeln KI-Tempo', 'link': 'https://heise.de/c', 'note': 'heise.de'},
+            {'title': 'Offenes Modell schlägt Größere bei Code', 'link': 'https://futurezone.at/a', 'note': 'futurezone.at', 'image': _img('news1')},
+            {'title': 'AI Act: Leitlinien für Hochrisiko-KI', 'link': 'https://derstandard.at/b', 'note': 'derstandard.at', 'image': _img('news2')},
+            {'title': 'Smartphone-Chips verdoppeln KI-Tempo', 'link': 'https://heise.de/c', 'note': 'heise.de', 'image': _img('news3')},
           ]),
     ]);
   final c2 = Conversation(id: 'c2', title: 'Präsentation: Lokale KI im Unternehmen')..updated = now.subtract(const Duration(hours: 3));
@@ -235,7 +238,12 @@ Future<void> _demo() async {
       ChatEntry(role: 'user', text: '/amazon ski unterwäsche merino für männer'),
       ChatEntry(role: 'assistant', skill: 'Amazon Suche', view: 'cards', durationMs: 35000, via: 'Lokal · Gemma 4 12B',
           text: 'Drei gute Merino-Sets für den Skitag:\n\n- **Merino-tech Set** – 49,99 € – warm, weich – https://www.amazon.de/dp/B01\n'
-              '- **DANISH ENDURANCE Thermo** – 39,95 € – mit Reißverschluss – https://www.amazon.de/dp/B02\n- **Icebreaker 200 Oasis** – 89,90 € – sehr langlebig – https://www.amazon.de/dp/B03'),
+              '- **DANISH ENDURANCE Thermo** – 39,95 € – mit Reißverschluss – https://www.amazon.de/dp/B02\n- **Icebreaker 200 Oasis** – 89,90 € – sehr langlebig – https://www.amazon.de/dp/B03',
+          cards: [
+            {'title': 'Merino-tech Set', 'link': 'https://www.amazon.de/dp/B01', 'note': '49,99 € · warm, weich', 'tag': 'Preistipp', 'image': _img('merino1')},
+            {'title': 'DANISH ENDURANCE Thermo', 'link': 'https://www.amazon.de/dp/B02', 'note': '39,95 € · mit Reißverschluss', 'image': _img('merino2')},
+            {'title': 'Icebreaker 200 Oasis', 'link': 'https://www.amazon.de/dp/B03', 'note': '89,90 € · sehr langlebig', 'image': _img('merino3')},
+          ]),
       ChatEntry(role: 'user', text: 'Vergleich die drei als Tabelle'),
       ChatEntry(role: 'assistant', view: 'table', durationMs: 4000,
           text: 'Im Vergleich:\n\n| Set | Preis | Merino | Besonderheit |\n|---|---|---|---|\n| Merino-tech | 49,99 € | 100 % | weich |\n'
@@ -249,6 +257,31 @@ Future<void> _demo() async {
               '3. **Abkühlen** – mindestens 30 Minuten\n4. **Abziehen** – mit der Plexiklinge von vorne nach hinten\n5. **Ausbürsten** – Struktur freilegen'),
     ]);
   app.conversations.add(views);
+  // Für die Webseite: Web-Job mit Karten
+  final bikes = Conversation(id: 'c6', title: 'E-Bikes unter 2.000 €')
+    ..updated = now
+    ..pinned = true
+    ..icon = 'rakete'
+    ..color = 'gruen'
+    ..entries.addAll([
+      ChatEntry(role: 'user', text: 'Finde die 3 günstigsten E-Bikes unter 2.000 € – Lieferung bis Weihnachten'),
+      ChatEntry(role: 'assistant', view: 'cards', durationMs: 48000, via: 'Lokal · Qwen3.5 4B', tokensPerSecond: 41.2,
+          steps: [
+            StepLog(step: 1, tool: 'web_search', thought: 'Ich suche aktuelle Angebote.', args: {'query': 'E-Bike unter 2000 Euro lieferbar'}, observation: '24 Angebote', durationMs: 2100),
+            StepLog(step: 2, tool: 'browse', thought: 'Ich vergleiche Preise auf geizhals.at.', args: {'url': 'https://geizhals.at'}, observation: '3 Shops verglichen', durationMs: 5200),
+            StepLog(step: 3, thought: 'Ich prüfe Lieferzeiten und fasse zusammen.'),
+          ],
+          text: 'Hier sind die drei günstigsten – alle **vor Weihnachten lieferbar**:\n\n'
+              '1. **City E1** – 1.499 € – 500 Wh, bis 90 km\n2. **Urban 7** – 1.689 € – leicht, Riemenantrieb\n3. **Trek Go** – 1.899 € – Federgabel, 625 Wh',
+          cards: [
+            {'title': 'City E1', 'link': 'https://geizhals.at/1', 'note': '1.499 € · 500 Wh · bis 90 km', 'tag': 'Günstigster', 'image': _img('bike1')},
+            {'title': 'Urban 7', 'link': 'https://geizhals.at/2', 'note': '1.689 € · leicht · Riemen', 'image': _img('bike2')},
+            {'title': 'Trek Go', 'link': 'https://geizhals.at/3', 'note': '1.899 € · Federgabel · 625 Wh', 'image': _img('bike3')},
+          ]),
+      ChatEntry(role: 'user', text: 'Merk dir das City E1 – ich schau es mir am Samstag an 👍'),
+      ChatEntry(role: 'assistant', text: 'Gemerkt! Soll ich dich am Samstag um 9 Uhr erinnern?', durationMs: 900),
+    ]);
+  app.conversations.insert(0, bikes);
   app.flows.state['f1'] = {'n1': 'done', 'n2': 'done', 'n3': 'done', 'n4': 'running', 'n5': 'pending', 'n6': 'done'};
 
   await app.memory.add('Arbeitet in Wien als Solution Manager für KI.', category: 'person');
@@ -266,12 +299,20 @@ Future<void> _shot(WidgetTester tester, String name, Size size, Widget home, {bo
       theme: buildTheme(Brightness.light, warm: warm),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: warm ? ThemeMode.light : ThemeMode.dark,
-      home: home,
+      home: KeyedSubtree(key: ValueKey(name), child: home),
     ),
   ));
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 120));
   }
+  // Bilder aus Dateien wirklich laden (sonst bleiben sie im Test leer)
+  await tester.runAsync(() async {
+    for (final el in find.byType(Image).evaluate()) {
+      final w = el.widget as Image;
+      if (w.image is FileImage) await precacheImage(w.image, el);
+    }
+  });
+  await tester.pump(const Duration(milliseconds: 120));
   await expectLater(find.byType(MaterialApp), matchesGoldenFile('ux/$name.png'));
 }
 
@@ -318,7 +359,8 @@ void main() {
           return const HomeShell();
         });
     final shots = <String, (Size, Widget)>{
-      'm_chat': (const Size(400, 860), chat('c1')),
+      'm_chat': (const Size(400, 860), chat('c6')),
+      'm_news': (const Size(400, 860), chat('c1')),
       'm_cards': (const Size(400, 860), chat('c5')),
       'm_results': (const Size(400, 860), Builder(builder: (_) {
         app.current = app.feed;
@@ -329,7 +371,7 @@ void main() {
       'm_flow': (const Size(400, 860), const FlowEditor(id: 'f1')),
       'm_watch': (const Size(400, 860), const WatchDetailPage(id: 'w1')),
       'm_menu': (const Size(400, 860), const Scaffold(body: Sidebar())),
-      'm_desktop': (const Size(1440, 900), chat('c1')),
+      'm_desktop': (const Size(1440, 900), chat('c6')),
       'm_desktop_cards': (const Size(1440, 900), chat('c5')),
     };
     for (final e in shots.entries) {

@@ -730,6 +730,10 @@ class _ResultCarouselState extends State<ResultCarousel> {
                         alignment: Alignment.center,
                         child: img.isEmpty || !widget.loadImages
                             ? placeholder()
+                            : img.startsWith('/') || img.startsWith('file://')
+                            // lokale Bilder (z. B. erzeugt mit generate_image) direkt aus der Datei
+                            ? Image.file(File(img.replaceFirst('file://', '')),
+                                fit: BoxFit.cover, height: 112, width: 190, cacheWidth: 420, errorBuilder: (_, __, ___) => placeholder())
                             : Image.network(
                                 img,
                                 fit: BoxFit.cover,
