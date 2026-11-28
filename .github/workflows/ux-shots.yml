@@ -20,7 +20,7 @@ jobs:
           flutter config --no-analytics
           flutter pub get
           mkdir -p test/ux
-          flutter test test/ux_shots_test.dart --update-goldens --reporter expanded 2>&1 | grep -E "Bild|Fertig|init-Fehler|Error|error" | head -120 || true
+          flutter test test/ux_shots_test.dart --plain-name 'UX-Bilder' --update-goldens --reporter expanded 2>&1 | grep -E "Bild|Fertig|init-Fehler|Error|error" | head -120 || true
           ls -la test/ux
           pip install --quiet pillow
           python3 -c "

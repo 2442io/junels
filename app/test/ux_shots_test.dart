@@ -256,16 +256,16 @@ Future<void> _demo() async {
   await app.memory.add('Montags um 9 Uhr Team-Meeting.', category: 'routine', confirmed: false);
 }
 
-Future<void> _shot(WidgetTester tester, String name, Size size, Widget home) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1.0;
+Future<void> _shot(WidgetTester tester, String name, Size size, Widget home, {bool warm = false, double dpr = 1.0}) async {
+  tester.view.physicalSize = size * dpr;
+  tester.view.devicePixelRatio = dpr;
   await tester.pumpWidget(AppScope(
     controller: app,
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
+      theme: buildTheme(Brightness.light, warm: warm),
       darkTheme: buildTheme(Brightness.dark),
-      themeMode: ThemeMode.dark,
+      themeMode: warm ? ThemeMode.light : ThemeMode.dark,
       home: home,
     ),
   ));
@@ -303,6 +303,49 @@ void main() {
     await _font('JetBrainsMono', ['assets/fonts/JetBrainsMono-Regular.ttf', 'assets/fonts/JetBrainsMono-Medium.ttf']);
     final root = _flutterRoot();
     await _font('MaterialIcons', ['$root/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf']);
+  });
+
+  // Bilder für die Webseite: hell & warm (Farbstil „Junels“), doppelte Auflösung
+  testWidgets('Marketing-Bilder', (tester) async {
+    app = AppController()..headless = true;
+    await tester.runAsync(() async {
+      await app.init();
+      await _demo();
+    });
+    app.settings.uiStyle = 'junels';
+    Widget chat(String id) => Builder(builder: (_) {
+          app.current = app.conversations.firstWhere((c) => c.id == id);
+          return const HomeShell();
+        });
+    final shots = <String, (Size, Widget)>{
+      'm_chat': (const Size(400, 860), chat('c1')),
+      'm_cards': (const Size(400, 860), chat('c5')),
+      'm_results': (const Size(400, 860), Builder(builder: (_) {
+        app.current = app.feed;
+        return const Scaffold(body: ChatView());
+      })),
+      'm_skills': (const Size(400, 860), const SkillsPage()),
+      'm_tasks': (const Size(400, 860), const SkillsPage(filter: 'schedule')),
+      'm_flow': (const Size(400, 860), const FlowEditor(id: 'f1')),
+      'm_watch': (const Size(400, 860), const WatchDetailPage(id: 'w1')),
+      'm_menu': (const Size(400, 860), const Scaffold(body: Sidebar())),
+      'm_desktop': (const Size(1440, 900), chat('c1')),
+      'm_desktop_cards': (const Size(1440, 900), chat('c5')),
+    };
+    for (final e in shots.entries) {
+      try {
+        await _shot(tester, e.key, e.value.$1, e.value.$2, warm: true, dpr: 2);
+        // ignore: avoid_print
+        print('Bild: ${e.key}');
+      } catch (err) {
+        // ignore: avoid_print
+        print('Bild ${e.key} fehlgeschlagen: $err');
+      }
+      FlutterError.onError = FlutterError.presentError;
+    }
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('UX-Bilder', (tester) async {
