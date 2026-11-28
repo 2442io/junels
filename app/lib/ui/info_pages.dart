@@ -14,6 +14,9 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.76.1', [
+    'Mitschrift: neue, freundliche Tonwelle – weiche, ineinanderfließende Wellen in Mint, Blau und Violett, die mit der Stimme mitschwingen',
+  ]),
   ('1.76.0', [
     'Ordner in Ordnern: im Ordner-Menü „Unterordner anlegen …“ und „Verschieben nach …“',
     'Ziehen & Ablegen: Chats und Ordner auf einen Ordner ziehen (Mac mit der Maus, Handy seitlich ziehen); unten „oberste Ebene“ nimmt sie wieder heraus',
