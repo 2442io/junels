@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.69.0', [
+    'Abgleich: „Anderes Sync-Passwort“ wird erklärt – mit zwei Knöpfen: Passwort vom anderen Gerät eingeben oder auf dem Server neu beginnen',
+    'Neu: „Auf dem Server“ im Abgleich – welche Geräte abgleichen (Name, letzter Abgleich, Version), welche Daten liegen (Anzahl/Größe je Kategorie), Konto im Browser, Daten auf dem Server löschen',
+    'Agent-API v3: Konto-Übersicht im Browser unter /konto (Geräte, Daten, angemeldete Apps einzeln abmelden, alles löschen) – Inhalte bleiben Ende-zu-Ende verschlüsselt',
+    'Geräte melden beim Abgleich Name, System und Version (nur Metadaten)',
+  ]),
   ('1.68.0', [
     'Ordner lassen sich anheften – oben unter „Angeheftet“, zusammen mit angehefteten Chats',
     'Symbol & Farbe für Chats und Ordner: 24 Symbole, 9 Farbmarken (im ⋯-Menü bzw. lange drücken)',

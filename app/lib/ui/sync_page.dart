@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../state/app_scope.dart';
+import '../state/native_files.dart';
 import '../state/sync_service.dart';
 import 'quick_nav.dart';
 
@@ -82,6 +83,76 @@ class _SyncPageState extends State<SyncPage> {
           _snack('Löschen fehlgeschlagen: $e');
         }
       }
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Sync-Passwort passt nicht zum Konto: erklären und beide Wege anbieten
+  Widget _conflict(BuildContext context) {
+    final sync = AppScope.read(context).sync;
+    final t = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: scheme.errorContainer.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Dieses Gerät hat ein anderes Sync-Passwort als dein Konto', style: t.titleSmall),
+        const SizedBox(height: 4),
+        Text('Auf dem Server liegen schon Daten, die mit einem anderen Sync-Passwort verschlüsselt sind (z. B. vom anderen Gerät). '
+            'Entweder hier dasselbe Passwort eingeben – oder auf dem Server neu beginnen.',
+            style: t.bodySmall),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.key, size: 18),
+            label: const Text('Passwort vom anderen Gerät eingeben'),
+            onPressed: () async {
+              await sync.forget();
+              sync.lastError.value = null;
+              if (mounted) setState(() {});
+              _snack('Unten bei Schritt 2 das Sync-Passwort vom anderen Gerät eingeben.');
+            },
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('Auf dem Server neu beginnen'),
+            onPressed: () => _wipe(context, conflict: true),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  /// Daten auf dem Server löschen (bestätigen) und neu abgleichen
+  Future<void> _wipe(BuildContext context, {bool conflict = false}) async {
+    final sync = AppScope.read(context).sync;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Alle Daten auf dem Server löschen?'),
+        content: Text(conflict
+            ? 'Die Daten deines Kontos auf dem Server werden gelöscht, das Sync-Passwort dieses Geräts gilt danach für das Konto. '
+                'Deine Daten auf den Geräten bleiben erhalten. Auf den anderen Geräten musst du danach dasselbe Sync-Passwort eingeben.'
+            : 'Die Daten deines Kontos auf dem Server werden gelöscht. Deine Daten auf den Geräten bleiben erhalten und '
+                'werden beim nächsten Abgleich wieder hochgeladen.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await sync.wipeServer();
+      sync.lastError.value = null;
+      _snack('Daten auf dem Server gelöscht – gleiche neu ab …');
+      await sync.syncServer();
+    } catch (e) {
+      _snack('Löschen fehlgeschlagen: $e');
     }
     if (mounted) setState(() {});
   }
@@ -205,13 +276,16 @@ class _SyncPageState extends State<SyncPage> {
                         ? const SizedBox.shrink()
                         : Padding(
                             padding: const EdgeInsets.only(top: 8),
-                            child: Text(e, style: t.bodySmall?.copyWith(color: scheme.error)),
+                            child: sync.passwordConflict ? _conflict(context) : Text(e, style: t.bodySmall?.copyWith(color: scheme.error)),
                           ),
                   ),
                 ]),
               ),
             ),
           ),
+
+          // ---- Auf dem Server: Geräte, Daten, Anmeldungen (Konto-Übersicht)
+          if (!local && !accountOnly && sync.configured && via == 'server' && serverReady && sync.ssoSignedIn) _ServerOverview(sync: sync),
 
           // ---- 1. Was darf das Konto speichern?
           step(1, 'Was soll zwischen deinen Geräten mit?', null, [
@@ -520,6 +594,117 @@ class _SyncPageState extends State<SyncPage> {
               ],
             ]),
         ],
+      ),
+    );
+  }
+}
+
+/// Konto-Übersicht vom Server: Geräte, Daten je Kategorie, im Browser öffnen, auf dem Server löschen
+class _ServerOverview extends StatefulWidget {
+  const _ServerOverview({required this.sync});
+  final SyncService sync;
+
+  @override
+  State<_ServerOverview> createState() => _ServerOverviewState();
+}
+
+class _ServerOverviewState extends State<_ServerOverview> {
+  late Future<Map<String, dynamic>?> _data = widget.sync.serverOverview();
+
+  static String _when(int s) {
+    if (s <= 0) return '–';
+    final d = DateTime.fromMillisecondsSinceEpoch(s * 1000);
+    String two(int v) => v.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final today = d.year == now.year && d.month == now.month && d.day == now.day;
+    return today ? 'heute ${two(d.hour)}:${two(d.minute)}' : '${d.day}.${d.month}. ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  static String _size(int b) => b >= 1048576 ? '${(b / 1048576).toStringAsFixed(1)} MB' : '${(b / 1024).ceil()} KB';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final page = context.findAncestorStateOfType<_SyncPageState>();
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FutureBuilder<Map<String, dynamic>?>(
+          future: _data,
+          builder: (context, snap) {
+            final o = snap.data;
+            final devices = [for (final d in (o?['devices'] as List? ?? const [])) (d as Map).cast<String, dynamic>()];
+            final cats = ((o?['categories'] as Map?) ?? const {}).cast<String, dynamic>();
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.dns_outlined),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Auf dem Server', style: t.titleMedium)),
+                IconButton(
+                  tooltip: 'Aktualisieren',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () => setState(() => _data = widget.sync.serverOverview()),
+                ),
+              ]),
+              if (snap.connectionState != ConnectionState.done)
+                const Padding(padding: EdgeInsets.all(8), child: LinearProgressIndicator())
+              else if (o == null)
+                Text('Übersicht gibt es ab Agent-API v3 – im Browser siehst du trotzdem, was gespeichert ist.', style: t.bodySmall)
+              else ...[
+                Text('Geräte', style: t.labelLarge),
+                if (devices.isEmpty) Text('Noch keins gemeldet – erscheint nach dem nächsten Abgleich.', style: t.bodySmall),
+                for (final d in devices)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(switch ('${d['platform']}') {
+                      'android' => Icons.phone_android,
+                      'ios' => Icons.tablet_mac,
+                      _ => Icons.laptop_mac,
+                    }),
+                    title: Text('${d['name']}${d['id'] == widget.sync.config.deviceId ? ' (dieses Gerät)' : ''}'),
+                    subtitle: Text('Letzter Abgleich ${_when((d['last'] as num?)?.toInt() ?? 0)} · Junels ${d['app'] ?? '?'}'),
+                  ),
+                const SizedBox(height: 6),
+                Text('Daten (verschlüsselt)', style: t.labelLarge),
+                if (cats.isEmpty) Text('Keine Daten gespeichert.', style: t.bodySmall),
+                for (final e in cats.entries)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(children: [
+                      Expanded(child: Text('${(e.value as Map)['label']}', style: t.bodyMedium)),
+                      Text('${(e.value as Map)['count']} · ${_size(((e.value as Map)['bytes'] as num).toInt())}', style: t.bodySmall),
+                    ]),
+                  ),
+                if (cats.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Zusammen ${_size((o['bytes'] as num?)?.toInt() ?? 0)} · zuletzt geändert ${_when((o['lastChange'] as num?)?.toInt() ?? 0)}',
+                        style: t.bodySmall),
+                  ),
+              ],
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.open_in_browser, size: 18),
+                  label: const Text('Konto im Browser'),
+                  onPressed: () => NativeFiles.openUrl(widget.sync.accountPage.toString()),
+                ),
+                TextButton.icon(
+                  icon: Icon(Icons.delete_outline, size: 18, color: Theme.of(context).colorScheme.error),
+                  label: Text('Daten auf dem Server löschen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  onPressed: page == null
+                      ? null
+                      : () async {
+                          await page._wipe(context);
+                          if (mounted) setState(() => _data = widget.sync.serverOverview());
+                        },
+                ),
+              ]),
+            ]);
+          },
+        ),
       ),
     );
   }

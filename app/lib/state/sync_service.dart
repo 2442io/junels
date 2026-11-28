@@ -10,6 +10,7 @@ import 'package:agent_engine/agent_engine.dart';
 import 'package:flutter/foundation.dart';
 
 import '../data/models.dart';
+import '../version.dart';
 import 'app_controller.dart';
 import 'memory_store.dart';
 import 'native_files.dart';
@@ -65,6 +66,7 @@ class SyncConfig {
     this.lanHost = false,
     Set<String>? categories,
     this.deviceName = '',
+    this.deviceId = '',
   }) : categories = categories ?? SyncCategory.values.map((c) => c.prefix).toSet();
 
   /// Datenschutz-Stufe 0–4 (-1 = eigene Auswahl der Kategorien, wie bisher)
@@ -77,12 +79,16 @@ class SyncConfig {
   Set<String> categories;
   String deviceName;
 
+  /// Zufällige Kennung dieses Geräts (für die Geräteliste auf dem Server)
+  String deviceId;
+
   Map<String, Object> toJson() => {
         'serverUrl': serverUrl,
         'auto': auto,
         'lanHost': lanHost,
         'categories': categories.toList(),
         'deviceName': deviceName,
+        if (deviceId.isNotEmpty) 'deviceId': deviceId,
         'level': level,
         if (ssoName.isNotEmpty) 'ssoName': ssoName,
         if (ssoEmail.isNotEmpty) 'ssoEmail': ssoEmail,
@@ -93,6 +99,7 @@ class SyncConfig {
         lanHost: j['lanHost'] as bool? ?? false,
         categories: (j['categories'] as List?)?.cast<String>().toSet(),
         deviceName: j['deviceName'] as String? ?? '',
+        deviceId: j['deviceId'] as String? ?? '',
         level: (j['level'] as num?)?.toInt() ?? -1,
         ssoName: j['ssoName'] as String? ?? '',
         ssoEmail: j['ssoEmail'] as String? ?? '',
@@ -136,6 +143,11 @@ class SyncService implements SyncSource {
       appLog('Sync', 'Einstellungen nicht lesbar: $e', error: true);
     }
     if (config.deviceName.isEmpty) config.deviceName = defaultName;
+    if (config.deviceId.isEmpty) {
+      final r = Random.secure();
+      config.deviceId = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      unawaited(saveConfig());
+    }
     if (configured && config.lanHost) unawaited(startHost());
     _schedule();
     if (configured && config.auto && config.serverUrl.isNotEmpty) {
@@ -270,7 +282,18 @@ class SyncService implements SyncSource {
     final token = await Vault.read('sso:token');
     await _run('Server', () => _engine!.syncWith('server:${base.host}${base.path}', (q) async {
           try {
-            return await syncHttpPost(url, {...q, if (token != null && token.isNotEmpty) 'token': token});
+            return await syncHttpPost(url, {
+              ...q,
+              if (token != null && token.isNotEmpty) 'token': token,
+              // Gerät für die Konto-Übersicht (nur Name/System/Version – keine Inhalte)
+              if (!_legacyServer)
+                'device': {
+                  'id': config.deviceId,
+                  'name': config.deviceName.isEmpty ? defaultName : config.deviceName,
+                  'platform': Platform.operatingSystem,
+                  'app': appVersion,
+                },
+            });
           } on SyncException catch (e) {
             if ('$e'.contains('SSO')) {
               await Vault.delete('sso:token');
@@ -425,6 +448,25 @@ class SyncService implements SyncSource {
     if (l.level == 0) await stopHost();
     await saveConfig();
   }
+
+  /// Anderes Sync-Passwort auf dem Server hinterlegt (Fehler 403)
+  bool get passwordConflict => (lastError.value ?? '').contains('anderes Sync-Passwort');
+
+  /// Konto-Übersicht vom Server: Geräte, Daten je Kategorie, Anmeldungen (ab Agent-API v3; sonst null)
+  Future<Map<String, dynamic>?> serverOverview() async {
+    if (config.serverUrl.trim().isEmpty || _legacyServer) return null;
+    final token = await Vault.read('sso:token');
+    if (token == null) return null;
+    try {
+      final r = await syncHttpPost(_api('status'), {'token': token});
+      return r['ok'] == true ? r : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Adresse der Konto-Seite im Browser
+  Uri get accountPage => _api('konto');
 
   /// Alle Daten dieses Kontos auf dem Server löschen (z. B. nach dem Senken der Stufe).
   Future<void> wipeServer() async {

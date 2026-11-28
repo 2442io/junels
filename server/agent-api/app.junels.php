@@ -13,7 +13,7 @@ return [
 
     'version_file'  => 'app/index.php',
     'version_regex' => "/define\\('JUNELS_API_VERSION',\\s*'(\\d+)'\\)/",
-    'zip_example'   => 'junels-api_v2.zip',
+    'zip_example'   => 'junels-api_v3.zip',
 
     'health_file'   => 'app/health.php',
     'health_boot'   => 'app/health.php',
@@ -27,6 +27,7 @@ return [
         ['name' => 'Info (JSON)', 'path' => '/', 'status' => [200], 'json' => true],
         ['name' => 'Abgleich ohne Anmeldung abgelehnt', 'method' => 'POST', 'path' => '/sync', 'status' => [400, 401], 'json' => true, 'deny' => true],
         ['name' => 'Daten löschen ohne Anmeldung abgelehnt', 'method' => 'POST', 'path' => '/wipe', 'status' => [400, 401], 'json' => true, 'deny' => true],
+        ['name' => 'Übersicht ohne Anmeldung abgelehnt', 'method' => 'POST', 'path' => '/status', 'status' => [400, 401], 'json' => true, 'deny' => true],
     ],
 
     'maintenance_de' => 'Wir machen gerade ein Update. Deine Daten bleiben verschlüsselt und sicher.',
