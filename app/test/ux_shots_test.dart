@@ -305,14 +305,13 @@ Future<void> _shot(WidgetTester tester, String name, Size size, Widget home, {bo
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 120));
   }
-  // Bilder aus Dateien wirklich laden (sonst bleiben sie im Test leer)
-  await tester.runAsync(() async {
-    for (final el in find.byType(Image).evaluate()) {
-      final w = el.widget as Image;
-      if (w.image is FileImage || w.image is ResizeImage) await precacheImage(w.image, el);
+  // Bilder aus Dateien laden lassen (echte Zeit für Lesen und Dekodieren)
+  if (warm) {
+    for (var k = 0; k < 3; k++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pump(const Duration(milliseconds: 50));
     }
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-  });
+  }
   for (var i = 0; i < 3; i++) {
     await tester.pump(const Duration(milliseconds: 120));
   }
