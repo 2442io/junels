@@ -1,5 +1,6 @@
 // Zentraler App-Zustand: Modelle, Engine, Profile, Tools, Chats, Agenten-Lauf.
 
+import 'guardrails.dart';
 import '../l10n.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -479,6 +480,9 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       darkMode.value = settings.darkMode;
       uiStyle.value = settings.uiStyle;
       appLang = settings.appLanguage;
+      guard = GuardConfig.fromJson(settings.guard);
+      _installOutboundFilter();
+      _loadGuardEvents();
       language.value = settings.appLanguage;
       settings.contextSize = device.clampContext(settings.contextSize, null);
       profiles = await storage.loadProfiles();
@@ -1421,6 +1425,178 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     await storage.saveConversation(c);
     appLog('Internet', 'Chat „${c.title}“: ${m.label}');
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------- Guardrails
+
+  late GuardConfig guard = GuardConfig.fromJson(settings.guard);
+  final guardEvents = <GuardEvent>[];
+  String _guardRunLevel = 'off'; // Stufe des laufenden Auftrags (für das Schwärzen bei Cloud-Anfragen)
+  DateTime _guardRedactLogged = DateTime(2000);
+
+  Future<void> saveGuard() async {
+    settings.guard = guard.toJson();
+    await storage.saveSettings(settings);
+    _installOutboundFilter();
+    notifyListeners();
+  }
+
+  /// Stufe für einen Chat: Ordner (auch Elternordner) können sie festlegen, sonst gilt die allgemeine.
+  String guardLevelFor(Conversation? c) {
+    var f = c?.folder;
+    while (f != null) {
+      final g = folderMeta(f)['guard'];
+      if (g is String && g.isNotEmpty) return g;
+      f = folderParent(f);
+    }
+    return guard.level;
+  }
+
+  Future<void> setFolderGuard(String f, String? level) => _setFolderMeta(f, 'guard', level);
+
+  void _guardLog(String kind, String what) {
+    guardEvents.insert(0, GuardEvent(kind, what));
+    if (guardEvents.length > 200) guardEvents.removeRange(200, guardEvents.length);
+    appLog('Guardrails', what);
+    try {
+      File('${storage.root.path}/guard_events.json').writeAsStringSync(jsonEncode([for (final e in guardEvents.take(200)) e.toJson()]));
+    } catch (_) {}
+  }
+
+  void _loadGuardEvents() {
+    try {
+      final f = File('${storage.root.path}/guard_events.json');
+      if (!f.existsSync()) return;
+      guardEvents
+        ..clear()
+        ..addAll([for (final e in jsonDecode(f.readAsStringSync()) as List) GuardEvent.fromJson((e as Map).cast())]);
+    } catch (_) {}
+  }
+
+  /// Alles, was an Cloud-/Server-Modelle geht, wird nach den Guardrails geschwärzt.
+  void _installOutboundFilter() {
+    RemoteBackend.outboundFilter = (text) {
+      final level = _guardRunLevel == 'off' ? guard.level : _guardRunLevel;
+      if (level == 'off' || !guard.redactCloud) return text;
+      final (out, n) = Pii.redact(text, strict: level == 'strict');
+      if (n > 0 && DateTime.now().difference(_guardRedactLogged) > const Duration(seconds: 20)) {
+        _guardRedactLogged = DateTime.now();
+        _guardLog('input', 'Vor dem Senden an ein Cloud-Modell $n sensible Angabe(n) geschwärzt');
+      }
+      return out;
+    };
+  }
+
+  /// Prüfung vor jedem Werkzeug-Aufruf (Regeln, Budgets, gesperrte Ziele, Rückfragen)
+  Future<String?> _guardTool(GuardSession s, String tool, Map<String, dynamic> args) async {
+    final cfg = s.config;
+    final level = s.level;
+    s.toolCalls++;
+    if (s.toolCalls > s.maxToolCalls) {
+      _guardLog('action', 'Budget erreicht: ${s.maxToolCalls} Werkzeug-Aufrufe');
+      return 'Budget erreicht (höchstens ${s.maxToolCalls} Werkzeug-Aufrufe je Auftrag). Antworte jetzt mit dem bisherigen Stand.';
+    }
+    final hit = Guard.blockedTarget(cfg, args);
+    if (hit != null) {
+      _guardLog('action', 'Gesperrtes Ziel: $hit ($tool)');
+      return 'Das Ziel „$hit“ ist gesperrt.';
+    }
+    final kind = GuardAction.of(tool, args);
+    if (kind == null) return null;
+    final label = GuardAction.all.firstWhere((a) => a.id == kind).label;
+    if (kind == 'send') {
+      s.sends++;
+      if (s.sends > s.maxSends) {
+        _guardLog('action', 'Budget erreicht: ${s.maxSends} Nachrichten');
+        return 'Budget erreicht (höchstens ${s.maxSends} Nachricht(en) je Auftrag).';
+      }
+      if (cfg.piiOutbound) {
+        final kinds = Pii.kinds(jsonEncode(args), strict: level == 'strict');
+        if (kinds.isNotEmpty && !await _guardAsk(s, 'Nachricht mit sensiblen Daten?',
+            'Die Nachricht enthält: ${kinds.join(', ')}. Trotzdem so vorbereiten?', null)) {
+          _guardLog('output', 'Nachricht mit ${kinds.join(', ')} nicht vorbereitet');
+          return 'Der Nutzer möchte keine Nachricht mit ${kinds.join(', ')} – entferne diese Angaben.';
+        }
+      }
+    }
+    if (kind == 'web') {
+      s.webActions++;
+      if (s.webActions > s.maxWebActions) {
+        _guardLog('action', 'Budget erreicht: ${s.maxWebActions} Web-Aktionen');
+        return 'Budget erreicht (höchstens ${s.maxWebActions} Web-Aktionen je Auftrag). Sag dem Nutzer, wie weit du gekommen bist.';
+      }
+    }
+    final rule = Guard.ruleFor(cfg, level, kind);
+    if (rule == 'block') {
+      _guardLog('action', 'Gesperrt: $label ($tool)');
+      return '„$label“ ist in den Guardrails gesperrt. Sag dem Nutzer, dass du das nicht darfst.';
+    }
+    if (rule == 'ask' && !s.approved.contains(kind)) {
+      final ok = await _guardAsk(s, '$label?', _guardDetail(tool, args), kind);
+      if (!ok) {
+        _guardLog('action', 'Abgelehnt: $label ($tool)');
+        return s.interactive
+            ? 'Der Nutzer hat „$label“ abgelehnt. Nicht erneut versuchen.'
+            : '„$label“ braucht eine Bestätigung, aber bei diesem automatischen Lauf kann niemand antworten.';
+      }
+      s.approved.add(kind);
+    }
+    return null;
+  }
+
+  Future<bool> _guardAsk(GuardSession s, String title, String detail, String? kind) async {
+    if (!s.interactive) return false;
+    final h = choiceHandler;
+    final a = h == null ? ((await deviceBridge.confirm(title, detail)) ? 'once' : 'no') : await h(title, detail);
+    if (a == 'always' && kind != null) {
+      guard.actions[kind] = 'allow';
+      await saveGuard();
+    }
+    return a != 'no';
+  }
+
+  String _guardDetail(String tool, Map<String, dynamic> args) {
+    final parts = <String>[];
+    for (final k in const ['to', 'an', 'empfaenger', 'recipient', 'number', 'url', 'app', 'path', 'datei', 'title', 'titel', 'subject', 'betreff', 'action', 'aktion']) {
+      final v = args[k];
+      if (v != null && '$v'.trim().isNotEmpty) parts.add('$k: ${'$v'.length > 80 ? '${'$v'.substring(0, 80)}…' : v}');
+    }
+    return 'Guardrails · $tool${parts.isEmpty ? '' : '\n${parts.join('\n')}'}';
+  }
+
+  /// Ergebnisse aus fremden Quellen auf versteckte Anweisungen prüfen
+  String _guardInspect(GuardSession s, String tool, String obs) {
+    if (!s.config.injection) return obs;
+    const external = {'web_fetch', 'web_search', 'site_search', 'browser', 'mail_inbox', 'read_file', 'news', 'begleiten', 'file_search', 'look_at_image'};
+    if (!external.contains(tool) && !tool.contains('__')) return obs;
+    if (!Injection.found(obs)) return obs;
+    _guardLog('input', 'Versteckte Anweisungen in Ergebnis von $tool markiert');
+    return Injection.mark(obs, strict: s.level == 'strict');
+  }
+
+  /// KI-Prüfung der fertigen Antwort gegen Themen und eigene Regeln (optional, kostet etwas Zeit)
+  Future<String?> _guardJudge(AgentBackend eng, String question, String answerText) async {
+    final rules = [
+      ...GuardTopic.all.where((t) => guard.topics.contains(t.id)).map((t) => 'Keine persönliche ${t.label}-Beratung (nur allgemeine Infos)'),
+      ...guard.rules,
+    ];
+    if (rules.isEmpty || answerText.trim().length < 20) return null;
+    final prompt = 'Prüfe, ob die ANTWORT gegen eine der REGELN verstößt.\nREGELN:\n${rules.map((r) => '- $r').join('\n')}\n\n'
+        'FRAGE: ${question.length > 600 ? question.substring(0, 600) : question}\n\nANTWORT: ${answerText.length > 2500 ? answerText.substring(0, 2500) : answerText}\n\n'
+        'Antworte nur mit OK oder mit VERSTOSS: <welche Regel, kurz>.';
+    final buf = StringBuffer();
+    try {
+      await for (final ev in eng.generate(skipThinking(await eng.formatChat([ChatMessage('user', prompt)])),
+          sampling: const SamplingParams(temperature: 0), maxTokens: 40)) {
+        if (ev is TokenEvent) buf.write(ev.text);
+      }
+    } catch (e) {
+      appLog('Guardrails', 'KI-Prüfung: $e', error: true);
+      return null;
+    }
+    final r = cleanModelText(buf.toString()).trim();
+    final m = RegExp(r'VERSTOSS\s*:?\s*(.*)', caseSensitive: false).firstMatch(r);
+    return m == null ? null : (m.group(1)!.trim().isEmpty ? 'Regel verletzt' : m.group(1)!.trim());
   }
 
   /// Sprache der App und des Agenten (Antworten, Spracherkennung, Stimme)
@@ -2420,8 +2596,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   HarnessBudget get harnessBudget =>
       HarnessBudget(maxTime: Duration(minutes: activeProfile.maxMinutes), maxTokens: activeProfile.maxTokensK * 1000);
 
-  AgentRunner _makeRunner(AgentBackend eng, String system, {List<AgentTool>? tools, String? requiredTool}) {
+  AgentRunner _makeRunner(AgentBackend eng, String system,
+      {List<AgentTool>? tools, String? requiredTool, Conversation? conv, bool interactive = false}) {
     final profile = activeProfile;
+    final gLevel = guardLevelFor(conv ?? current);
+    final gs = gLevel == 'off' ? null : GuardSession(level: gLevel, config: guard, interactive: interactive && !headless);
+    if (gs != null) system = '$system${Guard.systemText(guard, gLevel)}';
     final browsing = (tools ?? activeTools).any((t) => t.name == 'browser');
     return AgentRunner(
       engine: eng,
@@ -2435,6 +2615,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       sampling: SamplingParams(temperature: profile.temperature.clamp(0.0, 0.5), topP: 0.9),
       chatSampling: SamplingParams(temperature: profile.temperature),
       requiredTool: requiredTool,
+      guard: gs == null ? null : (tool, args) => _guardTool(gs, tool, args),
+      inspect: gs == null ? null : (tool, obs) => _guardInspect(gs, tool, obs),
     );
   }
 
@@ -4769,7 +4951,30 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           'Frag nur nach, wenn etwas Wesentliches fehlt, das du später brauchst.]';
     }
     if (voice) turnInput = '$turnInput\n\n${voiceTurnHint()}';
-    var runner = _makeRunner(eng, system, tools: runTools, requiredTool: requiredTool);
+    // Guardrails: Themen (nur allgemein oder gar nicht)
+    final gLevel = guardLevelFor(conv);
+    _guardRunLevel = gLevel;
+    if (gLevel != 'off' && guard.topics.isNotEmpty) {
+      final hits = GuardTopic.hits(input, guard.topics);
+      if (hits.isNotEmpty) {
+        final names = hits.map((h) => tr(h.label)).join(', ');
+        if (guard.topicMode == 'block') {
+          answer.text = isEnglish
+              ? 'I don\'t answer questions about $names here – the guardrails are set to “don\'t answer” for this topic. Please ask a professional.'
+              : 'Zu $names antworte ich hier nicht – die Guardrails stehen für dieses Thema auf „nicht beantworten“. Bitte wende dich an eine Fachperson.';
+          _guardLog('output', 'Thema nicht beantwortet: $names');
+          conv.updated = DateTime.now();
+          await storage.saveConversation(conv);
+          notifyListeners();
+          onAnswer?.call(answer.text, true);
+          return;
+        }
+        turnInput = '$turnInput\n\n[GUARDRAILS: Thema $names – nur allgemeine Informationen, keine persönliche Beratung; '
+            'am Ende kurz auf eine Fachperson verweisen.]';
+        _guardLog('output', 'Thema nur allgemein beantwortet: $names');
+      }
+    }
+    var runner = _makeRunner(eng, system, tools: runTools, requiredTool: requiredTool, conv: conv, interactive: !noHistory);
     _runner = runner;
     running = true;
     runStarted = DateTime.now();
@@ -5050,6 +5255,17 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         rag,
       ].join('\n');
       answer.text = stripInventedLinks(answer.text, known);
+      // Guardrails: KI-Prüfung der Antwort (optional)
+      if (gLevel != 'off' && guard.aiCheck && answer.error == null && answer.text.isNotEmpty) {
+        final why = await _guardJudge(eng, input, answer.text);
+        if (why != null) {
+          _guardLog('output', 'Antwort ${gLevel == 'strict' ? 'zurückgehalten' : 'markiert'}: $why');
+          answer.text = gLevel == 'strict'
+              ? (isEnglish ? '⚠️ Guardrails: answer withheld ($why).' : '⚠️ Guardrails: Antwort zurückgehalten ($why).')
+              : '${isEnglish ? '⚠️ Guardrails note' : '⚠️ Hinweis der Guardrails'}: $why\n\n${answer.text}';
+        }
+      }
+      _guardRunLevel = 'off';
       // Ergebnisse (Produkte, Meldungen) als Karten fürs Karussell – mit Kategorie (Thema bzw. Suche)
       answer.cards = [
         for (final st in answer.steps)

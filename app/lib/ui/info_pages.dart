@@ -14,6 +14,13 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.78.0', [
+    'Neu: Guardrails (Einstellungen → Guardrails) – Aus, Standard oder Streng, auch je Ordner',
+    'Eingang: versteckte Anweisungen in Webseiten, Mails und Dateien werden erkannt; IBAN, Karten, SV-Nummer, Passwörter und API-Schlüssel werden vor Cloud-Modellen geschwärzt',
+    'Aktionen: je Art erlaubt, mit Rückfrage oder gesperrt; Budgets je Auftrag; gesperrte Domains und Empfänger',
+    'Ausgang: Themen wie Medizin, Recht oder Geldanlage nur allgemein oder gar nicht; sensible Daten in Nachrichten bestätigen; optionale KI-Prüfung der Antwort',
+    'Eigene Regeln in normaler Sprache – mit Protokoll, wann die Guardrails eingegriffen haben',
+  ]),
   ('1.77.0', [
     'Wechsel Text ↔ Gespräch: im Chat mit 🗣 „Als Gespräch weiterführen“ – mit Stimme im selben Chat weiter; im Gespräch „Als Text weiter“ – zurück in den Chat, der bisherige Verlauf bleibt',
     'Mitschrift: Tonwelle wieder als Balken, jetzt freundlich in Mint, Blau und Violett und mit weicher Bewegung',

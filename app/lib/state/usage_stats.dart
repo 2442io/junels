@@ -173,6 +173,7 @@ class UsageStats {
     s.automations += app.runStats.records.length;
     s.features['Automatisierungen'] = (s.features['Automatisierungen'] ?? 0) + app.runStats.records.length;
     if (s.voice > 0) s.features['Sprechen'] = s.voice;
+    if (app.guardEvents.isNotEmpty) s.features['Guardrails-Eingriffe'] = app.guardEvents.length;
 
     // Nutzungszeit: Sitzungen aus den Zeitstempeln (Lücke > 30 min = neue Sitzung)
     times.sort();

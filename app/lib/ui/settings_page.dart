@@ -1,6 +1,7 @@
 // Einstellungen: alles, was man selten braucht, an einem Ort –
 // links die Bereiche, rechts der Inhalt (auf dem Handy als Liste mit Unterseiten).
 
+import 'guardrails_page.dart' show openGuardrails;
 import 'dart:io';
 
 import 'package:agent_engine/agent_engine.dart';
@@ -62,6 +63,14 @@ List<SettingsEntry> settingsEntries(AppController app) => [
           keywords: [tr('KI-Anbieter'), 'OpenAI', 'Anthropic', 'Claude', 'Gemini', 'Ollama', 'On-Prem', 'Hybrid', tr('API-Schlüssel'), 'Routing']),
       SettingsEntry('agent', 'KI', Icons.smart_toy_outlined, tr('Agent & Werkzeuge'), tr('Profil, Persönlichkeit, welche Werkzeuge der Agent nutzt'),
           keywords: [tr('Profil'), tr('Systemprompt'), tr('Werkzeuge'), 'Tools', tr('Websuche'), tr('Wetter')]),
+      SettingsEntry('guard', 'KI', Icons.shield_outlined, 'Guardrails',
+          switch (app.guard.level) {
+            'strict' => tr('Streng · Leitplanken für den Agenten'),
+            'standard' => tr('Standard · Leitplanken für den Agenten'),
+            _ => tr('Aus · Leitplanken für Eingang, Aktionen, Ausgang, eigene Regeln'),
+          },
+          keywords: ['Guardrails', tr('Sicherheit'), tr('Regeln'), tr('Budget'), 'Prompt-Injection', tr('Schwärzen'), tr('Themen')],
+          open: openGuardrails),
       SettingsEntry('voice', 'KI', Icons.graphic_eq, tr('Sprache & Stimme'), tr('Spracheingabe, Stimme, Vorlesen'),
           keywords: ['Whisper', tr('Mikrofon'), tr('Vorlesen'), tr('Stimme'), 'Wake-Word', tr('Gesprächsmodus')]),
       SettingsEntry('ext', tr('Verbindungen'), Icons.extension_outlined, tr('Erweiterungen'),

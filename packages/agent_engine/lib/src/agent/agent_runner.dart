@@ -109,7 +109,15 @@ class AgentRunner {
     this.chatSampling = const SamplingParams(),
     this.blockCjk = true,
     this.requiredTool,
+    this.guard,
+    this.inspect,
   });
+
+  /// Guardrails vor jedem Werkzeug-Aufruf: null = erlaubt, sonst Begründung (das Modell sieht sie als Beobachtung).
+  final Future<String?> Function(String tool, Map<String, dynamic> args)? guard;
+
+  /// Guardrails für Werkzeug-Ergebnisse (z. B. versteckte Anweisungen in Webseiten markieren).
+  final String Function(String tool, String observation)? inspect;
 
   /// Chinesische/japanische/koreanische Schriftzeichen in der Ausgabe sperren
   /// (verhindert das Abdriften von Qwen-Modellen ins Chinesische).
@@ -522,10 +530,14 @@ class AgentRunner {
         if (tool == null) {
           observation = 'Unbekanntes Tool "$toolName".';
           isError = true;
+        } else if ((await guard?.call(toolName, args)) case final String why) {
+          observation = 'Von den Guardrails nicht erlaubt: $why';
+          isError = true;
         } else {
           try {
             ctx.answerNow = false;
             observation = await tool.run(args, ctx).timeout(tool.timeout ?? toolTimeout);
+            if (inspect != null) observation = inspect!(toolName, observation);
             if (ctx.answerNow) answerNext = true;
             ctx.answerNow = false;
           } on TimeoutException {

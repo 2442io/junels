@@ -108,6 +108,10 @@ class RemoteBackend implements AgentBackend {
   final ProviderConfig config;
   final String? apiKey;
   final HttpClient _client;
+
+  /// Guardrails: filtert alles, was das Gerät verlässt (z. B. IBAN, Passwörter schwärzen). null = unverändert.
+  static String Function(String text)? outboundFilter;
+  static String _out(String t) => outboundFilter == null ? t : outboundFilter!(t);
   StreamSubscription<String>? _sub;
   HttpClientRequest? _req;
   bool _stop = false;
@@ -164,7 +168,8 @@ class RemoteBackend implements AgentBackend {
       };
 
   /// Anfrage-Body je Dialekt.
-  (Uri, Map<String, dynamic>) _request(List<ChatMessage> msgs, {required bool json, required SamplingParams s, required int maxTokens}) {
+  (Uri, Map<String, dynamic>) _request(List<ChatMessage> msgs0, {required bool json, required SamplingParams s, required int maxTokens}) {
+    final msgs = [for (final m in msgs0) ChatMessage(m.role, _out(m.content))];
     final system = msgs.where((m) => m.role == 'system').map((m) => m.content).join('\n\n');
     final rest = [for (final m in msgs) if (m.role != 'system') m];
     final jsonHint = json
@@ -400,7 +405,8 @@ class RemoteBackend implements AgentBackend {
   /// Höchstlänge der Frage je Server (die 2442 API meldet sie bei Überschreitung, z. B. „max. 4000 Zeichen“)
   static final Map<String, int> _limit2442 = {};
 
-  Future<(String, String?)> _ask2442(List<ChatMessage> msgs, {required bool json}) async {
+  Future<(String, String?)> _ask2442(List<ChatMessage> msgs0, {required bool json}) async {
+    final msgs = [for (final m in msgs0) ChatMessage(m.role, _out(m.content))];
     final parts = [
       for (final m in msgs) (switch (m.role) { 'system' => 'Anweisungen', 'assistant' => 'Assistent', _ => 'Nutzer' }, m.content.trim()),
     ];

@@ -425,6 +425,7 @@ class AppSettings {
     this.darkMode,
     this.uiStyle = 'standard',
     this.appLanguage = 'de',
+    this.guard,
     this.sttModelId,
     this.ttsVoiceId,
     this.systemVoice = '',
@@ -500,6 +501,7 @@ class AppSettings {
   bool autoLoadLastModel;
   final Set<String> enabledTools;
   bool? darkMode; // null = System
+  Map<String, dynamic>? guard; // Guardrails (siehe state/guardrails.dart)
   String appLanguage; // 'de' | 'en' – Sprache der Oberfläche und des Agenten
   String uiStyle; // 'standard' oder 'junels' (hell & warm wie die Webseite)
 
@@ -530,7 +532,7 @@ class AppSettings {
 
   /// Diese Schlüssel gehören zum Gerät (Modelle, Stimme, Werkzeuge, KI-Modus) – nicht zu dir als Person.
   static const deviceKeys = [
-    'contextSize', 'contextAuto', 'lastModelId', 'autoLoadLastModel', 'enabledTools', 'darkMode', 'uiStyle', 'appLanguage', 'sttModelId',
+    'contextSize', 'contextAuto', 'lastModelId', 'autoLoadLastModel', 'enabledTools', 'darkMode', 'uiStyle', 'appLanguage', 'guard', 'sttModelId',
     'ttsVoiceId', 'systemVoice', 'sttLanguage', 'autoSpeak', 'sendAfterVoice', 'voiceManualEnd', 'voiceWakeWord',
     'voiceBargeIn', 'routing', 'autoModel', 'hybridFirst', 'hybridTarget', 'voicePauseMs', 'voiceNearField',
     'voiceSmartVad', 'activeProfileId', 'allowedApps',
@@ -617,6 +619,7 @@ class AppSettings {
         'darkMode': darkMode,
         'uiStyle': uiStyle,
         'appLanguage': appLanguage,
+        if (guard != null) 'guard': guard,
         'sttModelId': sttModelId,
         'ttsVoiceId': ttsVoiceId,
         'systemVoice': systemVoice,
@@ -683,6 +686,7 @@ class AppSettings {
         darkMode: j['darkMode'] as bool?,
         uiStyle: j['uiStyle'] as String? ?? 'standard',
         appLanguage: j['appLanguage'] as String? ?? 'de',
+        guard: (j['guard'] as Map?)?.cast<String, dynamic>(),
         sttModelId: j['sttModelId'] as String?,
         ttsVoiceId: j['ttsVoiceId'] as String?,
         systemVoice: j['systemVoice'] as String? ?? '',

@@ -665,6 +665,17 @@ class _FolderGroupState extends State<_FolderGroup> {
             onTap: () => Navigator.pop(ctx, 'pin'),
           ),
           ListTile(leading: const Icon(Icons.palette_outlined), title: Text(tr('Symbol & Farbe …')), onTap: () => Navigator.pop(ctx, 'style')),
+          ListTile(
+            leading: const Icon(Icons.shield_outlined),
+            title: const Text('Guardrails …'),
+            subtitle: Text(switch (widget.meta['guard']) {
+              'strict' => tr('Streng'),
+              'standard' => tr('Standard'),
+              'off' => tr('Aus'),
+              _ => tr('wie allgemein eingestellt'),
+            }),
+            onTap: () => Navigator.pop(ctx, 'guard'),
+          ),
           ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('Umbenennen')), onTap: () => Navigator.pop(ctx, 'rename')),
           ListTile(
             leading: const Icon(Icons.folder_off_outlined),
@@ -679,6 +690,22 @@ class _FolderGroupState extends State<_FolderGroup> {
     switch (r) {
       case 'pin':
         await app.setFolderPinned(f, !pinned);
+      case 'guard':
+        final g = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(title: Text('Guardrails · ${AppController.folderName(f)}'), children: [
+            for (final (v, l) in [('', tr('wie allgemein eingestellt')), ('off', tr('Aus')), ('standard', tr('Standard')), ('strict', tr('Streng'))])
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, v),
+                child: Row(children: [
+                  Icon((widget.meta['guard'] ?? '') == v ? Icons.radio_button_checked : Icons.radio_button_off, size: 18),
+                  const SizedBox(width: 10),
+                  Text(l),
+                ]),
+              ),
+          ]),
+        );
+        if (g != null) await app.setFolderGuard(f, g.isEmpty ? null : g);
       case 'style':
         final s = await pickStyle(context, title: f, icon: widget.meta['icon'] as String?, color: widget.meta['color'] as String?);
         if (s != null) await app.setFolderStyle(f, icon: s.$1, color: s.$2);
