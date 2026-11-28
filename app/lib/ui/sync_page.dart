@@ -676,7 +676,9 @@ class _ServerOverviewState extends State<_ServerOverview> {
           builder: (context, snap) {
             final o = snap.data;
             final devices = [for (final d in (o?['devices'] as List? ?? const [])) (d as Map).cast<String, dynamic>()];
-            final cats = ((o?['categories'] as Map?) ?? const {}).cast<String, dynamic>();
+            final rawCats = o?['categories'];
+            // Server liefert ohne Daten eine leere Liste statt eines Objekts
+            final cats = rawCats is Map ? rawCats.cast<String, dynamic>() : <String, dynamic>{};
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 const Icon(Icons.dns_outlined),

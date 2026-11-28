@@ -14,6 +14,9 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.75.1', [
+    'Behoben: grauer Block unter „Konto, Datenschutz & Abgleich“, wenn auf dem Server (noch) keine Daten liegen',
+  ]),
   ('1.75.0', [
     'Englisch: App und Agent auf Englisch umstellbar (Einstellungen → Darstellung → Sprache · Language, oder „Switch to English“ auf dem Startbildschirm) – Antworten, Spracherkennung und Stimme folgen; die wichtigsten Bereiche sind übersetzt, weitere folgen',
     'Skills im Gesprächsmodus: sagen „Skill Preis-Scout, RTX 4070“ (oder „mit dem Skill …“, „Slash dossier …“) – oder über den Skill-Knopf für die nächste Frage wählen',
