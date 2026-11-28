@@ -278,7 +278,7 @@ Future<void> _demo() async {
             {'title': 'Urban 7', 'link': 'https://geizhals.at/2', 'note': '1.689 € · leicht · Riemen', 'image': _img('bike2')},
             {'title': 'Trek Go', 'link': 'https://geizhals.at/3', 'note': '1.899 € · Federgabel · 625 Wh', 'image': _img('bike3')},
           ]),
-      ChatEntry(role: 'user', text: 'Merk dir das City E1 – ich schau es mir am Samstag an 👍'),
+      ChatEntry(role: 'user', text: 'Merk dir das City E1 – ich schau es mir am Samstag an'),
       ChatEntry(role: 'assistant', text: 'Gemerkt! Soll ich dich am Samstag um 9 Uhr erinnern?', durationMs: 900),
     ]);
   app.conversations.insert(0, bikes);
@@ -309,10 +309,13 @@ Future<void> _shot(WidgetTester tester, String name, Size size, Widget home, {bo
   await tester.runAsync(() async {
     for (final el in find.byType(Image).evaluate()) {
       final w = el.widget as Image;
-      if (w.image is FileImage) await precacheImage(w.image, el);
+      if (w.image is FileImage || w.image is ResizeImage) await precacheImage(w.image, el);
     }
+    await Future<void>.delayed(const Duration(milliseconds: 400));
   });
-  await tester.pump(const Duration(milliseconds: 120));
+  for (var i = 0; i < 3; i++) {
+    await tester.pump(const Duration(milliseconds: 120));
+  }
   await expectLater(find.byType(MaterialApp), matchesGoldenFile('ux/$name.png'));
 }
 
