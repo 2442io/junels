@@ -28,3 +28,7 @@ jobs:
           path: app/test/ux/m_*.png
           if-no-files-found: warn
           retention-days: 5
+      - name: Bilder ins Log (base64)
+        working-directory: app
+        run: |
+          for f in test/ux/m_*.png; do echo "IMG-BEGIN $(basename $f)"; base64 -w 3000 "$f"; echo "IMG-END"; done

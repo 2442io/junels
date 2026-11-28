@@ -27,7 +27,11 @@ try {
     } elseif ($path === '/' && $method === 'GET' && $html) {
         // im Browser: Webseite mit allen Funktionen bzw. unter /api die Übersicht der Schnittstelle (Apps bekommen JSON)
         if ($isApi) Site::api($base);
-        Site::home($base);
+        Site::home($base, 'de');
+    } elseif (!$isApi && $method === 'GET' && ($path === '/en' || $path === '/en/')) {
+        Site::home($base, 'en');
+    } elseif (!$isApi && $method === 'GET' && preg_match('#^/img/([a-z0-9_-]+\.(webp|jpg|png))$#', $path, $m)) {
+        Site::asset($m[1]);
     } elseif ($path === '/' && $method === 'GET') {
         Api::json(['ok' => true, 'app' => 'junels-api', 'v' => (int)JUNELS_API_VERSION, 'sso' => Api::ssoReady()]);
     } elseif ($path === '/login' && $method === 'GET') {

@@ -41,77 +41,218 @@ final class Site
             . 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . (self::ICONS[$name] ?? '') . '</svg>';
     }
 
-    /** Funktionen nach Bereichen: [id, Titel, Untertitel, [[Symbol, Titel, Text, neu?], …]] */
+    /** Funktionen nach Bereichen: [id, [de, en] Titel, [de, en] Untertitel, [[Symbol, [de, en] Titel, [de, en] Text, neu?], …]] */
     private static function features(): array
     {
         return [
-            ['verstehen', 'Verstehen & antworten', 'Ein KI-Agent, der auf deinem Gerät läuft – und nur nach Freigabe ins Internet geht.', [
-                ['chip', 'Lokale KI', 'Sprachmodelle wie Gemma oder Qwen laufen direkt auf Mac und Android. Ohne Konto, ohne Cloud – auch offline.'],
-                ['route', 'Gerät, Cloud oder Hybrid', 'Pro Chat wählbar: alles lokal, eigener On-Prem-Server oder ein Cloud-Modell – Hybrid nimmt das Große nur, wenn nötig.'],
-                ['globe', 'Web-Recherche mit Quellen', 'Suchen, Seiten lesen, Nachrichten und Wetter – jede Antwort mit Quellen. Internet nur nach deinem Ja.'],
-                ['book', 'Wissensbasis & Gedächtnis', 'Eigene Dokumente durchsuchbar machen; Junels merkt sich, was du ihm sagst – und reagiert auf reine Infos einfach mit 👍.'],
+            ['verstehen', ['Verstehen & antworten', 'Understand & answer'], ['Ein KI-Agent, der auf deinem Gerät läuft – und nur nach Freigabe ins Internet geht.', 'An AI agent that runs on your device – and only goes online with your permission.'], [
+                ['chip', ['Lokale KI', 'Local AI'], ['Sprachmodelle wie Gemma oder Qwen laufen direkt auf Mac und Android. Ohne Konto, ohne Cloud – auch offline.', 'Language models like Gemma or Qwen run right on your Mac and Android. No account, no cloud – even offline.']],
+                ['route', ['Gerät, Cloud oder Hybrid', 'Device, cloud or hybrid'], ['Pro Chat wählbar: alles lokal, eigener On-Prem-Server oder ein Cloud-Modell – Hybrid nimmt das Große nur, wenn nötig.', 'Per chat: fully local, your own on-prem server or a cloud model – hybrid only uses the big one when needed.']],
+                ['globe', ['Web-Recherche mit Quellen', 'Web research with sources'], ['Suchen, Seiten lesen, Nachrichten und Wetter – jede Antwort mit Quellen. Internet nur nach deinem Ja.', 'Search, read pages, news and weather – every answer with sources. Internet only after your yes.']],
+                ['book', ['Wissensbasis & Gedächtnis', 'Knowledge & memory'], ['Eigene Dokumente durchsuchbar machen; Junels merkt sich, was du ihm sagst – und reagiert auf reine Infos einfach mit 👍.', 'Make your documents searchable; Junels remembers what you tell it – and simply reacts with 👍 to plain info.']],
             ]],
-            ['web', 'Im Web erledigen', 'Junels arbeitet selbstständig im eingebauten Browser – plant, führt aus, prüft jeden Schritt.', [
-                ['cursor', 'Web-Jobs', 'Ein Auftrag in einem Satz („Finde die 5 günstigsten E-Bikes …“): Plan, Ausführung im Browser, Prüfung nach jedem Schritt, Nachweis am Ende.', true],
-                ['record', 'Vormachen', 'Ablauf einmal im Browser zeigen – Junels zeichnet auf, schreibt die Anleitung und spielt es danach ab. Das Modell springt nur bei Änderungen ein.', true],
-                ['shield', 'Begleiten bei Amtswegen', 'Formulare von oesterreich.gv.at, wien.gv.at & Co. gemeinsam ausfüllen – Feld für Feld erklärt; sensible Felder trägst du selbst ein.'],
-                ['tag', 'Preis-Scout & Inserate-Wächter', 'Preise auf geizhals.at, willhaben und in Shops vergleichen; nur neue Inserate melden; Belege aus Portalen sammeln.', true],
+            ['web', ['Im Web erledigen', 'Get things done on the web'], ['Junels arbeitet selbstständig im eingebauten Browser – plant, führt aus, prüft jeden Schritt.', 'Junels works on its own in the built-in browser – plans, acts and checks every step.'], [
+                ['cursor', ['Web-Jobs', 'Web jobs'], ['Ein Auftrag in einem Satz („Finde die 5 günstigsten E-Bikes …“): Plan, Ausführung im Browser, Prüfung nach jedem Schritt, Nachweis am Ende.', 'One sentence is enough (“Find the 5 cheapest e-bikes …”): plan, run in the browser, check after each step, proof at the end.'], true],
+                ['record', ['Vormachen', 'Show me once'], ['Ablauf einmal im Browser zeigen – Junels zeichnet auf, schreibt die Anleitung und spielt es danach ab. Das Modell springt nur bei Änderungen ein.', 'Show a task once in the browser – Junels records it, writes the instructions and replays it. The model only steps in when something changes.'], true],
+                ['shield', ['Begleiten bei Amtswegen', 'Help with official forms'], ['Formulare von oesterreich.gv.at, wien.gv.at & Co. gemeinsam ausfüllen – Feld für Feld erklärt; sensible Felder trägst du selbst ein.', 'Fill in government forms together – explained field by field; you enter sensitive fields yourself.']],
+                ['tag', ['Preis-Scout & Inserate-Wächter', 'Price scout & listing watcher'], ['Preise auf geizhals.at, willhaben und in Shops vergleichen; nur neue Inserate melden; Belege aus Portalen sammeln.', 'Compare prices across shops and marketplaces; get notified only about new listings; collect receipts from portals.'], true],
             ]],
-            ['sprechen', 'Sprechen & mitschreiben', 'Freihändig reden – auf dem Gerät erkannt und gesprochen.', [
-                ['mic', 'Gesprächsmodus', 'Einfach reden, Junels antwortet mit Stimme. Unterbrechen mit dem Namen, Apps per Stimme steuern („Spiel Weihnachtslieder auf Spotify“).'],
-                ['record', 'Mitschrift', 'Meetings und Telefonate mitschreiben (Whisper, auf dem Gerät) – danach Zusammenfassung, Rückfragen und Protokoll als Word.', true],
+            ['sprechen', ['Sprechen & mitschreiben', 'Talk & transcribe'], ['Freihändig reden – auf dem Gerät erkannt und gesprochen.', 'Hands-free – recognised and spoken on your device.'], [
+                ['mic', ['Gesprächsmodus', 'Conversation mode'], ['Einfach reden, Junels antwortet mit Stimme. Unterbrechen mit dem Namen, Apps per Stimme steuern („Spiel Weihnachtslieder auf Spotify“).', 'Just talk and Junels answers out loud. Interrupt by name, control apps by voice (“Play Christmas songs on Spotify”).']],
+                ['record', ['Mitschrift', 'Transcription'], ['Meetings und Telefonate mitschreiben (Whisper, auf dem Gerät) – danach Zusammenfassung, Rückfragen und Protokoll als Word.', 'Transcribe meetings and calls (Whisper, on device) – then a summary, follow-up questions and minutes as Word.'], true],
             ]],
-            ['erstellen', 'Erstellen', 'Ergebnisse so, wie du sie brauchst.', [
-                ['doc', 'Word, Excel, PDF & PowerPoint', 'Dokumente, Tabellen mit Formeln, Präsentationen und PDFs erstellen – und vorhandene Dateien bearbeiten.'],
-                ['table', 'Darstellung nach Wahl', 'Text, Karten-Karussell mit Bildern und Links, Tabelle, Checkliste, Schritte oder Diagramm – je Chat, Skill oder Ablauf.'],
-                ['spark', 'Bilder & Designs', 'Bilder erzeugen, eigene Designs für Dokumente und Folien.'],
+            ['erstellen', ['Erstellen', 'Create'], ['Ergebnisse so, wie du sie brauchst.', 'Results the way you need them.'], [
+                ['doc', ['Word, Excel, PDF & PowerPoint', 'Word, Excel, PDF & PowerPoint'], ['Dokumente, Tabellen mit Formeln, Präsentationen und PDFs erstellen – und vorhandene Dateien bearbeiten.', 'Create documents, spreadsheets with formulas, presentations and PDFs – and edit existing files.']],
+                ['table', ['Darstellung nach Wahl', 'Your choice of view'], ['Text, Karten-Karussell mit Bildern und Links, Tabelle, Checkliste, Schritte oder Diagramm – je Chat, Skill oder Ablauf.', 'Text, card carousel with images and links, table, checklist, steps or chart – per chat, skill or flow.']],
+                ['spark', ['Bilder & Designs', 'Images & designs'], ['Bilder erzeugen, eigene Designs für Dokumente und Folien.', 'Generate images, use your own designs for documents and slides.']],
             ]],
-            ['automatisieren', 'Automatisieren', 'Was regelmäßig anfällt, erledigt Junels von selbst.', [
-                ['spark', 'Skills', 'Anleitungen für wiederkehrende Aufgaben, aufrufbar mit /befehl – auch mitten im Satz. Im offenen Agent-Skills-Standard, importier- und exportierbar.'],
-                ['clock', 'Geplante Aufgaben', 'Skills mit Zeitplan: täglich, Mo–Fr oder wöchentlich – z. B. Morgen-Übersicht oder Termine vorbereiten.'],
-                ['route', 'Abläufe', 'Mehrere Schritte verbinden: suchen → zusammenfassen → als Word speichern → Push. In einem Satz beschreiben, Junels baut den Ablauf.'],
-                ['eye', 'Beobachten', 'Preis, Webseite oder Thema im Blick behalten – Junels meldet sich nur bei Änderungen.'],
-                ['inbox', 'Ergebnisse', 'Alles, was von selbst läuft, gesammelt an einem Ort – als Karten mit Herkunft, Fortschritt und Nachfragen.', true],
+            ['automatisieren', ['Automatisieren', 'Automate'], ['Was regelmäßig anfällt, erledigt Junels von selbst.', 'Whatever comes up regularly, Junels handles on its own.'], [
+                ['spark', ['Skills', 'Skills'], ['Anleitungen für wiederkehrende Aufgaben, aufrufbar mit /befehl – auch mitten im Satz. Im offenen Agent-Skills-Standard, importier- und exportierbar.', 'Instructions for recurring tasks, called with /command – even mid-sentence. Open Agent Skills standard, import and export.']],
+                ['clock', ['Geplante Aufgaben', 'Scheduled tasks'], ['Skills mit Zeitplan: täglich, Mo–Fr oder wöchentlich – z. B. Morgen-Übersicht oder Termine vorbereiten.', 'Skills on a schedule: daily, weekdays or weekly – e.g. a morning briefing or meeting prep.']],
+                ['route', ['Abläufe', 'Flows'], ['Mehrere Schritte verbinden: suchen → zusammenfassen → als Word speichern → Push. In einem Satz beschreiben, Junels baut den Ablauf.', 'Chain steps: search → summarise → save as Word → push. Describe it in one sentence, Junels builds the flow.']],
+                ['eye', ['Beobachten', 'Watch'], ['Preis, Webseite oder Thema im Blick behalten – Junels meldet sich nur bei Änderungen.', 'Keep an eye on a price, page or topic – Junels only speaks up when something changes.']],
+                ['inbox', ['Ergebnisse', 'Results'], ['Alles, was von selbst läuft, gesammelt an einem Ort – als Karten mit Herkunft, Fortschritt und Nachfragen.', 'Everything that runs on its own, in one place – as cards with source, progress and follow-ups.'], true],
             ]],
-            ['sicher', 'Datenschutz & Geräte', 'Deine Daten gehören dir.', [
-                ['sync', 'Abgleich Mac ↔ Android', 'Chats, Skills, Wissen zwischen deinen Geräten – Ende-zu-Ende verschlüsselt, über den eigenen Server oder im WLAN.'],
-                ['lock', 'Datenschutz-Stufen & 2-Faktor', 'Du bestimmst, was das Konto speichert. Zurücksetzen nur mit SSO und Bestätigung per E-Mail.', true],
-                ['shield', 'Freigaben je Website', 'Ausfüllen und Absenden: frei, mit Rückfrage oder nie. Bezahlen, Passwörter und CAPTCHAs bleiben immer bei dir.', true],
-                ['plug', 'MCP & Apps', 'Eigene MCP-Server anbinden, Apps auf dem Gerät steuern, Kalender und Mail lesen – alles mit Freigabe.'],
+            ['sicher', ['Datenschutz & Geräte', 'Privacy & devices'], ['Deine Daten gehören dir.', 'Your data belongs to you.'], [
+                ['sync', ['Abgleich Mac ↔ Android', 'Sync Mac ↔ Android'], ['Chats, Skills, Wissen zwischen deinen Geräten – Ende-zu-Ende verschlüsselt, über den eigenen Server oder im WLAN.', 'Chats, skills and knowledge across your devices – end-to-end encrypted, via your own server or local Wi-Fi.']],
+                ['lock', ['Datenschutz-Stufen & 2-Faktor', 'Privacy levels & 2FA'], ['Du bestimmst, was das Konto speichert. Zurücksetzen nur mit SSO und Bestätigung per E-Mail.', 'You decide what the account stores. Resets need SSO plus e-mail confirmation.'], true],
+                ['shield', ['Freigaben je Website', 'Per-site permissions'], ['Ausfüllen und Absenden: frei, mit Rückfrage oder nie. Bezahlen, Passwörter und CAPTCHAs bleiben immer bei dir.', 'Filling and submitting: allowed, ask first or never. Payments, passwords and CAPTCHAs always stay with you.'], true],
+                ['plug', ['MCP & Apps', 'MCP & apps'], ['Eigene MCP-Server anbinden, Apps auf dem Gerät steuern, Kalender und Mail lesen – alles mit Freigabe.', 'Connect your own MCP servers, control apps on your device, read calendar and mail – always with permission.']],
             ]],
         ];
     }
 
-    public static function home(string $base): never
+    /** Texte der Seite */
+    private static function texts(string $l): array
     {
+        $de = [
+            'title' => 'Junels – dein KI-Agent auf dem eigenen Gerät',
+            'desc' => 'Junels: der freundliche KI-Agent für Mac und Android – lokal, mit Web-Jobs, Gesprächsmodus, Mitschrift, Skills und verschlüsseltem Abgleich.',
+            'nav' => ['Funktionen', "So geht's", 'Fragen', 'Download'], 'account' => 'Mein Konto',
+            'pill' => 'Mitschrift, Web-Jobs &amp; Vormachen', 'new' => 'Neu',
+            'h1a' => 'Dein KI-Agent,', 'h1b' => 'der für dich anpackt.',
+            'lead' => 'Junels beantwortet Fragen, recherchiert, schreibt Meetings mit, füllt Formulare aus und erledigt Aufgaben im Web – direkt auf deinem Mac und Android. Privat, schnell und immer mit deinem Okay.',
+            'mac' => 'Für Mac laden', 'and' => 'Für Android laden', 'notes' => ['Kostenlos', 'Kein Konto nötig', 'Läuft offline'],
+            'b1' => '100 % auf dem Gerät', 'b2' => '„Hey Junels …“', 'b3' => 'Mit Quellen belegt',
+            'prompts' => ['Fass mir dieses PDF in 5 Punkten zusammen', 'Finde die 5 günstigsten E-Bikes unter 2.000 €', 'Schreib das Meeting als Word-Protokoll', 'Jeden Montag 8 Uhr: Wochenübersicht', 'Füll den Antrag auf wien.gv.at mit mir aus', 'Melde neue Wohnungen auf willhaben', 'Mach daraus eine PowerPoint', 'Wie wird das Wetter am Wochenende?', 'Spiel Weihnachtslieder auf Spotify', 'Wichtig wäre im /dossier unter Personas …'],
+            'stats' => [['100 %', 'offline nutzbar'], ['%n', 'Funktionen in 6 Bereichen'], ['E2E', 'verschlüsselter Abgleich'], ['0', 'Tracking, Werbung, Datenverkauf']],
+            'gal_e' => 'So sieht Junels aus', 'gal_h' => 'Echte Bilder aus der App', 'gal_p' => 'Chat mit Quellen, Karten mit Bildern, Ergebnisse, Skills und Abläufe – auf Mac und Android.',
+            'gal' => ['m_chat' => 'Antworten mit Quellen', 'm_cards' => 'Karten, Tabelle, Checkliste', 'm_results' => 'Ergebnisse & Web-Jobs', 'm_tasks' => 'Geplante Aufgaben', 'm_flow' => 'Abläufe', 'm_watch' => 'Beobachten', 'm_skills' => 'Skills'],
+            'hl' => [
+                ['Web-Jobs &amp; Vormachen', 'Sag, was erledigt werden soll. Junels klickt sich durch.', 'Ein Satz genügt: Junels plant die Schritte, arbeitet im eingebauten Browser, prüft jedes Ergebnis und zeigt dir am Ende den Nachweis.', ['Ablauf einmal vormachen – Junels schreibt die Anleitung selbst', 'Preise vergleichen, Inserate beobachten, Belege sammeln', 'Bezahlen und Passwörter bleiben immer bei dir']],
+                ['Sprechen &amp; Mitschrift', 'Einfach reden. Junels hört zu und schreibt mit.', 'Im Gesprächsmodus antwortet Junels mit Stimme. Die Mitschrift hält Meetings und Telefonate fest – und macht danach eine Zusammenfassung, stellt Rückfragen und legt auf Wunsch ein Word-Protokoll ab.', ['Spracherkennung direkt auf dem Gerät', 'Apps per Stimme steuern', 'Protokoll als Word mit einem Satz']],
+                ['Skills &amp; Automatisieren', 'Einmal einrichten. Läuft dann von selbst.', 'Skills sind deine Kurzbefehle – mit /befehl aufrufbar, sogar mitten im Satz. Mit Zeitplan werden sie zu geplanten Aufgaben, und alles landet gesammelt in deinen Ergebnissen.', ['Morgen-Übersicht, Firmen-Dossier, Preis-Scout &amp; mehr', 'Abläufe aus mehreren Schritten in einem Satz bauen', 'Nur melden, wenn sich etwas ändert']],
+                ['Datenschutz', 'Deine Daten bleiben bei dir. Punkt.', 'Die KI läuft auf deinem Gerät. Ins Internet geht Junels nur mit deinem Ja, und der Abgleich zwischen Mac und Android ist Ende-zu-Ende verschlüsselt.', ['Freigaben je Website: frei, mit Rückfrage oder nie', 'Zurücksetzen nur mit Anmeldung und E-Mail-Bestätigung', 'Kein Tracking, keine Werbung']],
+            ],
+            'tr' => [['00:12', 'Wir starten den Relaunch im Februar.'], ['00:31', 'Anna übernimmt die Texte, Max das Design.'], ['Junels', 'Soll ich das Protokoll als Word ablegen?']],
+            'how_e' => "So geht's", 'how_h' => 'In drei Schritten startklar',
+            'steps' => [['Laden &amp; Modell wählen', 'App installieren – Junels schlägt das passende Sprachmodell für dein Gerät vor.'], ['Fragen, sprechen, beauftragen', 'Schreiben, frei reden oder mit /befehl einen Skill nutzen.'], ['Zurücklehnen', 'Aufgaben einplanen und Web-Jobs starten – die Ergebnisse kommen zu dir.']],
+            'faq_e' => 'Fragen', 'faq_h' => 'Gut zu wissen',
+            'faq' => [
+                ['Brauche ich Internet oder ein Konto?', 'Nein. Das Sprachmodell läuft auf deinem Gerät. Internet brauchst du nur für Recherche oder Web-Jobs – und auch dann fragt Junels vorher.'],
+                ['Was kostet Junels?', 'Die App ist kostenlos. Wer ein Cloud-Modell nutzen möchte, trägt dafür seinen eigenen Schlüssel ein.'],
+                ['Kann Junels in meinem Namen bezahlen oder Passwörter eingeben?', 'Nein. Bezahlen, Passwörter und CAPTCHAs bleiben immer bei dir – Junels zeigt dir nur, wo du klicken musst.'],
+                ['Wie kommen meine Chats auf das andere Gerät?', 'Über den Abgleich: Ende-zu-Ende verschlüsselt über deinen eigenen Server oder direkt im WLAN. Der Server sieht nur verschlüsselte Daten.'],
+                ['Auf welchen Geräten läuft Junels?', 'Auf Mac (Apple Silicon) und Android. Je mehr Arbeitsspeicher, desto größere Modelle sind möglich.'],
+            ],
+            'end_h' => 'Bereit für deinen eigenen Agenten?', 'end_p' => 'Lade Junels kostenlos für Mac oder Android – und lass ihn heute noch die erste Aufgabe erledigen.',
+            'foot' => 'KI-Agent für Mac und Android · Made in Vienna', 'shots_note' => 'Die App ist derzeit auf Deutsch.',
+        ];
+        if ($l !== 'en') return $de;
+        return [
+            'title' => 'Junels – your AI agent on your own device',
+            'desc' => 'Junels: the friendly AI agent for Mac and Android – local, with web jobs, conversation mode, transcription, skills and encrypted sync.',
+            'nav' => ['Features', 'How it works', 'FAQ', 'Download'], 'account' => 'My account',
+            'pill' => 'Transcription, web jobs &amp; show-me-once', 'new' => 'New',
+            'h1a' => 'Your AI agent', 'h1b' => 'that gets things done.',
+            'lead' => 'Junels answers questions, researches, transcribes meetings, fills in forms and gets tasks done on the web – right on your Mac and Android. Private, fast and always with your okay.',
+            'mac' => 'Download for Mac', 'and' => 'Download for Android', 'notes' => ['Free', 'No account needed', 'Works offline'],
+            'b1' => '100 % on your device', 'b2' => '“Hey Junels …”', 'b3' => 'Backed by sources',
+            'prompts' => ['Summarise this PDF in 5 bullet points', 'Find the 5 cheapest e-bikes under €2,000', 'Turn the meeting into Word minutes', 'Every Monday 8 am: weekly overview', 'Help me fill in this application form', 'Tell me about new flats on the market', 'Make a PowerPoint out of this', "What's the weather this weekend?", 'Play Christmas songs on Spotify', 'Important for /dossier under personas …'],
+            'stats' => [['100 %', 'usable offline'], ['%n', 'features in 6 areas'], ['E2E', 'encrypted sync'], ['0', 'tracking, ads, data selling']],
+            'gal_e' => 'See it in action', 'gal_h' => 'Real screens from the app', 'gal_p' => 'Chat with sources, cards with images, results, skills and flows – on Mac and Android.',
+            'gal' => ['m_chat' => 'Answers with sources', 'm_cards' => 'Cards, tables, checklists', 'm_results' => 'Results & web jobs', 'm_tasks' => 'Scheduled tasks', 'm_flow' => 'Flows', 'm_watch' => 'Watch', 'm_skills' => 'Skills'],
+            'hl' => [
+                ['Web jobs &amp; show-me-once', 'Say what needs doing. Junels clicks through.', 'One sentence is enough: Junels plans the steps, works in the built-in browser, checks every result and shows you the proof at the end.', ['Show a task once – Junels writes the instructions itself', 'Compare prices, watch listings, collect receipts', 'Payments and passwords always stay with you']],
+                ['Talk &amp; transcribe', 'Just talk. Junels listens and takes notes.', 'In conversation mode Junels answers out loud. Transcription captures meetings and calls – then summarises, asks follow-up questions and saves Word minutes if you like.', ['Speech recognition right on your device', 'Control apps by voice', 'Minutes as Word in one sentence']],
+                ['Skills &amp; automation', 'Set it up once. It runs by itself.', 'Skills are your shortcuts – called with /command, even mid-sentence. Add a schedule and they become scheduled tasks, with everything collected in your results.', ['Morning briefing, company dossier, price scout &amp; more', 'Build multi-step flows in one sentence', 'Only notified when something changes']],
+                ['Privacy', 'Your data stays with you. Period.', 'The AI runs on your device. Junels only goes online after your yes, and sync between Mac and Android is end-to-end encrypted.', ['Per-site permissions: allowed, ask first or never', 'Resets need sign-in plus e-mail confirmation', 'No tracking, no ads']],
+            ],
+            'tr' => [['00:12', "We'll start the relaunch in February."], ['00:31', 'Anna takes the copy, Max the design.'], ['Junels', 'Shall I save the minutes as Word?']],
+            'how_e' => 'How it works', 'how_h' => 'Ready in three steps',
+            'steps' => [['Download &amp; pick a model', 'Install the app – Junels suggests the right language model for your device.'], ['Ask, talk, delegate', 'Type, just talk, or use a skill with /command.'], ['Sit back', 'Schedule tasks and start web jobs – the results come to you.']],
+            'faq_e' => 'FAQ', 'faq_h' => 'Good to know',
+            'faq' => [
+                ['Do I need internet or an account?', 'No. The language model runs on your device. You only need internet for research or web jobs – and even then Junels asks first.'],
+                ['What does Junels cost?', 'The app is free. If you want to use a cloud model, you add your own key.'],
+                ['Can Junels pay or enter passwords for me?', 'No. Payments, passwords and CAPTCHAs always stay with you – Junels just shows you where to click.'],
+                ['How do my chats get to my other device?', 'Via sync: end-to-end encrypted through your own server or directly over Wi-Fi. The server only sees encrypted data.'],
+                ['Which devices does Junels run on?', 'Mac (Apple Silicon) and Android. The more memory, the bigger the models you can run.'],
+            ],
+            'end_h' => 'Ready for your own agent?', 'end_p' => 'Download Junels for free for Mac or Android – and let it handle its first task today.',
+            'foot' => 'AI agent for Mac and Android · Made in Vienna', 'shots_note' => 'The app is currently in German.',
+        ];
+    }
+
+    /** Bild aus app/img (falls vorhanden) */
+    private static function img(string $base, string $name, string $alt, string $cls = ''): string
+    {
+        foreach (['webp', 'jpg', 'png'] as $ext) {
+            if (is_file(__DIR__ . "/img/$name.$ext")) {
+                return '<img class="' . $cls . '" src="' . htmlspecialchars("$base/img/$name.$ext") . '" alt="' . htmlspecialchars($alt) . '" loading="lazy" decoding="async">';
+            }
+        }
+        return '';
+    }
+
+    /** Liefert Bilder aus app/img aus (für /img/<name>) */
+    public static function asset(string $file): never
+    {
+        $f = __DIR__ . '/img/' . basename($file);
+        $types = ['webp' => 'image/webp', 'jpg' => 'image/jpeg', 'png' => 'image/png'];
+        $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
+        if (!isset($types[$ext]) || !is_file($f)) { http_response_code(404); exit; }
+        header_remove('Cache-Control');
+        header('Content-Type: ' . $types[$ext]);
+        header('Cache-Control: public, max-age=604800');
+        header('Content-Length: ' . filesize($f));
+        readfile($f);
+        exit;
+    }
+
+    public static function home(string $base, string $lang = 'de'): never
+    {
+        $en = $lang === 'en';
+        $L = self::texts($lang);
+        $x = $en ? 1 : 0;
         $h = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES);
         $v = (int)JUNELS_API_VERSION;
         $tones = ['verstehen' => 'mint', 'web' => 'sky', 'sprechen' => 'coral', 'erstellen' => 'sun', 'automatisieren' => 'vio', 'sicher' => 'mint'];
         $nav = ''; $sections = ''; $count = 0;
         foreach (self::features() as [$id, $title, $sub, $items]) {
-            $nav .= '<a href="#' . $id . '">' . $h($title) . '</a>';
+            $nav .= '<a href="#' . $id . '">' . $h($title[$x]) . '</a>';
             $cards = '';
             foreach ($items as $k => $it) {
                 $count++;
-                $cards .= '<article class="card rv" style="--d:' . ($k * 70) . 'ms"><div class="ic t-' . $tones[$id] . '">' . self::icon($it[0]) . '</div><h3>' . $h($it[1])
-                    . (!empty($it[3]) ? ' <span class="new">Neu</span>' : '') . '</h3><p>' . $h($it[2]) . '</p></article>';
+                $cards .= '<article class="card rv"><div class="ic t-' . $tones[$id] . '">' . self::icon($it[0]) . '</div><h3>' . $h($it[1][$x])
+                    . (!empty($it[3]) ? ' <span class="new">' . $L['new'] . '</span>' : '') . '</h3><p>' . $h($it[2][$x]) . '</p></article>';
             }
-            $sections .= '<section id="' . $id . '" class="feat"><div class="sh rv"><span class="eyebrow t-' . $tones[$id] . '">' . $h($title) . '</span><h2>' . $h($sub) . '</h2></div>'
+            $sections .= '<section id="' . $id . '" class="feat"><div class="sh rv"><span class="eyebrow t-' . $tones[$id] . '">' . $h($title[$x]) . '</span><h2>' . $h($sub[$x]) . '</h2></div>'
                 . '<div class="grid">' . $cards . '</div></section>';
         }
-        $prompts = ['Fass mir dieses PDF in 5 Punkten zusammen', 'Finde die 5 günstigsten E-Bikes unter 2.000 €', 'Schreib das Meeting als Word-Protokoll',
-            'Jeden Montag 8 Uhr: Wochenübersicht', 'Füll den Antrag auf wien.gv.at mit mir aus', 'Melde neue Wohnungen auf willhaben', 'Mach daraus eine PowerPoint',
-            'Wie wird das Wetter am Wochenende?', 'Spiel Weihnachtslieder auf Spotify', 'Wichtig wäre im /dossier unter Personas …'];
         $marq = '';
-        foreach (array_merge($prompts, $prompts) as $k => $p) $marq .= '<span class="chip c' . ($k % 5) . '">„' . $h($p) . '“</span>';
-        $mac = $h(self::DL_MAC); $and = $h(self::DL_ANDROID); $admin = $h($base . '/admin'); $api = $h($base . '/api');
+        foreach (array_merge($L['prompts'], $L['prompts']) as $k => $p) $marq .= '<span class="chip c' . ($k % 5) . '">' . ($en ? '“' : '„') . $h($p) . '“</span>';
+        $stats = '';
+        foreach ($L['stats'] as [$a, $b]) $stats .= '<div class="stat rv"><b>' . str_replace('%n', (string)$count, $a) . '</b><span>' . $h($b) . '</span></div>';
         $ic = fn($n, $s = 20) => self::icon($n, $s);
+        $ticks = function (array $t) use ($ic) { $o = ''; foreach ($t as $li) $o .= '<li>' . $ic('check', 18) . ' ' . $li . '</li>'; return $o; };
+        $hl = $L['hl'];
+        $hlT = fn($k, $tone, $rev, $vis) => '<section class="hl' . ($rev ? ' rev' : '') . ' t-' . $tone . '"><div class="txt rv"><span class="eyebrow">' . $hl[$k][0] . '</span><h2>' . $hl[$k][1] . '</h2><p>' . $hl[$k][2] . '</p><ul class="ticks">' . $ticks($hl[$k][3]) . '</ul></div>' . $vis . '</section>';
+        // Bilder: echte App-Bilder, sonst gezeichnete Vorschau
+        $shotHero = self::img($base, 'm_chat', $L['gal']['m_chat'], 'shot');
+        $phoneInner = $shotHero !== '' ? $shotHero : '<div class="msgs"></div>';
+        $shotRes = self::img($base, 'm_results', $L['gal']['m_results']);
+        $shotTasks = self::img($base, 'm_tasks', $L['gal']['m_tasks']);
+        $visWeb = $shotRes !== '' ? '<div class="vis shotvis rv"><div class="ph">' . $shotRes . '</div></div>'
+            : '<div class="vis rv"><div class="win"><div class="wbar"><i></i><i></i><i></i><span>geizhals.at</span></div><div class="wbody"><div class="prog"><i></i></div></div></div></div>';
+        $wave = '';
+        foreach ([40, 70, 55, 85, 45, 75, 35, 65, 50, 80, 40] as $k => $hh) $wave .= '<i style="--hh:' . $hh . 'px;animation-delay:' . ($k / 10) . 's"></i>';
+        $lines = '';
+        foreach ($L['tr'] as [$a, $b]) $lines .= '<div class="ln"><small>' . $h($a) . '</small>' . $h($b) . '</div>';
+        $visTalk = '<div class="vis rv"><div class="wave">' . $wave . '</div><div class="lines">' . $lines . '</div></div>';
+        $visSkills = $shotTasks !== '' ? '<div class="vis shotvis rv"><div class="ph">' . $shotTasks . '</div></div>' : '<div class="vis rv"></div>';
+        $visSafe = '<div class="vis rv"><div class="devs"><div class="dev mac">' . $ic('device', 40) . '</div><div class="link"><div class="lock">' . $ic('lock', 26) . '</div></div><div class="dev and">' . $ic('device', 30) . '</div></div></div>';
+        $highlights = $hlT(0, 'sky', false, $visWeb) . $hlT(1, 'coral', true, $visTalk) . $hlT(2, 'vio', false, $visSkills) . $hlT(3, 'mint', true, $visSafe);
+        // Galerie
+        $strip = '';
+        foreach (['m_chat', 'm_cards', 'm_results', 'm_tasks', 'm_flow', 'm_watch', 'm_skills'] as $n) {
+            $im = self::img($base, $n, $L['gal'][$n]);
+            if ($im !== '') $strip .= '<figure class="rv"><div class="fr">' . $im . '</div><figcaption>' . $h($L['gal'][$n]) . '</figcaption></figure>';
+        }
+        $desk = self::img($base, 'm_desktop', 'Junels – Mac');
+        $gallery = $strip === '' ? '' : '<section class="gallery" id="bilder"><span class="eyebrow t-sun">' . $h($L['gal_e']) . '</span><h2>' . $h($L['gal_h']) . '</h2><p>' . $h($L['gal_p']) . '</p>'
+            . ($desk !== '' ? '<div class="mac rv"><div class="wbar"><i></i><i></i><i></i><span>Junels</span></div>' . $desk . '</div>' : '')
+            . '</div><div class="strip">' . $strip . '</div><div class="wrap">' . ($en ? '<p class="small">' . $h($L['shots_note']) . '</p>' : '');
+        $steps = '';
+        foreach ($L['steps'] as $k => [$a, $b]) $steps .= '<div class="st rv t-' . ['mint', 'sky', 'vio'][$k] . '"><i>' . ($k + 1) . '</i><h3>' . $a . '</h3><p>' . $b . '</p></div>';
+        $faq = '';
+        foreach ($L['faq'] as [$q, $a]) $faq .= '<details><summary>' . $h($q) . '</summary><p>' . $h($a) . '</p></details>';
+        $notes = '';
+        foreach ($L['notes'] as $n) $notes .= '<span>' . $ic('check', 16) . ' ' . $h($n) . '</span>';
+        [$n1, $n2, $n3, $n4] = $L['nav'];
+        $mac = $h(self::DL_MAC); $and = $h(self::DL_ANDROID); $admin = $h($base . '/admin'); $api = $h($base . '/api');
+        $deUrl = $h($base . '/'); $enUrl = $h($base . '/en');
+        $onDe = $en ? '' : ' class="on"'; $onEn = $en ? ' class="on"' : '';
+        $htmlLang = $en ? 'en' : 'de';
+        $icDev = $ic('device'); $icLock = $ic('lock', 18); $icMic = $ic('mic', 18); $icGlobe = $ic('globe', 18);
         header('Content-Type: text/html; charset=utf-8');
-        header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'");
+        header('Content-Language: ' . $htmlLang);
+        header("Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'");
         echo <<<HTML
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Junels – dein KI-Agent auf dem eigenen Gerät</title>
-<meta name="description" content="Junels: der freundliche KI-Agent für Mac und Android – lokal, mit Web-Jobs, Gesprächsmodus, Mitschrift, Skills und verschlüsseltem Abgleich.">
+<!doctype html><html lang="{$htmlLang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{$h($L['title'])}</title>
+<meta name="description" content="{$h($L['desc'])}">
+<link rel="alternate" hreflang="de" href="{$deUrl}"><link rel="alternate" hreflang="en" href="{$enUrl}">
 <meta name="theme-color" content="#fffaf3">
 <style>
 :root{--bg:#fffaf3;--ink:#1d2433;--mut:#5d6577;--line:#ece6dc;--card:#fff;--mint:#12b886;--mint2:#e3f8f0;--sky:#3b82f6;--sky2:#e6efff;--coral:#ff6b5b;--coral2:#ffe9e5;--sun:#f5a524;--sun2:#fff3dc;--vio:#8b5cf6;--vio2:#f0eaff;--sh:0 1px 2px rgba(29,36,51,.04),0 12px 32px -12px rgba(29,36,51,.14)}
@@ -231,103 +372,70 @@ footer{padding:10px 0 50px;color:var(--mut);font-size:14px}footer .wrap{display:
 @keyframes rise{from{opacity:0;transform:translateY(28px)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.m{opacity:1;transform:none}}
 @media(max-width:900px){.hgrid,.hl{grid-template-columns:1fr}.hl.rev .txt{order:0}.stage{height:560px}.phone{left:50%;right:auto;margin-left:-150px}.bd1{left:-6px}.bd2{right:-6px}.stats{grid-template-columns:repeat(2,1fr)}.steps{grid-template-columns:1fr}header.top nav{display:none}header.top .btn{margin-left:auto}.hl{padding-top:70px;gap:30px}}
+
+.lang{display:flex;gap:2px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:3px;font-size:13px;font-weight:700}.lang a{text-decoration:none;padding:4px 8px;border-radius:7px;color:var(--mut)}.lang a.on{background:var(--ink);color:#fff}
+.screen img.shot{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.vis.shotvis{padding:28px 28px 0;display:flex;justify-content:center;align-items:flex-end}
+.vis .ph{width:280px;border-radius:30px 30px 0 0;border:10px solid #1d2433;border-bottom:0;overflow:hidden;box-shadow:0 30px 60px -30px rgba(29,36,51,.5);background:#fff}.vis .ph img{display:block;width:100%;height:440px;object-fit:cover;object-position:top}
+.gallery{padding:100px 0 0;text-align:center}.gallery h2{font-size:clamp(30px,4vw,44px);margin:14px 0 10px}.gallery>p{color:var(--mut);margin:0 auto 32px;max-width:640px;font-size:18px}
+.mac{max-width:1000px;margin:0 auto 34px;border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 40px 80px -40px rgba(29,36,51,.45);border:1px solid var(--line)}.mac img{display:block;width:100%}
+.strip{display:flex;gap:20px;overflow-x:auto;padding:10px 22px 26px;scroll-snap-type:x mandatory;scrollbar-width:thin}
+.strip figure{flex:none;width:230px;margin:0;scroll-snap-align:center}.strip .fr{border-radius:28px;border:8px solid #1d2433;overflow:hidden;background:#fff;box-shadow:var(--sh);transition:transform .25s}.strip figure:hover .fr{transform:translateY(-6px) rotate(-1deg)}
+.strip img{display:block;width:100%;height:470px;object-fit:cover;object-position:top}.strip figcaption{margin-top:12px;font-weight:650;font-size:15px}
+.small{color:var(--mut);font-size:13px}
 </style></head><body>
 <header class="top"><div class="wrap">
-<a class="logo" href="#"><b>J</b>Junels</a>
-<nav><a href="#funktionen">Funktionen</a><a href="#wie">So geht's</a><a href="#faq">Fragen</a><a href="#download">Download</a></nav>
-<a class="btn sm" href="{$admin}">Mein Konto</a>
+<a class="logo" href="{$deUrl}"><b>J</b>Junels</a>
+<nav><a href="#funktionen">{$n1}</a><a href="#wie">{$n2}</a><a href="#faq">{$n3}</a><a href="#download">{$n4}</a></nav>
+<div class="lang"><a href="{$deUrl}"{$onDe}>DE</a><a href="{$enUrl}"{$onEn}>EN</a></div>
+<a class="btn sm" href="{$admin}">{$L['account']}</a>
 </div></header>
 
 <main>
 <section class="hero"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
 <div class="wrap hgrid">
 <div>
-<span class="pill"><i>Neu</i> Mitschrift, Web-Jobs &amp; Vormachen</span>
-<h1>Dein KI-Agent,<br><span class="grad">der für dich anpackt.</span></h1>
-<p class="lead">Junels beantwortet Fragen, recherchiert, schreibt Meetings mit, füllt Formulare aus und erledigt Aufgaben im Web – direkt auf deinem Mac und Android. Privat, schnell und immer mit deinem Okay.</p>
-<div class="cta"><a class="btn p" href="{$mac}">{$ic('device')} Für Mac laden</a><a class="btn" href="{$and}">{$ic('device')} Für Android laden</a></div>
-<div class="note"><span>{$ic('check',16)} Kostenlos</span><span>{$ic('check',16)} Kein Konto nötig</span><span>{$ic('check',16)} Läuft offline</span></div>
+<span class="pill"><i>{$L['new']}</i> {$L['pill']}</span>
+<h1>{$L['h1a']}<br><span class="grad">{$L['h1b']}</span></h1>
+<p class="lead">{$L['lead']}</p>
+<div class="cta"><a class="btn p" href="{$mac}">{$icDev} {$L['mac']}</a><a class="btn" href="{$and}">{$icDev} {$L['and']}</a></div>
+<div class="note">{$notes}</div>
 </div>
 <div class="stage">
-<div class="phone"><div class="screen">
-<div class="sbar"><b></b>Junels<small>● auf dem Gerät</small></div>
-<div class="msgs">
-<div class="m u" style="animation-delay:.4s">Finde die 3 günstigsten E-Bikes unter 2.000 €</div>
-<div class="m a" style="animation-delay:1.3s"><div class="step">{$ic('check',14)} geizhals.at durchsucht</div><div class="step">{$ic('check',14)} 3 Shops verglichen</div><div class="step">{$ic('check',14)} Preise geprüft</div></div>
-<div class="m a" style="animation-delay:2.4s">Hier sind deine Top 3 – alle lieferbar:</div>
-<div class="m cards" style="animation-delay:3s"><div class="mc"><div class="im im1"></div><div><strong>City E1</strong><em>1.499 €</em></div></div><div class="mc"><div class="im im2"></div><div><strong>Urban 7</strong><em>1.689 €</em></div></div><div class="mc"><div class="im im3"></div><div><strong>Trek Go</strong><em>1.899 €</em></div></div></div>
-<div class="m dots" style="animation-delay:3.8s"><i></i><i></i><i></i></div>
-</div>
-<div class="compose">Frag Junels oder tippe /…<span>{$ic('mic',14)}</span></div>
-</div></div>
-<div class="badge bd1"><div class="ic t-mint">{$ic('lock',18)}</div>100 % auf dem Gerät</div>
-<div class="badge bd2"><div class="ic t-coral">{$ic('mic',18)}</div>„Hey Junels …“</div>
-<div class="badge bd3"><div class="ic t-sky">{$ic('globe',18)}</div>Mit Quellen belegt</div>
+<div class="phone"><div class="screen">{$phoneInner}</div></div>
+<div class="badge bd1"><div class="ic t-mint">{$icLock}</div>{$L['b1']}</div>
+<div class="badge bd2"><div class="ic t-coral">{$icMic}</div>{$L['b2']}</div>
+<div class="badge bd3"><div class="ic t-sky">{$icGlobe}</div>{$L['b3']}</div>
 </div>
 </div>
 <div class="marquee"><div class="track">{$marq}</div></div>
-<div class="wrap"><div class="stats">
-<div class="stat rv"><b>100 %</b><span>offline nutzbar</span></div>
-<div class="stat rv"><b>{$count}</b><span>Funktionen in 6 Bereichen</span></div>
-<div class="stat rv"><b>E2E</b><span>verschlüsselter Abgleich</span></div>
-<div class="stat rv"><b>0</b><span>Tracking, Werbung, Datenverkauf</span></div>
-</div></div>
+<div class="wrap"><div class="stats">{$stats}</div></div>
 </section>
 
 <div class="wrap" id="funktionen">
-<section class="hl t-sky"><div class="txt rv"><span class="eyebrow">Web-Jobs &amp; Vormachen</span><h2>Sag, was erledigt werden soll. Junels klickt sich durch.</h2>
-<p>Ein Satz genügt: Junels plant die Schritte, arbeitet im eingebauten Browser, prüft jedes Ergebnis und zeigt dir am Ende den Nachweis.</p>
-<ul class="ticks"><li>{$ic('check',18)} Ablauf einmal vormachen – Junels schreibt die Anleitung selbst</li><li>{$ic('check',18)} Preise vergleichen, Inserate beobachten, Belege sammeln</li><li>{$ic('check',18)} Bezahlen und Passwörter bleiben immer bei dir</li></ul></div>
-<div class="vis rv"><div class="win"><div class="wbar"><i></i><i></i><i></i><span>geizhals.at/e-bikes</span></div><div class="wbody">
-<div class="prog"><i></i></div>
-<div class="row">{$ic('tag',18)} City E1 – Händler A<b>1.499 €</b></div><div class="row">{$ic('tag',18)} Urban 7 – Händler B<b>1.689 €</b></div><div class="row">{$ic('tag',18)} Trek Go – Händler C<b>1.899 €</b></div>
-</div></div><div class="cursor">{$ic('cursor',26)}</div></div></section>
-
-<section class="hl rev t-coral"><div class="txt rv"><span class="eyebrow">Sprechen &amp; Mitschrift</span><h2>Einfach reden. Junels hört zu und schreibt mit.</h2>
-<p>Im Gesprächsmodus antwortet Junels mit Stimme. Die Mitschrift hält Meetings und Telefonate fest – und macht danach eine Zusammenfassung, stellt Rückfragen und legt auf Wunsch ein Word-Protokoll ab.</p>
-<ul class="ticks"><li>{$ic('check',18)} Spracherkennung direkt auf dem Gerät</li><li>{$ic('check',18)} Apps per Stimme steuern</li><li>{$ic('check',18)} Protokoll als Word mit einem Satz</li></ul></div>
-<div class="vis rv"><div class="wave"><i style="--hh:40px"></i><i style="--hh:70px;animation-delay:.1s"></i><i style="--hh:55px;animation-delay:.2s"></i><i style="--hh:85px;animation-delay:.3s"></i><i style="--hh:45px;animation-delay:.4s"></i><i style="--hh:75px;animation-delay:.5s"></i><i style="--hh:35px;animation-delay:.6s"></i><i style="--hh:65px;animation-delay:.7s"></i><i style="--hh:50px;animation-delay:.8s"></i><i style="--hh:80px;animation-delay:.9s"></i><i style="--hh:40px;animation-delay:1s"></i></div>
-<div class="lines"><div class="ln"><small>00:12</small>Wir starten den Relaunch im Februar.</div><div class="ln"><small>00:31</small>Anna übernimmt die Texte, Max das Design.</div><div class="ln"><small>Junels</small>Soll ich das Protokoll als Word ablegen?</div></div></div></section>
-
-<section class="hl t-vio"><div class="txt rv"><span class="eyebrow">Skills &amp; Automatisieren</span><h2>Einmal einrichten. Läuft dann von selbst.</h2>
-<p>Skills sind deine Kurzbefehle – mit /befehl aufrufbar, sogar mitten im Satz. Mit Zeitplan werden sie zu geplanten Aufgaben, und alles landet gesammelt in deinen Ergebnissen.</p>
-<ul class="ticks"><li>{$ic('check',18)} Morgen-Übersicht, Firmen-Dossier, Preis-Scout &amp; mehr</li><li>{$ic('check',18)} Abläufe aus mehreren Schritten in einem Satz bauen</li><li>{$ic('check',18)} Nur melden, wenn sich etwas ändert</li></ul></div>
-<div class="vis rv"><div class="input">Wichtig wäre im <mark>/dossier</mark> unter Personas …</div><div class="sugg"><span>/dossier</span><span>/preis</span><span>/mitschrift</span><span>/morgen</span></div>
-<div class="sched"><div class="sc"><div class="ic t-sun">{$ic('clock',18)}</div><div><strong>Morgen-Übersicht</strong><small>Mo–Fr · 07:30</small></div><em>bereit</em></div><div class="sc"><div class="ic t-sky">{$ic('eye',18)}</div><div><strong>Wohnungen auf willhaben</strong><small>stündlich beobachten</small></div><em>2 neu</em></div></div></div></section>
-
-<section class="hl rev t-mint"><div class="txt rv"><span class="eyebrow">Datenschutz</span><h2>Deine Daten bleiben bei dir. Punkt.</h2>
-<p>Die KI läuft auf deinem Gerät. Ins Internet geht Junels nur mit deinem Ja, und der Abgleich zwischen Mac und Android ist Ende-zu-Ende verschlüsselt.</p>
-<ul class="ticks"><li>{$ic('check',18)} Freigaben je Website: frei, mit Rückfrage oder nie</li><li>{$ic('check',18)} Zurücksetzen nur mit Anmeldung und E-Mail-Bestätigung</li><li>{$ic('check',18)} Kein Tracking, keine Werbung</li></ul></div>
-<div class="vis rv"><div class="devs"><div class="dev mac">{$ic('device',40)}</div><div class="link"><div class="lock">{$ic('lock',26)}</div></div><div class="dev and">{$ic('device',30)}</div></div></div></section>
+{$highlights}
+{$gallery}
 </div>
 
 <div class="anchors"><div class="wrap">{$nav}</div></div>
 <div class="wrap">
 {$sections}
 
-<section class="how" id="wie"><span class="eyebrow t-sky">So geht's</span><h2>In drei Schritten startklar</h2>
-<div class="steps">
-<div class="st rv t-mint"><i>1</i><h3>Laden &amp; Modell wählen</h3><p>App installieren – Junels schlägt das passende Sprachmodell für dein Gerät vor.</p></div>
-<div class="st rv t-sky" style="--d:80ms"><i>2</i><h3>Fragen, sprechen, beauftragen</h3><p>Schreiben, frei reden oder mit /befehl einen Skill nutzen.</p></div>
-<div class="st rv t-vio" style="--d:160ms"><i>3</i><h3>Zurücklehnen</h3><p>Aufgaben einplanen und Web-Jobs starten – die Ergebnisse kommen zu dir.</p></div>
-</div></section>
+<section class="how" id="wie"><span class="eyebrow t-sky">{$L['how_e']}</span><h2>{$L['how_h']}</h2>
+<div class="steps">{$steps}</div></section>
 
-<section class="faq" id="faq"><div style="text-align:center"><span class="eyebrow t-coral">Fragen</span></div><h2>Gut zu wissen</h2>
-<details><summary>Brauche ich Internet oder ein Konto?</summary><p>Nein. Das Sprachmodell läuft auf deinem Gerät. Internet brauchst du nur für Recherche oder Web-Jobs – und auch dann fragt Junels vorher.</p></details>
-<details><summary>Was kostet Junels?</summary><p>Die App ist kostenlos. Wer ein Cloud-Modell nutzen möchte, trägt dafür seinen eigenen Schlüssel ein.</p></details>
-<details><summary>Kann Junels in meinem Namen bezahlen oder Passwörter eingeben?</summary><p>Nein. Bezahlen, Passwörter und CAPTCHAs bleiben immer bei dir – Junels zeigt dir nur, wo du klicken musst.</p></details>
-<details><summary>Wie kommen meine Chats auf das andere Gerät?</summary><p>Über den Abgleich: Ende-zu-Ende verschlüsselt über deinen eigenen Server oder direkt im WLAN. Der Server sieht nur verschlüsselte Daten.</p></details>
-<details><summary>Auf welchen Geräten läuft Junels?</summary><p>Auf Mac (Apple Silicon) und Android. Je mehr Arbeitsspeicher, desto größere Modelle sind möglich.</p></details>
+<section class="faq" id="faq"><div style="text-align:center"><span class="eyebrow t-coral">{$L['faq_e']}</span></div><h2>{$L['faq_h']}</h2>
+{$faq}
 </section>
 
-<section class="end" id="download"><div class="ring r1"></div><div class="ring r2"></div><h2>Bereit für deinen eigenen Agenten?</h2><p>Lade Junels kostenlos für Mac oder Android – und lass ihn heute noch die erste Aufgabe erledigen.</p>
-<div class="cta" style="justify-content:center"><a class="btn p" href="{$mac}">Für Mac laden</a><a class="btn" href="{$and}">Für Android laden</a></div></section>
+<section class="end" id="download"><div class="ring r1"></div><div class="ring r2"></div><h2>{$L['end_h']}</h2><p>{$L['end_p']}</p>
+<div class="cta" style="justify-content:center"><a class="btn p" href="{$mac}">{$L['mac']}</a><a class="btn" href="{$and}">{$L['and']}</a></div></section>
 </div>
 </main>
 
 <footer><div class="wrap">
-<div><strong style="color:var(--ink)">Junels</strong> · KI-Agent für Mac und Android · Made in Vienna</div>
-<div><a href="{$admin}">Mein Konto</a> · <a href="{$api}">API</a> · v{$v}</div>
+<div><strong style="color:var(--ink)">Junels</strong> · {$L['foot']}</div>
+<div><a href="{$deUrl}">Deutsch</a> · <a href="{$enUrl}">English</a> · <a href="{$admin}">{$L['account']}</a> · <a href="{$api}">API</a> · v{$v}</div>
 </div></footer>
 </body></html>
 HTML;
