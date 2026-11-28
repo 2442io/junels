@@ -77,8 +77,8 @@ class _SyncPageState extends State<SyncPage> {
       );
       if (wipe == true) {
         try {
-          await sync.wipeServer();
-          _snack('Daten auf dem Server gelöscht.');
+          final mail = await sync.wipeServer();
+          _snack(mail == null ? 'Daten auf dem Server gelöscht.' : 'Bestätigungslink an $mail gesendet – gelöscht wird nach dem Bestätigen.');
         } catch (e) {
           _snack('Löschen fehlgeschlagen: $e');
         }
@@ -115,7 +115,7 @@ class _SyncPageState extends State<SyncPage> {
           ),
           OutlinedButton.icon(
             icon: const Icon(Icons.restart_alt, size: 18),
-            label: const Text('Auf dem Server neu beginnen'),
+            label: const Text('Sync-Passwort zurücksetzen'),
             onPressed: () => _wipe(context, conflict: true),
           ),
         ]),
@@ -123,36 +123,67 @@ class _SyncPageState extends State<SyncPage> {
     );
   }
 
-  /// Daten auf dem Server löschen (bestätigen) und neu abgleichen
+  /// Sync-Passwort zurücksetzen = Serverdaten löschen. Zweiter Faktor: Bestätigungslink per E-Mail (mit SSO öffnen).
+  /// [conflict]: dieses Gerät behält sein Passwort (es gilt danach fürs Konto). Sonst: danach neues Passwort festlegen.
   Future<void> _wipe(BuildContext context, {bool conflict = false}) async {
     final sync = AppScope.read(context).sync;
+    var newPassword = !conflict;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Alle Daten auf dem Server löschen?'),
-        content: Text(conflict
-            ? 'Die Daten deines Kontos auf dem Server werden gelöscht, das Sync-Passwort dieses Geräts gilt danach für das Konto. '
-                'Deine Daten auf den Geräten bleiben erhalten. Auf den anderen Geräten musst du danach dasselbe Sync-Passwort eingeben.'
-            : 'Die Daten deines Kontos auf dem Server werden gelöscht. Deine Daten auf den Geräten bleiben erhalten und '
-                'werden beim nächsten Abgleich wieder hochgeladen.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          icon: const Icon(Icons.lock_reset),
+          title: const Text('Sync-Passwort zurücksetzen?'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Das Sync-Passwort verschlüsselt deine Daten – niemand kann es wiederherstellen. Zurücksetzen löscht deshalb '
+                'alle Daten deines Kontos auf dem Server; auf deinen Geräten bleibt alles erhalten und wird danach wieder hochgeladen.\n\n'
+                'Zur Sicherheit (2. Faktor) bekommst du einen Bestätigungslink per E-Mail. Öffne ihn, melde dich mit deinem SSO-Konto an '
+                'und tippe „Jetzt zurücksetzen“.'),
+            const SizedBox(height: 8),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: newPassword,
+              onChanged: (v) => setD(() => newPassword = v ?? false),
+              title: const Text('Auf diesem Gerät ein neues Sync-Passwort festlegen'),
+              subtitle: const Text('Aus: das jetzige Passwort dieses Geräts gilt danach fürs Konto'),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('E-Mail senden'),
+            ),
+          ],
+        ),
       ),
     );
     if (ok != true) return;
     try {
-      await sync.wipeServer();
+      final mail = await sync.wipeServer();
       sync.lastError.value = null;
-      _snack('Daten auf dem Server gelöscht – gleiche neu ab …');
-      await sync.syncServer();
+      if (newPassword) await sync.forget();
+      if (mail == null) {
+        _snack('Daten auf dem Server gelöscht – gleiche neu ab …');
+        if (!newPassword) await sync.syncServer();
+      } else if (context.mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.mark_email_read_outlined),
+            title: const Text('E-Mail unterwegs'),
+            content: Text('Bestätigungslink an $mail gesendet (30 Minuten gültig).\n\n'
+                '1. Link öffnen und mit deinem SSO-Konto anmelden\n'
+                '2. „Jetzt zurücksetzen“ tippen\n'
+                '3. ${newPassword ? 'Hier bei Schritt 2 das neue Sync-Passwort festlegen' : 'Hier „Jetzt“ abgleichen'} – '
+                'auf den anderen Geräten dasselbe Passwort eintragen'),
+            actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+          ),
+        );
+      }
     } catch (e) {
-      _snack('Löschen fehlgeschlagen: $e');
+      _snack('Zurücksetzen ging nicht: $e');
     }
     if (mounted) setState(() {});
   }
@@ -387,6 +418,16 @@ class _SyncPageState extends State<SyncPage> {
                   child: const Text('Passwort festlegen'),
                 ),
               ],
+              // Passwort vergessen / neu setzen: nur mit SSO + Bestätigung per E-Mail (Serverdaten werden gelöscht)
+              if (sync.ssoSignedIn && serverReady)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.lock_reset, size: 18),
+                    label: const Text('Passwort vergessen? Zurücksetzen (mit E-Mail-Bestätigung)'),
+                    onPressed: () => _wipe(context),
+                  ),
+                ),
             ]),
 
           if (!local)
@@ -692,8 +733,8 @@ class _ServerOverviewState extends State<_ServerOverview> {
                   onPressed: () => NativeFiles.openUrl(widget.sync.accountPage.toString()),
                 ),
                 TextButton.icon(
-                  icon: Icon(Icons.delete_outline, size: 18, color: Theme.of(context).colorScheme.error),
-                  label: Text('Daten auf dem Server löschen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  icon: Icon(Icons.lock_reset, size: 18, color: Theme.of(context).colorScheme.error),
+                  label: Text('Sync-Passwort zurücksetzen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
                   onPressed: page == null
                       ? null
                       : () async {

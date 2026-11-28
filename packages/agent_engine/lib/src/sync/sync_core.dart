@@ -103,8 +103,11 @@ class SyncResult {
 }
 
 class _Endpoint {
-  _Endpoint(this.since, this.known);
+  _Endpoint(this.since, this.known, [this.epoch = 0]);
   int since;
+
+  /// Kennung des Datenbestands auf dem Server (ändert sich nach einem Zurücksetzen)
+  int epoch;
   final Map<String, int> known; // Schlüssel → zuletzt ausgetauschter Stand
 }
 
@@ -148,7 +151,7 @@ class SyncEngine {
       (j['endpoints'] as Map).forEach((k, v) {
         final m = (v as Map).cast<String, dynamic>();
         _endpoints[k as String] = _Endpoint((m['since'] as num).toInt(),
-            (m['known'] as Map).map((a, b) => MapEntry(a as String, (b as num).toInt())));
+            (m['known'] as Map).map((a, b) => MapEntry(a as String, (b as num).toInt())), (m['epoch'] as num?)?.toInt() ?? 0);
       });
     } catch (_) {}
   }
@@ -160,7 +163,7 @@ class SyncEngine {
     await tmp.writeAsString(jsonEncode({
       'account': keys.account,
       'entries': _entries.map((k, v) => MapEntry(k, v.toJson())),
-      'endpoints': _endpoints.map((k, v) => MapEntry(k, {'since': v.since, 'known': v.known})),
+      'endpoints': _endpoints.map((k, v) => MapEntry(k, {'since': v.since, 'known': v.known, if (v.epoch != 0) 'epoch': v.epoch})),
     }));
     await tmp.rename(f.path);
   }
@@ -207,7 +210,8 @@ class SyncEngine {
     return run;
   }
 
-  Future<SyncResult> _sync(String endpointId, Future<Map<String, dynamic>> Function(Map<String, dynamic> req) send) async {
+  Future<SyncResult> _sync(String endpointId, Future<Map<String, dynamic>> Function(Map<String, dynamic> req) send,
+      {bool retried = false}) async {
     await _load();
     final current = await _scan();
     final ep = _endpoints.putIfAbsent(endpointId, () => _Endpoint(0, {}));
@@ -219,6 +223,17 @@ class SyncEngine {
       out.add(SyncItem(k, e.t, e.d, e.d ? '' : keys.seal(current[k]!)).toJson());
     });
     final resp = await send({'v': 1, 'account': keys.account, 'since': ep.since, 'items': out});
+    // Server wurde zurückgesetzt (neuer Datenbestand): alles vergessen, was er „kannte“, und vollständig neu abgleichen
+    final epoch = (resp['epoch'] as num?)?.toInt() ?? 0;
+    if (epoch != 0 && ep.epoch != 0 && epoch != ep.epoch && !retried) {
+      ep
+        ..known.clear()
+        ..since = 0
+        ..epoch = epoch;
+      await _save();
+      return _sync(endpointId, send, retried: true);
+    }
+    if (epoch != 0) ep.epoch = epoch;
     ep.known.addAll(pushed);
     var received = 0;
     for (final raw in (resp['items'] as List? ?? const [])) {

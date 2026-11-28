@@ -466,19 +466,28 @@ class SyncService implements SyncSource {
   }
 
   /// Adresse der Konto-Seite im Browser
-  Uri get accountPage => _api('konto');
+  Uri get accountPage => _api('admin');
 
   /// Alle Daten dieses Kontos auf dem Server löschen (z. B. nach dem Senken der Stufe).
-  Future<void> wipeServer() async {
+  /// Ab Agent-API v5 mit zweitem Faktor: der Server schickt einen Bestätigungslink per E-Mail (Rückgabe: Adresse,
+  /// maskiert); gelöscht wird erst nach Klick auf den Link (mit SSO). Ältere Server löschen sofort (Rückgabe null).
+  Future<String?> wipeServer() async {
     final token = await Vault.read('sso:token');
     if (_legacyServer) throw SyncException('Löschen auf dem Server gibt es nur mit der Agent-API (Weiche).');
-    await syncHttpPost(_api('wipe'), {if (token != null) 'token': token});
+    final r = await syncHttpPost(_api('wipe'), {if (token != null) 'token': token});
+    if (r['pending'] == true) {
+      final mail = '${r['email'] ?? ''}';
+      status.value = 'Bestätigungslink an $mail gesendet – nach dem Bestätigen hier erneut abgleichen.';
+      appLog('Sync', 'Zurücksetzen angefordert (E-Mail an $mail)');
+      return mail;
+    }
     try {
       await File('${app.storage.root.path}/sync_state.json').delete();
     } catch (_) {}
     if (_keys != null) _setKeys(_keys!); // beim nächsten Abgleich alles Erlaubte neu hochladen
     status.value = 'Daten auf dem Server gelöscht';
     appLog('Sync', 'Serverdaten gelöscht');
+    return null;
   }
 
   /// Mit einem Gerät im WLAN abgleichen.

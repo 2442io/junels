@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.70.0', [
+    'Sync-Passwort zurücksetzen mit zwei Faktoren: SSO-Anmeldung und Bestätigungslink per E-Mail (30 Min. gültig, einmal) – erst dann werden die Serverdaten gelöscht',
+    '„Passwort vergessen? Zurücksetzen“ bei Schritt 2, auch bei „Anderes Sync-Passwort“ und in „Auf dem Server“ – wahlweise mit neuem Passwort auf diesem Gerät',
+    'Nach einem Zurücksetzen lädt jedes Gerät seine Daten automatisch vollständig neu hoch',
+    'Konto-Seite im Browser heißt jetzt /admin (passend zu /control); /konto leitet weiter',
+  ]),
   ('1.69.0', [
     'Abgleich: „Anderes Sync-Passwort“ wird erklärt – mit zwei Knöpfen: Passwort vom anderen Gerät eingeben oder auf dem Server neu beginnen',
     'Neu: „Auf dem Server“ im Abgleich – welche Geräte abgleichen (Name, letzter Abgleich, Version), welche Daten liegen (Anzahl/Größe je Kategorie), Konto im Browser, Daten auf dem Server löschen',

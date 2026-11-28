@@ -1900,6 +1900,30 @@ Die Treffer sieht der Nutzer bereits als Karten.''';
     check(k1.seal('x') != k1.seal('x'), 'zufällige Nonce');
   });
 
+  await group('Abgleich: Server zurückgesetzt (epoch)', () async {
+    final keys = SyncKeys.fromPassphrase('test', iterations: 100);
+    var now = 1000;
+    final mac = _MapSource({'chat:1': '{"t":"A"}', 'chat:2': '{"t":"B"}'});
+    var hub = SyncHub();
+    var epoch = 111;
+    final e = SyncEngine(keys: keys, source: mac, clock: () => now);
+    Future<Map<String, dynamic>> send(Map<String, dynamic> r) async {
+      final out = jsonDecode(jsonEncode(hub.handle(r, account: keys.account))) as Map<String, dynamic>;
+      return {...out, 'epoch': epoch};
+    }
+
+    var r = await e.syncWith('srv', send);
+    check(r.sent == 2, 'erst alles hochgeladen');
+    // Server wird zurückgesetzt (leer, neue Kennung)
+    hub = SyncHub();
+    epoch = 222;
+    now += 10;
+    r = await e.syncWith('srv', send);
+    check(r.sent == 2 && hub.items.length == 2, 'nach dem Zurücksetzen lädt das Gerät alles neu hoch ($r)');
+    r = await e.syncWith('srv', send);
+    check(r.sent == 0, 'danach wieder nur Änderungen');
+  });
+
   await group('Abgleich: zwei Geräte über Hub und WLAN', () async {
     final keys = SyncKeys.fromPassphrase('test', iterations: 100);
     var now = 1000;
