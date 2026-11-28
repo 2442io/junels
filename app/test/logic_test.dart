@@ -67,6 +67,17 @@ void main() {
     });
   });
 
+  group('Skills mitten im Satz', () {
+    test('/befehl im Satz wird erkannt, Pfade und Links nicht', () {
+      final lib = SkillLibrary(File('${Directory.systemTemp.createTempSync('sk').path}/skills.json'));
+      final hit = lib.match('Wichtig wäre im /dossier unter Personas folgendes zu finden');
+      expect(hit?.$1.id, 'b-firmen-dossier');
+      expect(hit?.$2, 'Wichtig wäre im Firmen-Dossier unter Personas folgendes zu finden');
+      expect(lib.match('siehe https://x.at/dossier und /Users/me')?.$1.id, isNot('b-firmen-dossier'));
+      expect(lib.match('/mitschrift')?.$1.id, 'b-mitschrift');
+    });
+  });
+
   group('Anheften, Symbole & Farben', () {
     test('Chat und Ordner merken sich Symbol, Farbe und Anheften', () {
       final c = Conversation(id: 'x', icon: 'stern', color: 'blau', pinned: true, folder: 'Projekt');

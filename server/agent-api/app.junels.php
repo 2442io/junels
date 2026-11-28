@@ -13,7 +13,7 @@ return [
 
     'version_file'  => 'app/index.php',
     'version_regex' => "/define\\('JUNELS_API_VERSION',\\s*'(\\d+)'\\)/",
-    'zip_example'   => 'junels-api_v5.zip',
+    'zip_example'   => 'junels-api_v6.zip',
 
     'health_file'   => 'app/health.php',
     'health_boot'   => 'app/health.php',

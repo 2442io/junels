@@ -25,6 +25,7 @@ import 'skills_page.dart';
 import 'internet_menu.dart';
 import 'quick_nav.dart';
 import 'job_panel.dart';
+import 'transcribe_page.dart' show openTranscriber;
 import 'theme.dart';
 import 'prompt_editor.dart';
 import 'system_check.dart';
@@ -1709,7 +1710,9 @@ class _InputBarState extends State<_InputBar> {
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: _ctrl,
                     builder: (context, v, _) {
-                      final m = RegExp(r'^/([a-z0-9äöüß-]*)$', caseSensitive: false).firstMatch(v.text.trimLeft());
+                      // „/“ am Anfang oder mitten im Satz (das Wort vor dem Cursor)
+                      final before = v.selection.isValid ? v.text.substring(0, v.selection.baseOffset.clamp(0, v.text.length)) : v.text;
+                      final m = RegExp(r'(?:^|\s)/([a-z0-9äöüß-]*)$', caseSensitive: false).firstMatch(before);
                       if (m == null) return const SizedBox.shrink();
                       final q = m.group(1)!.toLowerCase();
                       final hits = [
@@ -1729,9 +1732,11 @@ class _InputBarState extends State<_InputBar> {
                                   avatar: Icon(skillIcon(s.icon), size: 16),
                                   label: Text('/${s.command} · ${s.name}'),
                                   onPressed: () {
-                                    final t = '/${s.command} ';
+                                    // nur das angefangene /wort ersetzen – der restliche Satz bleibt
+                                    final start = before.length - m.group(1)!.length - 1;
+                                    final t = '${v.text.substring(0, start)}/${s.command} ${v.text.substring(before.length).trimLeft()}';
                                     _ctrl.text = t;
-                                    _ctrl.selection = TextSelection.collapsed(offset: t.length);
+                                    _ctrl.selection = TextSelection.collapsed(offset: start + s.command.length + 2);
                                     _focus.requestFocus();
                                   },
                                 ),
@@ -1846,6 +1851,10 @@ class _InputBarState extends State<_InputBar> {
                             editPrompt(context, initialText: _ctrl.text);
                             return;
                           }
+                          if (v == '__mitschrift__') {
+                            openTranscriber(context);
+                            return;
+                          }
                           if (v.startsWith('__run__')) {
                             final p = app.prompts.where((x) => x.id == v.substring(7)).firstOrNull;
                             if (p != null) runSavedPrompt(context, app, p);
@@ -1856,6 +1865,16 @@ class _InputBarState extends State<_InputBar> {
                           _focus.requestFocus();
                         },
                         itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: '__mitschrift__',
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(Icons.record_voice_over_outlined, size: 20),
+                              title: Text('Mitschrift starten'),
+                              subtitle: Text('Gespräch mitschreiben, danach auswerten'),
+                            ),
+                          ),
+                          const PopupMenuDivider(),
                           for (final p in app.prompts)
                             PopupMenuItem(
                               value: '__run__${p.id}',

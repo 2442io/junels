@@ -455,7 +455,7 @@ class _SyncPageState extends State<SyncPage> {
                   controller: _server,
                   keyboardType: TextInputType.url,
                   autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'Server-Adresse', hintText: 'z. B. https://agent.2442.io'),
+                  decoration: const InputDecoration(labelText: 'Server-Adresse', hintText: 'z. B. https://agent.2442.io/api'),
                   onChanged: (v) => setState(() => cfg.serverUrl = v.trim()),
                   onSubmitted: (_) async {
                     await _saveServer();

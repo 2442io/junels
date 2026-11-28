@@ -29,6 +29,7 @@ import 'notifications.dart';
 import 'self_test.dart';
 import 'skill_tool.dart';
 import 'skills.dart';
+import 'transcriber.dart';
 import 'web_jobs.dart';
 import 'run_stats.dart';
 import 'agent_eval_service.dart';
@@ -183,6 +184,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Web-Jobs (planen → im Browser ausführen → prüfen)
   late final WebJobs webJobs = WebJobs(this);
+
+  /// Mitschrift (Gespräch mitschreiben)
+  late final MeetingTranscriber transcriber = MeetingTranscriber(this);
+
+  /// Oberfläche soll die Mitschrift öffnen (zählt hoch)
+  final openTranscriberRequest = ValueNotifier<int>(0);
 
   /// Dialog mit drei Antworten (Nein / Einmal / Immer) – setzt die Oberfläche
   Future<String> Function(String title, String detail)? choiceHandler;
@@ -3145,16 +3152,70 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
           _ => false,
         };
     if (can()) {
-      if (view == OutputView.cards && e.cards.isEmpty) e.cards = cardsFromText(e.text);
+      final fromText = view == OutputView.cards && e.cards.isEmpty;
+      if (fromText) e.cards = cardsFromText(e.text);
       e.view = view == OutputView.auto ? null : view;
       await storage.saveConversation(conv);
       notifyListeners();
+      // Aus Text gebaute Karten haben oft weder Link noch Bild: im Web ergänzen (mit Internet-Freigabe)
+      if (view == OutputView.cards) unawaited(enrichCards(conv, e));
       return true;
     }
     if (running) return false;
     final label = OutputView.labels[view] ?? view;
     await send(OutputView.isFile(view) ? 'Mach aus deiner letzten Antwort eine $label-Datei.' : 'Zeig deine letzte Antwort als $label.');
     return false;
+  }
+
+  /// Karten ohne Link/Bild ergänzen: Link per Websuche zum Titel, Bild aus der Seite (og:image).
+  /// Ohne Internet bekommen Karten ohne Link wenigstens eine Suche als Ziel – der Tipp tut dann etwas.
+  Future<void> enrichCards(Conversation conv, ChatEntry e) async {
+    final todo = [for (final c in e.cards) if ((c['link'] ?? '').isEmpty || (c['image'] ?? '').isEmpty) c];
+    if (todo.isEmpty) return;
+    String searchUrl(Map<String, String> c) =>
+        'https://duckduckgo.com/?q=${Uri.encodeQueryComponent('${c['title']} ${c['note'] ?? ''}'.trim())}';
+    final online = await _requestNetwork(conv, 'Links und Vorschaubilder für die Karten aus dem Web holen');
+    if (!online) {
+      for (final c in todo) {
+        if ((c['link'] ?? '').isEmpty) c['link'] = searchUrl(c);
+      }
+      await storage.saveConversation(conv);
+      notifyListeners();
+      return;
+    }
+    // Thema der Antwort (erster Satz) hilft bei kurzen Titeln
+    final topic = e.text.split(RegExp(r'[.\n]')).firstWhere((x) => x.trim().length > 10, orElse: () => '').trim();
+    Future<void> one(Map<String, String> c) async {
+      try {
+        if ((c['link'] ?? '').isEmpty) {
+          final q = '${c['title']} ${topic.length > 60 ? '' : topic}'.trim();
+          final (hits, _, _) = await WebSearchTool.searchAllEngines(q, httpGetText).timeout(const Duration(seconds: 15));
+          final h = hits.where((h) => h.url.startsWith('http')).firstOrNull;
+          c['link'] = h?.url ?? searchUrl(c);
+          if ((c['note'] ?? '').isEmpty && h != null && h.snippet.isNotEmpty) {
+            c['note'] = h.snippet.length > 140 ? '${h.snippet.substring(0, 137)}…' : h.snippet;
+          }
+        }
+        final link = c['link'] ?? '';
+        if ((c['image'] ?? '').isEmpty && link.startsWith('http') && !link.contains('duckduckgo.com/?q=')) {
+          final u = Uri.parse(link);
+          final html = await httpGetText(u).timeout(const Duration(seconds: 12));
+          final img = previewImageOf(html, u);
+          if (img != null) c['image'] = img;
+        }
+      } catch (_) {
+        if ((c['link'] ?? '').isEmpty) c['link'] = searchUrl(c);
+      }
+    }
+
+    // höchstens 12 Karten, je 4 gleichzeitig
+    final list = todo.take(12).toList();
+    for (var i = 0; i < list.length; i += 4) {
+      await Future.wait(list.skip(i).take(4).map(one));
+      notifyListeners();
+    }
+    await storage.saveConversation(conv);
+    notifyListeners();
   }
 
   /// Checkliste: Punkt abhaken
@@ -4410,6 +4471,11 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
     }
+    // Mitschrift: ohne weiteren Auftrag die Aufnahme öffnen (mit Auftrag: normal, z. B. „/mitschrift als Word“)
+    if (skill != null && skill.id == 'b-mitschrift' && skillTask.trim().isEmpty && !headless && !voice) {
+      openTranscriberRequest.value++;
+      return;
+    }
     // Web-Job-Skill: läuft selbstständig im Browser, Fortschritt als Karte (hier und in „Ergebnisse“)
     if (skill != null && (skill.job || skill.macro.isNotEmpty) && !headless && !voice) {
       final task = skillTask.trim();
@@ -4917,7 +4983,14 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         return acc;
       }).take(60).toList();
       // Karussell gewünscht, aber keine Treffer-Karten: Karten aus der Aufzählung der Antwort
-      if (answer.view == OutputView.cards && answer.cards.isEmpty) answer.cards = cardsFromText(answer.text);
+      if (answer.view == OutputView.cards && answer.cards.isEmpty) {
+        answer.cards = cardsFromText(answer.text);
+        // ohne Link/Bild: nach der Antwort im Web ergänzen
+        if (answer.cards.isNotEmpty && !headless && !voice) {
+          final c0 = conv, e0 = answer;
+          Future<void>.delayed(const Duration(milliseconds: 300), () => enrichCards(c0, e0));
+        }
+      }
       // Hat das Modell lange Adressen geschrieben, die schon als Karte da sind: aus dem Text nehmen
       if (answer.cards.isNotEmpty) answer.text = _stripCardLinks(answer.text);
       if (calc != null) answer.sources.insert(0, SourceRef('tool', 'Rechner'));

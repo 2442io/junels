@@ -682,6 +682,23 @@ final builtinSkills = <Skill>[
     builtin: true,
   ),
   Skill(
+    id: 'b-mitschrift',
+    name: 'Mitschrift',
+    slug: 'mitschrift',
+    icon: 'mail',
+    when: 'Wenn ich ein Gespräch, Meeting oder Telefonat mitschreiben (transkribieren) lassen will.',
+    instructions: 'Ohne weiteren Auftrag öffnet /mitschrift die Aufnahme (alles bleibt auf dem Gerät). Danach liegt die Mitschrift im Chat.\n'
+        '1. Auswerten: kurze Zusammenfassung – Thema, Teilnehmende (wenn erkennbar), wichtigste Punkte, Entscheidungen, '
+        'Aufgaben mit Zuständigen und Fristen.\n'
+        '2. Bis zu 3 Rückfragen zu Unklarem (Namen, wer übernimmt was, Termine) – die Antworten in die Auswertung übernehmen.\n'
+        '3. Auf Wunsch create_word: Protokoll mit Überschrift, Datum, Teilnehmende, Zusammenfassung, Entscheidungen, '
+        'Aufgaben (Tabelle: Was, Wer, Bis wann), danach die vollständige Mitschrift mit Zeitmarken.',
+    tools: ['create_word', 'calendar_add', 'remember'],
+    inputs: 'Titel (optional) – oder Auftrag zur vorhandenen Mitschrift',
+    auto: false,
+    builtin: true,
+  ),
+  Skill(
     id: 'b-musik',
     name: 'Musik & Apps',
     slug: 'musik',
@@ -858,6 +875,15 @@ class SkillLibrary extends ChangeNotifier {
     if (cmd != null) {
       final s = byCommand(cmd.group(1)!);
       if (s != null) return (s, t.substring(cmd.end).trim());
+    }
+    // /befehl mitten im Satz („Wichtig wäre im /dossier unter Personas …“): nur genau passende Befehle,
+    // nur nach Leerzeichen/Klammer (keine Pfade oder Links); der Befehl wird im Text durch den Skill-Namen ersetzt
+    for (final m in RegExp(r'(?<=^|[\s(„"])/([a-z0-9äöüß-]{2,})(?=$|[\s.,;:!?)“"])', caseSensitive: false).allMatches(t)) {
+      final c = m.group(1)!.toLowerCase();
+      final s = enabled.where((x) => x.command == (commandAliases[c] ?? c)).firstOrNull;
+      if (s == null) continue;
+      final task = (t.substring(0, m.start) + s.name + t.substring(m.end)).replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+      return (s, task);
     }
     final low = t.toLowerCase();
     Skill? best;

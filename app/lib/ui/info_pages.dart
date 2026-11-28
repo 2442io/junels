@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.71.0', [
+    'Skills mitten im Satz: „Wichtig wäre im /dossier unter Personas …“ – „/“ schlägt auch mitten im Text passende Skills vor',
+    'Karussell aus Text: Karten bekommen echte Links und Vorschaubilder aus dem Web (mit Internet-Freigabe); ohne Internet öffnet ein Tipp wenigstens die Suche',
+    'Neu: Mitschrift (/mitschrift oder ⚡-Menü) – Gespräche und Meetings auf dem Gerät mitschreiben, danach Zusammenfassung, Rückfragen und auf Wunsch Protokoll als Word',
+    'Agent-API v6: agent.2442.io ist jetzt eine Webseite mit allen Funktionen; die Schnittstelle liegt unter /api (alte Adressen gehen weiter)',
+  ]),
   ('1.70.0', [
     'Sync-Passwort zurücksetzen mit zwei Faktoren: SSO-Anmeldung und Bestätigungslink per E-Mail (30 Min. gültig, einmal) – erst dann werden die Serverdaten gelöscht',
     '„Passwort vergessen? Zurücksetzen“ bei Schritt 2, auch bei „Anderes Sync-Passwort“ und in „Auf dem Server“ – wahlweise mit neuem Passwort auf diesem Gerät',

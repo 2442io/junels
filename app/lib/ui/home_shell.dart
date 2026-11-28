@@ -22,6 +22,7 @@ import 'flows_page.dart';
 import '../state/notifications.dart';
 import 'notify_style.dart';
 import 'theme.dart';
+import 'transcribe_page.dart';
 
 /// Fragt, ob der Agent ins Internet darf.
 Future<NetworkChoice> askNetworkConsent(BuildContext context, String purpose) async {
@@ -116,6 +117,10 @@ class _HomeShellState extends State<HomeShell> {
     app.cloudConsentHandler = (reason) => askCloudConsent(context, reason);
     app.deviceBridge.confirmHandler = (title, detail) => _confirm(title, detail);
     app.choiceHandler = (title, detail) => _choice(title, detail);
+    // /mitschrift (oder Schnellmenü): Aufnahme-Seite öffnen
+    app.openTranscriberRequest.addListener(() {
+      if (mounted) openTranscriber(context);
+    });
     app.pendingLaunch.addListener(() => _launch(app));
     if (app.pendingLaunch.value != null) WidgetsBinding.instance.addPostFrameCallback((_) => _launch(app));
     if (app.needsSystemCheck) {
