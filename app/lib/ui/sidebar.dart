@@ -10,6 +10,7 @@ import '../version.dart';
 import 'conversation_page.dart';
 import 'nav.dart';
 import 'system_check.dart';
+import 'chat_style.dart';
 import 'theme.dart';
 import 'update_page.dart';
 
@@ -73,6 +74,16 @@ class _SidebarState extends State<Sidebar> {
             _go(AppSection.chat);
           },
           onDelete: () => app.deleteConversation(conv),
+        );
+
+    Widget folder(String f) => _FolderGroup(
+          key: ValueKey('folder:$f'),
+          name: f,
+          meta: app.folderMeta(f),
+          count: normal.where((c) => c.folder == f).length,
+          open: _openFolders.contains(f) || normal.any((c) => c.folder == f && c.id == app.current?.id),
+          onToggle: () => setState(() => _openFolders.contains(f) ? _openFolders.remove(f) : _openFolders.add(f)),
+          children: [for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv)],
         );
 
     Widget item(AppSection s, {String? count, bool dot = false}) => _NavItem(
@@ -197,19 +208,21 @@ class _SidebarState extends State<Sidebar> {
                 if (q.isNotEmpty)
                   for (final conv in visible) row(conv)
                 else ...[
-                  // angeheftet
-                  for (final conv in pinned) row(conv),
-                  if (pinned.isNotEmpty) const SizedBox(height: 4),
-                  // Ordner / Projekte
-                  for (final f in folders)
-                    _FolderGroup(
-                      name: f,
-                      count: normal.where((c) => c.folder == f).length,
-                      open: _openFolders.contains(f) || normal.any((c) => c.folder == f && c.id == app.current?.id),
-                      onToggle: () => setState(() => _openFolders.contains(f) ? _openFolders.remove(f) : _openFolders.add(f)),
-                      onRename: (to) => app.renameFolder(f, to),
-                      children: [for (final conv in normal.where((c) => c.folder == f && !c.pinned)) row(conv)],
+                  // angeheftet: Ordner und Chats
+                  if (pinned.isNotEmpty || folders.any(app.folderPinned))
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 2, 10, 4),
+                      child: Row(children: [
+                        Icon(Icons.push_pin, size: 12, color: c.faint),
+                        const SizedBox(width: 6),
+                        Text('Angeheftet', style: t.labelSmall?.copyWith(color: c.faint)),
+                      ]),
                     ),
+                  for (final f in folders.where(app.folderPinned)) folder(f),
+                  for (final conv in pinned) row(conv),
+                  if (pinned.isNotEmpty || folders.any(app.folderPinned)) Divider(height: 14, color: c.border),
+                  // Ordner / Projekte
+                  for (final f in folders.where((f) => !app.folderPinned(f))) folder(f),
                   for (final conv in loose) row(conv),
                 ],
                 if (q.isEmpty && looseAll.length > 5)
@@ -428,6 +441,7 @@ class _ChatRowState extends State<_ChatRow> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
               child: Row(children: [
+                if (styleMark(context, icon: conv.icon, color: conv.color) case final m?) ...[m, const SizedBox(width: 10)],
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(conv.title,
@@ -480,6 +494,11 @@ class _ChatRowState extends State<_ChatRow> {
             onTap: () => Navigator.pop(ctx, 'pin'),
           ),
           ListTile(
+            leading: const Icon(Icons.palette_outlined),
+            title: const Text('Symbol & Farbe …'),
+            onTap: () => Navigator.pop(ctx, 'style'),
+          ),
+          ListTile(
             leading: const Icon(Icons.folder_outlined),
             title: Text(conv.folder == null ? 'In Ordner verschieben …' : 'Ordner: ${conv.folder} – ändern …'),
             onTap: () => Navigator.pop(ctx, 'folder'),
@@ -493,6 +512,9 @@ class _ChatRowState extends State<_ChatRow> {
     switch (r) {
       case 'pin':
         await app.setPinned(conv, !conv.pinned);
+      case 'style':
+        final r = await pickStyle(context, title: conv.title, icon: conv.icon, color: conv.color);
+        if (r != null) await app.setChatStyle(conv, icon: r.$1, color: r.$2);
       case 'folder':
         final f = await _pickFolder(context, app.chatFolders, conv.folder);
         if (f != null) await app.setFolder(conv, f == '-' ? null : f);
@@ -554,46 +576,120 @@ Future<String?> _askText(BuildContext context, String title, String initial) asy
   return r == null || r.trim().isEmpty ? null : r.trim();
 }
 
-/// Ordner in der Chat-Liste (aufklappbar).
-class _FolderGroup extends StatelessWidget {
+/// Ordner in der Chat-Liste (aufklappbar) – mit Symbol, Farbe, Anheften.
+class _FolderGroup extends StatefulWidget {
   const _FolderGroup({
+    super.key,
     required this.name,
+    required this.meta,
     required this.count,
     required this.open,
     required this.onToggle,
-    required this.onRename,
     required this.children,
   });
   final String name;
+  final Map<String, dynamic> meta;
   final int count;
   final bool open;
   final VoidCallback onToggle;
-  final void Function(String) onRename;
   final List<Widget> children;
+
+  @override
+  State<_FolderGroup> createState() => _FolderGroupState();
+}
+
+class _FolderGroupState extends State<_FolderGroup> {
+  bool _hover = false;
+
+  Future<void> _menu(BuildContext context) async {
+    final app = AppScope.read(context);
+    final f = widget.name;
+    final pinned = widget.meta['pinned'] == true;
+    final r = await showSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.folder_outlined), title: Text(f, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ListTile(
+            leading: Icon(pinned ? Icons.push_pin_outlined : Icons.push_pin),
+            title: Text(pinned ? 'Lösen' : 'Anheften'),
+            onTap: () => Navigator.pop(ctx, 'pin'),
+          ),
+          ListTile(leading: const Icon(Icons.palette_outlined), title: const Text('Symbol & Farbe …'), onTap: () => Navigator.pop(ctx, 'style')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Umbenennen'), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(
+            leading: const Icon(Icons.folder_off_outlined),
+            title: const Text('Ordner auflösen'),
+            subtitle: const Text('Die Chats bleiben erhalten, nur ohne Ordner'),
+            onTap: () => Navigator.pop(ctx, 'dissolve'),
+          ),
+        ]),
+      ),
+    );
+    if (!context.mounted) return;
+    switch (r) {
+      case 'pin':
+        await app.setFolderPinned(f, !pinned);
+      case 'style':
+        final s = await pickStyle(context, title: f, icon: widget.meta['icon'] as String?, color: widget.meta['color'] as String?);
+        if (s != null) await app.setFolderStyle(f, icon: s.$1, color: s.$2);
+      case 'rename':
+        final t = await _askText(context, 'Ordner umbenennen', f);
+        if (t != null) await app.renameFolder(f, t);
+      case 'dissolve':
+        await app.dissolveFolder(f);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final open = widget.open;
+    final icon = widget.meta['icon'] as String?;
+    final color = widget.meta['color'] as String?;
+    final tint = tagColor(color);
+    final mark = styleMark(context, icon: icon, color: color, size: 17) ??
+        Icon(open ? Icons.folder_open_outlined : Icons.folder_outlined, size: 17, color: c.muted);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onToggle,
-        onLongPress: () async {
-          final t = await _askText(context, 'Ordner umbenennen', name);
-          if (t != null) onRename(t);
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
-          child: Row(children: [
-            Icon(open ? Icons.folder_open_outlined : Icons.folder_outlined, size: 17, color: c.muted),
-            const SizedBox(width: 10),
-            Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500))),
-            MonoText('$count', size: 11, color: c.faint),
-            Icon(open ? Icons.expand_less : Icons.expand_more, size: 17, color: c.faint),
-          ]),
+      MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: widget.onToggle,
+          onLongPress: () => _menu(context),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 3, 4, 3),
+            child: Row(children: [
+              // nur Farbe ohne Symbol: Ordner-Symbol in der Farbe
+              if (icon == null && tint != null) Icon(open ? Icons.folder_open : Icons.folder, size: 17, color: tint) else mark,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(widget.name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
+              ),
+              MonoText('${widget.count}', size: 11, color: c.faint),
+              IconButton(
+                tooltip: 'Ordner-Menü',
+                visualDensity: VisualDensity.compact,
+                iconSize: 17,
+                icon: Icon(Icons.more_horiz, color: _hover ? null : c.faint.withValues(alpha: 0.6)),
+                onPressed: () => _menu(context),
+              ),
+              Icon(open ? Icons.expand_less : Icons.expand_more, size: 17, color: c.faint),
+            ]),
+          ),
         ),
       ),
-      if (open) Padding(padding: const EdgeInsets.only(left: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)),
+      if (open)
+        Padding(
+          padding: const EdgeInsets.only(left: 14),
+          child: Container(
+            decoration: tint == null ? null : BoxDecoration(border: Border(left: BorderSide(color: tint.withValues(alpha: 0.5), width: 2))),
+            padding: EdgeInsets.only(left: tint == null ? 0 : 4),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: widget.children),
+          ),
+        ),
     ]);
   }
 }

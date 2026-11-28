@@ -67,6 +67,16 @@ void main() {
     });
   });
 
+  group('Anheften, Symbole & Farben', () {
+    test('Chat und Ordner merken sich Symbol, Farbe und Anheften', () {
+      final c = Conversation(id: 'x', icon: 'stern', color: 'blau', pinned: true, folder: 'Projekt');
+      final r = Conversation.fromJson(c.toJson());
+      expect([r.icon, r.color, r.pinned, r.folder], ['stern', 'blau', true, 'Projekt']);
+      final st = AppSettings()..folderMeta = {'Projekt': {'pinned': true, 'icon': 'rakete', 'color': 'lila'}};
+      expect(AppSettings.fromJson(st.toJson()).folderMeta['Projekt']?['icon'], 'rakete');
+    });
+  });
+
   group('Web-Jobs & Vormachen', () {
     test('Skill merkt sich Web-Job, Aufnahme und Platzhalter', () {
       final s = Skill(id: 'u1', name: 'Preise', instructions: 'x', job: true,

@@ -14,6 +14,12 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.68.0', [
+    'Ordner lassen sich anheften – oben unter „Angeheftet“, zusammen mit angehefteten Chats',
+    'Symbol & Farbe für Chats und Ordner: 24 Symbole, 9 Farbmarken (im ⋯-Menü bzw. lange drücken)',
+    'Ordner-Menü (⋯ neben dem Ordner): Anheften, Symbol & Farbe, Umbenennen, Ordner auflösen (Chats bleiben)',
+    'Angeheftete/gestaltete Ordner bleiben sichtbar, auch wenn sie gerade leer sind; Umbenennen behält Symbol, Farbe und Anheften',
+  ]),
   ('1.67.3', [
     'Eingebauter Browser tritt wie ein normaler Browser auf (Safari am Mac, Chrome unter Android) – Seiten wie Zalando melden nicht mehr „Browser wird nicht unterstützt“',
     'Gespräch: Einstellungen-Fenster ist scrollbar und wird nicht mehr abgeschnitten; Fenster von unten allgemein höchstens 90 % hoch',

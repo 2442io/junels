@@ -348,6 +348,8 @@ class Conversation {
     this.hybridTarget,
     this.pinned = false,
     this.folder,
+    this.icon,
+    this.color,
     this.guide,
     this.view,
   })  : entries = entries ?? [],
@@ -368,6 +370,8 @@ class Conversation {
   String? hybridTarget; // Hybrid: danach onprem | cloud (null = Einstellung)
   bool pinned; // oben angeheftet
   String? folder; // Ordner/Projekt in der Seitenleiste
+  String? icon; // Symbol in der Seitenleiste (Schlüssel aus chatIcons)
+  String? color; // Farbmarke (Schlüssel aus tagColors)
   Map<String, dynamic>? guide; // Begleitung durch eine Webseite (Ziel, Plan, aktueller Schritt)
   String? view; // Ausgabeformat für diesen Chat (OutputView), null = automatisch
 
@@ -384,6 +388,8 @@ class Conversation {
         if (hybridTarget != null) 'hybridTarget': hybridTarget,
         if (pinned) 'pinned': true,
         if (folder != null) 'folder': folder,
+        if (icon != null) 'icon': icon,
+        if (color != null) 'color': color,
         if (guide != null) 'guide': guide,
         if (view != null) 'view': view,
       };
@@ -401,6 +407,8 @@ class Conversation {
         hybridTarget: j['hybridTarget'] as String?,
         pinned: j['pinned'] as bool? ?? false,
         folder: j['folder'] as String?,
+        icon: j['icon'] as String?,
+        color: j['color'] as String?,
         guide: (j['guide'] as Map?)?.cast<String, dynamic>(),
         view: j['view'] as String?,
       );
@@ -502,6 +510,9 @@ class AppSettings {
 
   /// „Meine Daten“ zum Ausfüllen von Formularen (nichts Sensibles)
   Map<String, String> myData = {};
+
+  /// Ordner der Seitenleiste: Name → {pinned, icon, color}
+  Map<String, Map<String, dynamic>> folderMeta = {};
   String systemVoice; // Stimme des Geräts: „Name|Locale“ (leer = Standard)
   String slowVoice; // (veraltet) früher: Stimme zu langsam → Gerätestimme
   /// Gemessenes Tempo der lokalen Stimmen (Ordner → ms je Zeichen), fürs Puffern beim Vorlesen.
@@ -593,6 +604,7 @@ class AppSettings {
         if (feedSeen != null) 'feedSeen': feedSeen!.toIso8601String(),
         if (sitePolicy.isNotEmpty) 'sitePolicy': sitePolicy,
         if (myData.isNotEmpty) 'myData': myData,
+        if (folderMeta.isNotEmpty) 'folderMeta': folderMeta,
         'contextAuto': contextAuto,
         'activeProfileId': activeProfileId,
         'lastModelId': lastModelId,
@@ -651,7 +663,10 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings._fromJson(j)
     ..feedSeen = DateTime.tryParse(j['feedSeen'] as String? ?? '')
     ..sitePolicy = ((j['sitePolicy'] as Map?) ?? const {}).cast<String, dynamic>()
-    ..myData = {for (final e in ((j['myData'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'};
+    ..myData = {for (final e in ((j['myData'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'}
+    ..folderMeta = {
+      for (final e in ((j['folderMeta'] as Map?) ?? const {}).entries) '${e.key}': (e.value as Map).cast<String, dynamic>(),
+    };
   factory AppSettings._fromJson(Map<String, dynamic> j) => AppSettings(
         contextSize: (j['contextSize'] as num?)?.toInt() ?? 2048,
         contextAuto: j['contextAuto'] as bool? ?? true,

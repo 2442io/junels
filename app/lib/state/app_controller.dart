@@ -1836,10 +1836,60 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Ordner (Projekte) in der Seitenleiste: aus den Chats.
+  /// Ordner (Projekte) in der Seitenleiste: aus den Chats – plus angeheftete/gestaltete, auch wenn leer.
   List<String> get chatFolders {
-    final set = <String>{for (final c in conversations) if (c.folder != null && c.folder!.trim().isNotEmpty) c.folder!};
+    final set = <String>{
+      for (final c in conversations) if (c.folder != null && c.folder!.trim().isNotEmpty) c.folder!,
+      ...settings.folderMeta.keys,
+    };
     return set.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  Map<String, dynamic> folderMeta(String f) => settings.folderMeta[f] ?? const {};
+  bool folderPinned(String f) => folderMeta(f)['pinned'] == true;
+
+  Future<void> _setFolderMeta(String f, String key, Object? value) async {
+    final m = {...folderMeta(f)};
+    if (value == null || value == false) {
+      m.remove(key);
+    } else {
+      m[key] = value;
+    }
+    if (m.isEmpty) {
+      settings.folderMeta.remove(f);
+    } else {
+      settings.folderMeta[f] = m;
+    }
+    await storage.saveSettings(settings);
+    notifyListeners();
+  }
+
+  Future<void> setFolderPinned(String f, bool pinned) => _setFolderMeta(f, 'pinned', pinned);
+
+  /// Symbol und Farbmarke eines Ordners (null = keins)
+  Future<void> setFolderStyle(String f, {String? icon, String? color}) async {
+    await _setFolderMeta(f, 'icon', icon);
+    await _setFolderMeta(f, 'color', color);
+  }
+
+  /// Symbol und Farbmarke eines Chats (null = keins)
+  Future<void> setChatStyle(Conversation c, {String? icon, String? color}) async {
+    c
+      ..icon = icon
+      ..color = color;
+    await storage.saveConversation(c);
+    notifyListeners();
+  }
+
+  /// Ordner auflösen: Chats bleiben, nur ohne Ordner
+  Future<void> dissolveFolder(String f) async {
+    for (final c in conversations.where((c) => c.folder == f)) {
+      c.folder = null;
+      await storage.saveConversation(c);
+    }
+    settings.folderMeta.remove(f);
+    await storage.saveSettings(settings);
+    notifyListeners();
   }
 
   Future<void> setFolder(Conversation c, String? folder) async {
@@ -1855,6 +1905,10 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       c.folder = t.isEmpty ? null : t;
       await storage.saveConversation(c);
     }
+    // Anheften, Symbol und Farbe ziehen mit um
+    final meta = settings.folderMeta.remove(from);
+    if (meta != null && t.isNotEmpty) settings.folderMeta[t] = meta;
+    if (meta != null) await storage.saveSettings(settings);
     notifyListeners();
   }
 

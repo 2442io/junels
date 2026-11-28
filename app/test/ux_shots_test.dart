@@ -134,6 +134,19 @@ Future<void> _demo() async {
   final c3 = Conversation(id: 'c3', title: 'Angebote Staubsauger-Roboter')..updated = now.subtract(const Duration(days: 1));
   final c4 = Conversation(id: 'c4', title: 'Mail an Sarah wegen Workshop')..updated = now.subtract(const Duration(days: 2));
   app.conversations = [c1, c2, c3, c4];
+  // Angeheftet: Ordner und Chat mit Symbol & Farbe
+  c1
+    ..pinned = true
+    ..icon = 'stern'
+    ..color = 'gelb';
+  c2
+    ..folder = 'Junels'
+    ..color = 'blau';
+  c3.folder = 'Steuer 2026';
+  app.settings.folderMeta = {
+    'Junels': {'pinned': true, 'icon': 'rakete', 'color': 'lila'},
+    'Steuer 2026': {'color': 'gruen'},
+  };
   app.current = c1;
 
   app.prompts = [
