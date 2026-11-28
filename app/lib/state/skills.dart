@@ -869,6 +869,38 @@ class SkillLibrary extends ChangeNotifier {
 
   /// Welcher Skill passt zur Nachricht? 1. /befehl am Anfang, 2. eigene Skills mit „automatisch erkennen“
   /// über Wörter aus Name und Beschreibung. Basis-Skills nur per /befehl (ihre Werkzeuge findet Junels ohnehin).
+  /// Gesprochen: „Skill Preis-Scout, RTX 4070“, „mit dem Skill Firmen-Dossier …“, „Slash dossier …“, „use skill …“
+  (Skill, String)? matchSpoken(String input) {
+    final t = input.trim();
+    final m = RegExp(
+            r'^(?:bitte\s+|please\s+)?(?:(?:mit\s+(?:dem\s+)?|nutze\s+(?:den\s+)?|starte\s+(?:den\s+)?|use\s+(?:the\s+)?|run\s+(?:the\s+)?|start\s+(?:the\s+)?)?'
+            r'(?:skill|slash|schrägstrich)\b[\s,:]*',
+            caseSensitive: false)
+        .firstMatch(t);
+    if (m == null) return null;
+    final words = t.substring(m.end).split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    String norm(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z0-9äöüß]'), '');
+    for (var n = words.length < 4 ? words.length : 4; n >= 1; n--) {
+      final cand = norm(words.take(n).join(' '));
+      if (cand.isEmpty) continue;
+      for (final s in enabled) {
+        if (norm(s.name) == cand || norm(s.command) == cand || norm(commandAliases[cand] ?? '') == norm(s.command)) {
+          final task = words.skip(n).join(' ').replaceFirst(RegExp(r'^[,:;.\-–]+\s*'), '').trim();
+          return (s, task);
+        }
+      }
+    }
+    // ungefähr: Name beginnt mit dem ersten Wort (z. B. „Skill Preis …“)
+    if (words.isNotEmpty) {
+      final w = norm(words.first);
+      if (w.length >= 4) {
+        final hit = enabled.where((s) => norm(s.name).startsWith(w) || norm(s.command).startsWith(w)).toList();
+        if (hit.length == 1) return (hit.first, words.skip(1).join(' ').replaceFirst(RegExp(r'^[,:;.\-–]+\s*'), '').trim());
+      }
+    }
+    return null;
+  }
+
   (Skill, String)? match(String input) {
     final t = input.trimLeft();
     final cmd = RegExp(r'^/([a-z0-9äöüß-]+)\s*', caseSensitive: false).firstMatch(t);

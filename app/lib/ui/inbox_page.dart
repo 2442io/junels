@@ -12,6 +12,7 @@ import 'notify_style.dart';
 import 'slide_to_done.dart';
 import 'theme.dart';
 import 'quick_nav.dart';
+import '../l10n.dart';
 
 class InboxPage extends StatefulWidget {
   const InboxPage({super.key});
@@ -71,13 +72,13 @@ class _InboxPageState extends State<InboxPage> {
 
         return Scaffold(
           appBar: JAppBar(
-            title: Text(_archive ? 'Archiv' : 'Benachrichtigungen'),
+            title: Text(_archive ? tr('Archiv') : tr('Benachrichtigungen')),
             leading: _archive ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _archive = false)) : null,
             actions: [
               if (!_archive)
-                IconButton(tooltip: 'Alle als gelesen markieren', icon: const Icon(Icons.done_all), onPressed: n.unread == 0 ? null : n.markAllRead),
+                IconButton(tooltip: tr('Alle als gelesen markieren'), icon: const Icon(Icons.done_all), onPressed: n.unread == 0 ? null : n.markAllRead),
               PopupMenuButton<String>(
-                tooltip: 'Mehr',
+                tooltip: tr('Mehr'),
                 onSelected: (v) {
                   switch (v) {
                     case 'unread':
@@ -94,16 +95,16 @@ class _InboxPageState extends State<InboxPage> {
                 },
                 itemBuilder: (_) => [
                   if (!_archive) ...[
-                    const PopupMenuItem(value: 'read', child: ListTile(leading: Icon(Icons.mark_email_read_outlined), title: Text('Alle als gelesen'))),
-                    const PopupMenuItem(value: 'unread', child: ListTile(leading: Icon(Icons.mark_email_unread_outlined), title: Text('Alle als ungelesen'))),
-                    const PopupMenuItem(value: 'archiveRead', child: ListTile(leading: Icon(Icons.archive_outlined), title: Text('Gelesene archivieren'))),
+                    PopupMenuItem(value: 'read', child: ListTile(leading: Icon(Icons.mark_email_read_outlined), title: Text(tr('Alle als gelesen')))),
+                    PopupMenuItem(value: 'unread', child: ListTile(leading: Icon(Icons.mark_email_unread_outlined), title: Text(tr('Alle als ungelesen')))),
+                    PopupMenuItem(value: 'archiveRead', child: ListTile(leading: Icon(Icons.archive_outlined), title: Text(tr('Gelesene archivieren')))),
                     PopupMenuItem(
                         value: 'archive',
                         child: ListTile(
                             leading: const Icon(Icons.inventory_2_outlined),
                             title: Text('Archiv (${n.items.where((i) => i.archived).length})'))),
                   ] else
-                    const PopupMenuItem(value: 'clearArchive', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Archiv leeren'))),
+                    PopupMenuItem(value: 'clearArchive', child: ListTile(leading: Icon(Icons.delete_outline), title: Text(tr('Archiv leeren')))),
                 ],
               ),
             ],
@@ -123,11 +124,11 @@ class _InboxPageState extends State<InboxPage> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
-                chip('Alle', _filter == null && !_unreadOnly, () => setState(() {
+                chip(tr('Alle'), _filter == null && !_unreadOnly, () => setState(() {
                       _filter = null;
                       _unreadOnly = false;
                     })),
-                chip('Ungelesen', _unreadOnly, () => setState(() => _unreadOnly = !_unreadOnly), icon: Icons.markunread_outlined),
+                chip(tr('Ungelesen'), _unreadOnly, () => setState(() => _unreadOnly = !_unreadOnly), icon: Icons.markunread_outlined),
                 for (final k in NotifyKind.values.where((k) => k != NotifyKind.ruhig))
                   chip(k.label, _filter == k, () => setState(() => _filter = _filter == k ? null : k),
                       icon: k.icon, color: k.colors(context).$1, soft: k.colors(context).$2),
@@ -139,25 +140,25 @@ class _InboxPageState extends State<InboxPage> {
                 child: Column(children: [
                   Icon(_archive ? Icons.inventory_2_outlined : Icons.notifications_none, size: 44, color: c.faint),
                   const SizedBox(height: 10),
-                  Text(_archive ? 'Archiv ist leer' : (_unreadOnly ? 'Alles gelesen' : 'Keine Benachrichtigungen'), style: t.titleSmall),
+                  Text(_archive ? tr('Archiv ist leer') : (_unreadOnly ? tr('Alles gelesen') : tr('Keine Benachrichtigungen')), style: t.titleSmall),
                   const SizedBox(height: 4),
                   Text(
                       _archive
-                          ? 'Archivierte Meldungen bleiben 180 Tage und lassen sich wiederherstellen.'
-                          : 'Hier landet alles, was Junels dir meldet – auch wenn du den Push weggewischt hast. Nichts verschwindet von selbst.',
+                          ? tr('Archivierte Meldungen bleiben 180 Tage und lassen sich wiederherstellen.')
+                          : tr('Hier landet alles, was Junels dir meldet – auch wenn du den Push weggewischt hast. Nichts verschwindet von selbst.'),
                       textAlign: TextAlign.center,
                       style: t.bodySmall?.copyWith(color: c.muted)),
                 ]),
               ),
             if (!_archive && (_filter == null || _filter == NotifyKind.aktion) && !_unreadOnly) _TodoSection(app: app, waiting: waiting),
-            if (!_archive && (_filter != null && _filter != NotifyKind.aktion || _unreadOnly)) section('Wartet auf dich', waiting),
-            if (!_archive) section('Geplant', planned),
-            section('Heute', todayList),
-            section(_archive ? 'Älter' : 'Früher', older),
+            if (!_archive && (_filter != null && _filter != NotifyKind.aktion || _unreadOnly)) section(tr('Wartet auf dich'), waiting),
+            if (!_archive) section(tr('Geplant'), planned),
+            section(tr('Heute'), todayList),
+            section(_archive ? tr('Älter') : tr('Früher'), older),
             if (!_archive && all.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
-                child: Text('Wischen: nach rechts = gelesen/ungelesen, nach links = archivieren. ⋮ für mehr.',
+                child: Text(tr('Wischen: nach rechts = gelesen/ungelesen, nach links = archivieren. ⋮ für mehr.'),
                     textAlign: TextAlign.center, style: t.bodySmall?.copyWith(color: c.faint)),
               ),
           ]),
@@ -210,7 +211,7 @@ class _ItemTile extends StatelessWidget {
           n.archive(item);
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('Archiviert: ${item.title}'),
-            action: SnackBarAction(label: 'Rückgängig', onPressed: () => n.restore(item)),
+            action: SnackBarAction(label: tr('Rückgängig'), onPressed: () => n.restore(item)),
           ));
         }
         return true;
@@ -251,7 +252,7 @@ class _ItemTile extends StatelessWidget {
                       child: PopupMenuButton<String>(
                         padding: EdgeInsets.zero,
                         iconSize: 18,
-                        tooltip: 'Aktionen',
+                        tooltip: tr('Aktionen'),
                         icon: Icon(Icons.more_vert, size: 18, color: c.muted),
                         onSelected: (v) {
                           switch (v) {
@@ -273,22 +274,22 @@ class _ItemTile extends StatelessWidget {
                         },
                         itemBuilder: (_) => [
                           if (item.target != null)
-                            const PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new), title: Text('Öffnen'))),
+                            PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new), title: Text(tr('Öffnen')))),
                           PopupMenuItem(
                               value: 'read',
                               child: ListTile(
                                   leading: Icon(item.read ? Icons.mark_email_unread_outlined : Icons.mark_email_read_outlined),
-                                  title: Text(item.read ? 'Als ungelesen markieren' : 'Als gelesen markieren'))),
+                                  title: Text(item.read ? tr('Als ungelesen markieren') : tr('Als gelesen markieren')))),
                           if (item.waiting || item.planned)
-                            const PopupMenuItem(value: 'done', child: ListTile(leading: Icon(Icons.check_circle_outline), title: Text('Erledigt'))),
+                            PopupMenuItem(value: 'done', child: ListTile(leading: Icon(Icons.check_circle_outline), title: Text(tr('Erledigt')))),
                           if (item.kind == NotifyKind.erinnerung && !item.done)
-                            const PopupMenuItem(value: 'snooze', child: ListTile(leading: Icon(Icons.snooze), title: Text('Schlummern 1 Std'))),
+                            PopupMenuItem(value: 'snooze', child: ListTile(leading: Icon(Icons.snooze), title: Text(tr('Schlummern 1 Std')))),
                           PopupMenuItem(
                               value: 'archive',
                               child: ListTile(
                                   leading: Icon(item.archived ? Icons.unarchive_outlined : Icons.archive_outlined),
-                                  title: Text(item.archived ? 'Wiederherstellen' : 'Archivieren'))),
-                          const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Löschen'))),
+                                  title: Text(item.archived ? tr('Wiederherstellen') : tr('Archivieren')))),
+                          PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text(tr('Löschen')))),
                         ],
                       ),
                     ),
@@ -312,11 +313,11 @@ class _ItemTile extends StatelessWidget {
                             _leave(context);
                             app.openConversationById(item.target!);
                           },
-                          child: const Text('Öffnen'),
+                          child: Text(tr('Öffnen')),
                         ),
                       if (item.kind == NotifyKind.erinnerung) ...[
                         Icon(Icons.snooze, size: 16, color: c.muted),
-                        for (final (label, d) in const [('10 Min', Duration(minutes: 10)), ('1 Std', Duration(hours: 1)), ('Morgen', Duration(hours: 24))])
+                        for (final (label, d) in [(tr('10 Min'), Duration(minutes: 10)), (tr('1 Std'), Duration(hours: 1)), (tr('Morgen'), Duration(hours: 24))])
                           ActionChip(
                             label: Text(label),
                             visualDensity: VisualDensity.compact,
@@ -329,7 +330,7 @@ class _ItemTile extends StatelessWidget {
                     ]),
                     const SizedBox(height: 8),
                     SlideToDone(
-                      label: item.planned ? 'Schon erledigt – schieben' : 'Erledigt – schieben',
+                      label: item.planned ? tr('Schon erledigt – schieben') : tr('Erledigt – schieben'),
                       color: fg,
                       soft: item.kind.colors(context).$2,
                       onDone: () => n.markDone(item),
@@ -377,11 +378,11 @@ class _TodoSection extends StatelessWidget {
           icon: Icons.fact_check_outlined,
           title: 'Freigabe: ${_actionLabel(entry.actions[i])}',
           detail: 'Im Chat „${conv.title}“ – wartet auf „Ausführen“ oder „Senden“',
-          primary: ('Ansehen', () {
+          primary: (tr('Ansehen'), () {
             _leave(context);
             app.selectConversation(conv);
           }),
-          secondary: ('Verwerfen', () => app.updateAction(entry, i, {'status': 'discarded'})),
+          secondary: (tr('Verwerfen'), () => app.updateAction(entry, i, {'status': 'discarded'})),
         ),
       for (final conv in guides)
         Builder(builder: (context) {
@@ -392,11 +393,11 @@ class _TodoSection extends StatelessWidget {
             icon: Icons.explore_outlined,
             title: 'Begleitung: ${g.goal}',
             detail: cur >= 0 ? 'Schritt ${cur + 1}/${g.steps.length}: ${g.steps[cur].text}${g.steps[cur].you ? ' (du)' : ''}' : g.note,
-            primary: ('Weitermachen', () {
+            primary: (tr('Weitermachen'), () {
               _leave(context);
               app.selectConversation(conv);
             }),
-            secondary: ('Beenden', () => app.endGuide(conv)),
+            secondary: (tr('Beenden'), () => app.endGuide(conv)),
           );
         }),
       if (mem > 0)
@@ -404,8 +405,8 @@ class _TodoSection extends StatelessWidget {
           kind: NotifyKind.aktion,
           icon: Icons.psychology_outlined,
           title: '$mem ${mem == 1 ? 'Gedächtnis-Eintrag' : 'Gedächtnis-Einträge'} bestätigen',
-          detail: 'Junels merkt sich das erst, wenn du es bestätigst',
-          primary: ('Prüfen', () => openSection(context, AppSection.knowledge)),
+          detail: tr('Junels merkt sich das erst, wenn du es bestätigst'),
+          primary: (tr('Prüfen'), () => openSection(context, AppSection.knowledge)),
         ),
       for (final i in waiting) _ItemTile(item: i),
       if (unseen > 0)
@@ -413,8 +414,8 @@ class _TodoSection extends StatelessWidget {
           kind: NotifyKind.info,
           icon: Icons.radar,
           title: '$unseen neue ${unseen == 1 ? 'Meldung' : 'Meldungen'} bei den Beobachtungen',
-          detail: 'Noch nicht angesehen',
-          primary: ('Ansehen', () {
+          detail: tr('Noch nicht angesehen'),
+          primary: (tr('Ansehen'), () {
             // genau eine Beobachtung mit Neuem → direkt dorthin, sonst die Liste
             final items = app.watchlist.items.where((w) => w.unseen > 0).toList();
             if (items.length == 1) {
@@ -428,17 +429,17 @@ class _TodoSection extends StatelessWidget {
     ];
     if (cards.isEmpty) return const SizedBox.shrink();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SectionLabel('Zu tun', padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+      SectionLabel(tr('Zu tun'), padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
           trailing: total == 0 ? null : Text('$total offen', style: t.labelSmall?.copyWith(color: c.violet))),
       ...cards,
     ]);
   }
 
   static String _actionLabel(Map<String, String> a) => switch (a['type']) {
-        'app' => a['body'] ?? 'App-Aktion',
+        'app' => a['body'] ?? tr('App-Aktion'),
         'email' => 'E-Mail an ${a['name']?.isNotEmpty == true ? a['name'] : a['to'] ?? ''}',
         'whatsapp' => 'WhatsApp an ${a['name']?.isNotEmpty == true ? a['name'] : a['to'] ?? ''}',
-        _ => a['body'] ?? a['subject'] ?? a['type'] ?? 'Aktion',
+        _ => a['body'] ?? a['subject'] ?? a['type'] ?? tr('Aktion'),
       };
 }
 

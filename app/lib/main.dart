@@ -60,8 +60,10 @@ class OfflineAgentApp extends StatelessWidget {
         valueListenable: controller.darkMode,
         builder: (context, dark, _) => ValueListenableBuilder<String>(
           valueListenable: controller.uiStyle,
-          builder: (context, style, _) {
-            return MaterialApp(
+          builder: (context, style, _) => ValueListenableBuilder<String>(
+            valueListenable: controller.language,
+            builder: (context, lang, _) => MaterialApp(
+              key: ValueKey('app-$lang'),
               title: 'Junels',
               debugShowCheckedModeBanner: false,
               theme: buildTheme(Brightness.light, warm: style == 'junels'),
@@ -72,8 +74,8 @@ class OfflineAgentApp extends StatelessWidget {
               // Schnellmenü als schwebender Knopf rechts unten – mit einer Hand erreichbar (Handy, Unterseiten)
               builder: (context, child) => QuickFabLayer(child: child ?? const SizedBox()),
               home: const HomeShell(),
-            );
-          },
+            ),
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'model_import.dart';
 import 'quick_nav.dart';
+import '../l10n.dart';
 
 Future<void> openSystemCheck(BuildContext context) async {
   final app = AppScope.read(context);
@@ -24,7 +25,7 @@ class SystemCheckPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
     return Scaffold(
-      appBar: JAppBar(title: const Text('Systemcheck & Modelle')),
+      appBar: JAppBar(title: Text(tr('Systemcheck & Modelle'))),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),
@@ -38,8 +39,8 @@ class SystemCheckPage extends StatelessWidget {
               _KindSection(
                 app: app,
                 kind: ModelKind.llm,
-                title: 'Sprachmodell (Pflicht)',
-                subtitle: 'Das Gehirn des Agenten. Läuft komplett auf diesem Gerät.',
+                title: tr('Sprachmodell (Pflicht)'),
+                subtitle: tr('Das Gehirn des Agenten. Läuft komplett auf diesem Gerät.'),
                 icon: Icons.memory,
               ),
               const SizedBox(height: 4),
@@ -48,36 +49,35 @@ class SystemCheckPage extends StatelessWidget {
               _KindSection(
                 app: app,
                 kind: ModelKind.image,
-                title: 'Bilder erzeugen – Stable Diffusion (optional)',
-                subtitle: 'Damit der Agent Bilder malen kann (Fotos, Illustrationen für Präsentationen). '
-                    'Diagramme und Dokumente gehen auch ohne.',
+                title: tr('Bilder erzeugen – Stable Diffusion (optional)'),
+                subtitle: (tr('Damit der Agent Bilder malen kann (Fotos, Illustrationen für Präsentationen). ') + tr('Diagramme und Dokumente gehen auch ohne.')),
                 icon: Icons.brush_outlined,
               ),
               const SizedBox(height: 20),
               _KindSection(
                 app: app,
                 kind: ModelKind.stt,
-                title: 'Spracherkennung (optional)',
-                subtitle: 'Für Mikrofon und Gespräch. Canary bzw. Parakeet sind ein Vielfaches schneller als Whisper.',
+                title: tr('Spracherkennung (optional)'),
+                subtitle: tr('Für Mikrofon und Gespräch. Canary bzw. Parakeet sind ein Vielfaches schneller als Whisper.'),
                 icon: Icons.mic_none,
               ),
               const SizedBox(height: 20),
               _KindSection(
                 app: app,
                 kind: ModelKind.tts,
-                title: 'Stimme – Kokoro / Piper (optional)',
-                subtitle: 'Zum Vorlesen der Antworten.',
+                title: tr('Stimme – Kokoro / Piper (optional)'),
+                subtitle: tr('Zum Vorlesen der Antworten.'),
                 icon: Icons.record_voice_over_outlined,
               ),
               const SizedBox(height: 24),
               OutlinedButton.icon(
                 onPressed: () => pickAndImportModel(context),
                 icon: const Icon(Icons.file_open_outlined),
-                label: const Text('Eigene .gguf-Datei vom Gerät importieren'),
+                label: Text(tr('Eigene .gguf-Datei vom Gerät importieren')),
               ),
               const SizedBox(height: 8),
               Text(
-                'Downloads kommen direkt von Hugging Face bzw. GitHub. Danach arbeitet die App ohne Internet.',
+                tr('Downloads kommen direkt von Hugging Face bzw. GitHub. Danach arbeitet die App ohne Internet.'),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -116,9 +116,9 @@ class _CustomUrlFieldState extends State<_CustomUrlField> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Anderes Modell per Link laden', style: t.titleSmall),
+            Text(tr('Anderes Modell per Link laden'), style: t.titleSmall),
             const SizedBox(height: 2),
-            Text('Link zu einer .gguf-Datei, z. B. von Hugging Face (Seite „Files“ → Datei → Link kopieren).',
+            Text(tr('Link zu einer .gguf-Datei, z. B. von Hugging Face (Seite „Files“ → Datei → Link kopieren).'),
                 style: t.bodySmall),
             const SizedBox(height: 8),
             Row(children: [
@@ -139,7 +139,7 @@ class _CustomUrlFieldState extends State<_CustomUrlField> {
                   setState(() => _error = err);
                   if (err == null) _ctrl.clear();
                 },
-                child: const Text('Laden'),
+                child: Text(tr('Laden')),
               ),
             ]),
             for (final d in app.customDownloads)
@@ -187,11 +187,11 @@ class _DeviceCard extends StatelessWidget {
                 : Platform.operatingSystem;
     final rows = <(IconData, String, String)>[
       (Icons.devices_other, 'System', platform),
-      (Icons.memory, 'Arbeitsspeicher', gb(d.totalMemory)),
-      (Icons.sd_storage_outlined, 'Freier Speicherplatz', gb(app.freeDisk)),
-      (Icons.developer_board, 'Prozessor', '${Platform.numberOfProcessors} Kerne, ${d.threads} für KI'),
-      (Icons.bolt, 'Beschleunigung', d.gpuLayers != 0 ? 'Metal-GPU' : 'CPU (arm64)'),
-      (Icons.unfold_more, 'Max. Context', '${d.maxContext} Tokens'),
+      (Icons.memory, tr('Arbeitsspeicher'), gb(d.totalMemory)),
+      (Icons.sd_storage_outlined, tr('Freier Speicherplatz'), gb(app.freeDisk)),
+      (Icons.developer_board, tr('Prozessor'), '${Platform.numberOfProcessors} Kerne, ${d.threads} für KI'),
+      (Icons.bolt, tr('Beschleunigung'), d.gpuLayers != 0 ? 'Metal-GPU' : 'CPU (arm64)'),
+      (Icons.unfold_more, tr('Max. Context'), '${d.maxContext} Tokens'),
     ];
     return Card(
       child: Padding(
@@ -215,10 +215,10 @@ class _DeviceCard extends StatelessWidget {
                       Text('Geräteklasse ${d.deviceClass.label}', style: t.titleMedium),
                       Text(
                         switch (d.deviceClass) {
-                          DeviceClass.s => 'Kleine Modelle (bis 1,5B). Spracheingabe mit Whisper base.',
-                          DeviceClass.m => 'Modelle bis 4B. Whisper large-v3-turbo (komprimiert) möglich.',
-                          DeviceClass.l => 'Modelle bis 12B und Whisper large-v3-turbo.',
-                          DeviceClass.xl => 'Auch große Modelle wie Gemma 4 26B und 16K Context.',
+                          DeviceClass.s => tr('Kleine Modelle (bis 1,5B). Spracheingabe mit Whisper base.'),
+                          DeviceClass.m => tr('Modelle bis 4B. Whisper large-v3-turbo (komprimiert) möglich.'),
+                          DeviceClass.l => tr('Modelle bis 12B und Whisper large-v3-turbo.'),
+                          DeviceClass.xl => tr('Auch große Modelle wie Gemma 4 26B und 16K Context.'),
                         },
                         style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                       ),
@@ -308,10 +308,10 @@ class _EntryTile extends StatelessWidget {
     final disabled = rec.suitability == Suitability.tooBig || rec.suitability == Suitability.noSpace;
 
     final (badgeColor, badgeText) = switch (rec.suitability) {
-      Suitability.recommended => (Colors.green, 'Empfohlen'),
-      Suitability.suitable => (scheme.primary, 'Passt'),
-      Suitability.tooBig => (scheme.outline, 'Zu groß'),
-      Suitability.noSpace => (scheme.error, 'Kein Platz'),
+      Suitability.recommended => (Colors.green, tr('Empfohlen')),
+      Suitability.suitable => (scheme.primary, tr('Passt')),
+      Suitability.tooBig => (scheme.outline, tr('Zu groß')),
+      Suitability.noSpace => (scheme.error, tr('Kein Platz')),
     };
 
     Widget action;
@@ -327,9 +327,9 @@ class _EntryTile extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 dl.extracting
-                    ? 'Entpacke …'
+                    ? tr('Entpacke …')
                     : p == null
-                        ? 'Verbinde …'
+                        ? tr('Verbinde …')
                         : '${((p.fraction ?? 0) * 100).round()} % · ${_speed(p.bytesPerSecond)}${_eta(p.eta)}',
                 style: t.labelSmall,
               ),
@@ -337,7 +337,7 @@ class _EntryTile extends StatelessWidget {
           ),
         ),
         IconButton(
-          tooltip: 'Abbrechen',
+          tooltip: tr('Abbrechen'),
           icon: const Icon(Icons.close),
           onPressed: dl.extracting ? null : () => app.cancelDownload(e),
         ),
@@ -348,7 +348,7 @@ class _EntryTile extends StatelessWidget {
       action = FilledButton.tonalIcon(
         onPressed: disabled ? null : () => app.startDownload(e),
         icon: Icon(dl?.error != null ? Icons.refresh : Icons.download, size: 18),
-        label: Text(dl?.error != null ? 'Fortsetzen' : e.sizeLabel),
+        label: Text(dl?.error != null ? tr('Fortsetzen') : e.sizeLabel),
       );
     }
 
@@ -417,40 +417,39 @@ class _EntryTile extends StatelessWidget {
                   if (context.mounted && app.status == EngineStatus.ready) Navigator.of(context).maybePop();
                 },
           icon: Icon(loaded ? Icons.check : Icons.play_arrow, size: 18),
-          label: Text(loaded ? 'Geladen' : 'Laden'),
+          label: Text(loaded ? tr('Geladen') : tr('Laden')),
         );
       case ModelKind.image:
-        return const Chip(label: Text('Bereit'), visualDensity: VisualDensity.compact);
+        return Chip(label: Text(tr('Bereit')), visualDensity: VisualDensity.compact);
       case ModelKind.stt:
       case ModelKind.tts:
         final active = e.kind == ModelKind.stt ? app.settings.sttModelId == e.id : app.settings.ttsVoiceId == e.id;
         return Row(mainAxisSize: MainAxisSize.min, children: [
           active
-              ? const Chip(label: Text('Aktiv'), visualDensity: VisualDensity.compact)
+              ? Chip(label: Text(tr('Aktiv')), visualDensity: VisualDensity.compact)
               : TextButton(
                   onPressed: () => e.kind == ModelKind.stt
                       ? app.setVoiceSettings(sttModelId: e.id)
                       : app.setVoiceSettings(ttsVoiceId: e.id),
-                  child: const Text('Verwenden'),
+                  child: Text(tr('Verwenden')),
                 ),
           if (e.kind == ModelKind.tts)
             IconButton(
-              tooltip: 'Probe hören',
+              tooltip: tr('Probe hören'),
               icon: const Icon(Icons.play_circle_outline),
               onPressed: () async {
                 final messenger = ScaffoldMessenger.of(context);
-                messenger.showSnackBar(const SnackBar(content: Text('Teste Stimme …'), duration: Duration(seconds: 2)));
+                messenger.showSnackBar(SnackBar(content: Text(tr('Teste Stimme …')), duration: Duration(seconds: 2)));
                 final (ok, report) = await app.voice.output.diagnose(app.installedPath(e)!);
                 messenger.hideCurrentSnackBar();
                 if (!context.mounted) return;
                 await showDialog<void>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: Text(ok ? 'Piper funktioniert' : 'Piper-Test fehlgeschlagen'),
+                    title: Text(ok ? tr('Piper funktioniert') : tr('Piper-Test fehlgeschlagen')),
                     content: SingleChildScrollView(
                       child: SelectableText(
-                        ok ? report : '$report\nDie App nutzt bis dahin die Systemstimme. '
-                            'Bitte schick mir einen Screenshot dieser Meldung.',
+                        ok ? report : ('$report\nDie App nutzt bis dahin die Systemstimme. ' + tr('Bitte schick mir einen Screenshot dieser Meldung.')),
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
@@ -460,7 +459,7 @@ class _EntryTile extends StatelessWidget {
               },
             ),
           IconButton(
-            tooltip: 'Löschen',
+            tooltip: tr('Löschen'),
             icon: const Icon(Icons.delete_outline),
             onPressed: () => app.removeVoiceModel(e),
           ),
@@ -500,12 +499,12 @@ class _VisionRow extends StatelessWidget {
         IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => dl.cancel.cancel()),
       ]);
     } else if (has) {
-      trailing = TextButton(onPressed: () => app.removeVision(model), child: const Text('Entfernen'));
+      trailing = TextButton(onPressed: () => app.removeVision(model), child: Text(tr('Entfernen')));
     } else {
       trailing = TextButton.icon(
         onPressed: () => app.downloadVision(model),
         icon: const Icon(Icons.download, size: 16),
-        label: Text(dl?.error != null ? 'Erneut versuchen' : 'Laden'),
+        label: Text(dl?.error != null ? tr('Erneut versuchen') : tr('Laden')),
       );
     }
     return Padding(
@@ -516,7 +515,7 @@ class _VisionRow extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              has ? 'Bilder verstehen: bereit' : 'Bilder verstehen (Fotos, Screenshots, Scans) – Zusatzdatei',
+              has ? tr('Bilder verstehen: bereit') : tr('Bilder verstehen (Fotos, Screenshots, Scans) – Zusatzdatei'),
               style: t.bodySmall,
             ),
           ),
@@ -544,7 +543,7 @@ class _SetCard extends StatelessWidget {
       final missing = set.where((e) => app.installedPath(e) == null).toList();
       final size = missing.fold<int>(0, (a, e) => a + e.sizeBytes);
       final busy = set.any((e) => app.downloads[e.id]?.active == true);
-      final kindLabel = {ModelKind.llm: 'Modell', ModelKind.stt: 'Hören', ModelKind.tts: 'Stimme'};
+      final kindLabel = {ModelKind.llm: tr('Modell'), ModelKind.stt: tr('Hören'), ModelKind.tts: tr('Stimme')};
       return Expanded(
         child: OutlinedButton(
           style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(12), alignment: Alignment.centerLeft),
@@ -564,7 +563,7 @@ class _SetCard extends StatelessWidget {
               Row(children: [
                 Icon(mobile ? Icons.smartphone : Icons.desktop_windows_outlined, size: 20),
                 const SizedBox(width: 8),
-                Text(mobile ? 'Handy' : 'Desktop', style: t.titleSmall),
+                Text(mobile ? tr('Handy') : 'Desktop', style: t.titleSmall),
                 if (busy) ...[
                   const SizedBox(width: 8),
                   const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -575,7 +574,7 @@ class _SetCard extends StatelessWidget {
                 Text('${kindLabel[e.kind]}: ${e.name}${app.installedPath(e) != null ? ' ✓' : ''}',
                     style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 4),
-              Text(missing.isEmpty ? 'Alles geladen – tippen zum Aktivieren' : 'Noch zu laden: ${mb(size)}',
+              Text(missing.isEmpty ? tr('Alles geladen – tippen zum Aktivieren') : 'Noch zu laden: ${mb(size)}',
                   style: t.labelSmall),
             ],
           ),
@@ -589,9 +588,9 @@ class _SetCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Schnell einrichten', style: t.titleMedium),
+            Text(tr('Schnell einrichten'), style: t.titleMedium),
             const SizedBox(height: 4),
-            Text('Ein Komplett-Set aus Sprachmodell, Spracherkennung und Stimme – nur was laut Systemcheck auf diesem Gerät läuft.',
+            Text(tr('Ein Komplett-Set aus Sprachmodell, Spracherkennung und Stimme – nur was laut Systemcheck auf diesem Gerät läuft.'),
                 style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
             const SizedBox(height: 12),
             Row(children: [option(true), const SizedBox(width: 12), option(false)]),

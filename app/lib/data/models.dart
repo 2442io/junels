@@ -424,6 +424,7 @@ class AppSettings {
     Set<String>? enabledTools,
     this.darkMode,
     this.uiStyle = 'standard',
+    this.appLanguage = 'de',
     this.sttModelId,
     this.ttsVoiceId,
     this.systemVoice = '',
@@ -499,6 +500,7 @@ class AppSettings {
   bool autoLoadLastModel;
   final Set<String> enabledTools;
   bool? darkMode; // null = System
+  String appLanguage; // 'de' | 'en' – Sprache der Oberfläche und des Agenten
   String uiStyle; // 'standard' oder 'junels' (hell & warm wie die Webseite)
 
   // Sprache
@@ -528,7 +530,7 @@ class AppSettings {
 
   /// Diese Schlüssel gehören zum Gerät (Modelle, Stimme, Werkzeuge, KI-Modus) – nicht zu dir als Person.
   static const deviceKeys = [
-    'contextSize', 'contextAuto', 'lastModelId', 'autoLoadLastModel', 'enabledTools', 'darkMode', 'uiStyle', 'sttModelId',
+    'contextSize', 'contextAuto', 'lastModelId', 'autoLoadLastModel', 'enabledTools', 'darkMode', 'uiStyle', 'appLanguage', 'sttModelId',
     'ttsVoiceId', 'systemVoice', 'sttLanguage', 'autoSpeak', 'sendAfterVoice', 'voiceManualEnd', 'voiceWakeWord',
     'voiceBargeIn', 'routing', 'autoModel', 'hybridFirst', 'hybridTarget', 'voicePauseMs', 'voiceNearField',
     'voiceSmartVad', 'activeProfileId', 'allowedApps',
@@ -614,6 +616,7 @@ class AppSettings {
         'enabledTools': enabledTools.toList(),
         'darkMode': darkMode,
         'uiStyle': uiStyle,
+        'appLanguage': appLanguage,
         'sttModelId': sttModelId,
         'ttsVoiceId': ttsVoiceId,
         'systemVoice': systemVoice,
@@ -679,6 +682,7 @@ class AppSettings {
         enabledTools: (j['enabledTools'] as List?)?.cast<String>().toSet(),
         darkMode: j['darkMode'] as bool?,
         uiStyle: j['uiStyle'] as String? ?? 'standard',
+        appLanguage: j['appLanguage'] as String? ?? 'de',
         sttModelId: j['sttModelId'] as String?,
         ttsVoiceId: j['ttsVoiceId'] as String?,
         systemVoice: j['systemVoice'] as String? ?? '',

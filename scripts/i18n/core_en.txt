@@ -1,0 +1,786 @@
+1|Notifications
+2|Skills & flows
+3|Scheduled tasks
+4|Flows
+5|Watches
+6|Templates
+7|Knowledge & memory
+8|Activity & monitoring
+9|Analytics
+10|Settings
+11|Help
+13|Close menu
+14|New chat
+15|Conversation mode
+16|Results
+17|Search chats …
+18|Chats
+19|Matches
+20|No chats yet.
+21|Nothing found.
+22|Pinned
+23|Show less
+24|Knowledge & templates
+25|Control
+26|loading …
+27|Error
+28|not loaded
+29|No model loaded
+30|Tap to set up
+31|More
+32|Unpin
+33|Pin
+34|Icon & color …
+35|Move to folder …
+36|Rename
+37|Delete chat
+38|Rename chat
+39|Move to folder
+40|New folder
+41|New folder …
+42|Remove from folder
+43|Cancel
+44|Dissolve folder
+45|The chats are kept, just without a folder
+46|Rename folder
+47|Folder menu
+48|Allow internet access?
+49|Only this request is sent. The language model itself keeps running locally.\n\n
+50|“Once” applies to this question, “Whole chat” to all further questions in this chat.
+51|No
+52|Once
+53|Whole chat
+54|Use cloud provider?
+55|Your question, the chat history so far and found content are sent to the provider.\n\n
+56|Yes, run it
+57|Always here
+58|Yes, once
+59|Messages
+60|Artifacts & metrics
+61|Hide artifacts
+62|Show artifacts
+63|End focus
+64|Focus: chat only
+65|Menu
+66|Close
+67|Model ready
+68|Loading model …
+69|Error while loading
+70|Quick switch
+71|Artifacts
+72|To the chat
+74|Noti­fications
+75|Processes
+76|Scheduled
+77|Knowledge
+78|Activity
+79|Quick menu
+80|To the end
+81|🎙 Conversation
+82|Result
+83|Today
+84|Yesterday
+85|Monday
+86|Tuesday
+87|Wednesday
+88|Thursday
+89|Friday
+90|Saturday
+91|Sunday
+92|No results yet
+93|Nothing in this selection
+94|Everything that runs on its own lands here: scheduled tasks, flows, watches and conversations.
+95|Flow
+96|Conversation
+97|Watch
+98|External
+99|Web job
+100|running …
+101|Continue in chat
+102|Run again
+103|Copy
+104|Remove
+105|Less
+106|Show all
+107|Ask follow-up
+108|🧭 Web jobs
+109|⚙ Flows
+110|⏱ Scheduled
+111|🎙 Conversations
+112|👁 Watches
+113|🔌 External
+114|All
+115|Search more
+116|Loading model
+117|Agent is working
+118|Writing the answer
+119|Reading the request
+120|Preparing model
+121|Weather
+122|What will the weather be like in Vienna tomorrow?
+123|News
+124|What are the most important tech news today?
+125|Presentation
+126|Create a presentation with 5 slides on the benefits of local AI.
+127|Search the web
+128|Search geizhals.at for a quiet robot vacuum.
+129|Calculate
+130|What is 15 % of €2,340?
+131|Automate
+132|Send me a weekly preview of my appointments every Monday at 8 am.
+133|Good morning
+134|Hello
+135|Good evening
+136|Welcome to Junels
+137|Your AI agent runs on this device. The system check examines your device and loads the right model –
+138|or connect your own server or a cloud provider.
+140|Choose a model to get started.
+141|System check & load model
+142|Edit message
+143|Send
+144|Edit and resend
+145|Retry
+146|\n⏳ waiting for the current answer
+147|Processing prompt …
+148|Please search for more results on this.
+149|Local
+150|Cloud
+151|shortened ·
+152|Regenerate
+153|Copied
+154|Copy answer
+155|Save as skill
+156|Sources:
+157|Stop reading aloud
+158|Read aloud
+161|Stop recording
+162|Voice input (Whisper)
+163|Didn't catch that – please try again.
+164|Load a Whisper model first for voice input.
+165|System check
+166|Load
+167|Summarize
+168|What's in the picture? Summarize it briefly.
+169|Transcribe text
+170|Transcribe the text in the picture completely.
+171|Create appointment
+172|Read date, time, place and title from the picture and add the appointment to my calendar.
+173|Receipt
+174|Read the receipt: shop, date, items and total as a table.
+175|Attach
+176|Take photo
+177|Choose file or image
+178|Attach file (PDF, images, TXT, MD, CSV, JSON)
+179|Skills, prompts & templates
+180|Start transcription
+181|Transcribe a conversation, then evaluate it
+182|Save input as prompt …
+183|Conversation mode – speak hands-free
+184|Load a model or set up a provider first
+185|Add a comment – the agent takes it into account right away …
+186|Preparing model … (you can already type)
+187|Ask Junels or give it a task …
+188|Stop
+189|Comment on the running task
+190|Recipient missing
+191|Done ✓
+192|Sent ✓
+193|Opened in mail app
+194|Opened in WhatsApp
+195|Discarded
+196|Run
+197|Open in mail app
+198|Open in WhatsApp
+199|Edit
+200|Discard
+201|Set up sending directly from Junels
+202|Edit e-mail
+203|To (e-mail address)
+204|To (number)
+205|Subject
+206|Apply
+207|Mail account
+208|With your mail account, Junels sends approved e-mails itself – only after you tap “Send” –
+209|and can look at your inbox on request.
+210|Your e-mail address
+211|Password or app password
+212|New password (empty = keep)
+213|Gmail, iCloud, Yahoo: create an app password in your account (required with two-factor sign-in).
+214|Outgoing (SMTP)
+216|Read inbox
+217|Only sender, subject, date and status – for “What's been left undone?” and questions about mails.
+218|Junels changes nothing in your mailbox.
+219|Incoming (IMAP)
+220|The agent cannot read it.
+221|There is no vault on this system – the password only lasts until you quit.
+222|Save
+225|Save as Excel
+226|No table found
+227|Excel file created
+229|Output
+230|File actions
+232|Open
+233|Share …
+234|Save as …
+235|Show in Finder
+236|AI image
+238|AI-generated image
+242|File no longer exists
+243|Back
+244|Next
+245|Image missing
+246|No network – Junels answers with the model on the device
+247|No network
+249|Ask
+251|Allow internet for this chat?
+252|The agent may then read web pages and search the web without asking again.
+253|Only the search queries or addresses are sent – the language model keeps running locally.
+254|Allow
+255|No web search, no web pages
+256|Ask before every access
+257|Without asking
+260|Device
+261|Default
+263|Everything stays on this device
+264|No server set up
+265|No cloud provider set up
+266|Device first, if that fails: your server
+267|Device first, then cloud after approval
+268|Manage providers …
+269|Load a Whisper model first for conversation mode.
+270|Voice: device (faster)
+271|Voice: system
+272|Voice: Kokoro
+273|Voice: Piper
+274|Just say something …
+275|Interrupt: just talk or tap the circle
+276|Interrupt: tap the circle
+277|Tap the circle when you're done
+278|Done – answer
+279|Dictation mode: speak, then tap “Done”
+280|Voice detected
+281|no voice
+282|The voice is slower than real time on this device – hence the short pause before the answer.
+283|Loading …
+284|Use
+285|Just now
+286|Mute
+287|Microphone
+288|Interrupt
+289|End
+290|Device voice active
+291|The selected voice was slower than real time on this device (long pauses between sentences).
+292|That's why Junels speaks with the device voice.
+293|Use the selected voice anyway
+294|Agent name
+295|e.g. Junels
+296|Only listen to the name
+297|Shortly after an answer, a follow-up works without the name. Interrupt: say the name or tap the circle.
+298|Talking interrupts
+299|Off: the agent always finishes speaking – interrupt by tapping the circle
+300|(or with the name). On: any voice interrupts, including noise or other people.
+301|When am I done?
+302|Speech pause
+303|Done button
+304|Dictation mode: everything is recorded, pauses end nothing. Tap “Done – answer” (or the circle).
+305|The answer starts after a speech pause.
+306|Longer = more time to think without the agent interrupting.
+307|Only my voice
+308|Ignore quieter voices in the background (other people, announcements)
+309|AI speech detection (Silero)
+310|Tells speech from noise. Turn off if your voice isn't detected.
+311|AI speech detection (Silero) active – noise like on the subway is ignored.
+312|Simple volume detection active (Silero not available).
+313|Model on the device
+314|No model loaded · system check, load models
+315|System check, load model, automatic model choice
+317|fast model
+318|strong model
+320|Cloud & own servers
+321|Connect OpenAI, Claude, Gemini, Ollama …
+322|AI providers
+328|API key
+330|Agent & tools
+331|Profile, personality, which tools the agent uses
+332|Profile
+333|System prompt
+334|Tools
+336|Web search
+337|Language & voice
+338|Voice input, voice, reading aloud
+340|Voice
+342|Connections
+343|Extensions
+344|MCP servers, Junels for other programs, web access, control apps
+346|MCP servers
+349|Access
+353|Calendar, device & folders
+354|Calendar subscription, home town, quick start, watched folders
+355|Calendar
+357|Google Calendar
+358|Check calendar
+359|Home town
+360|Morning briefing
+361|Folders
+362|Share
+363|Quick start
+365|Vault & mail account
+366|Store passwords and keys safely, send mail directly
+367|Password
+368|Key
+369|E-mail
+370|Everyday
+371|My data
+372|Name, address, e-mail, customer numbers – for filling in forms
+373|Form
+374|Fill in
+375|Address
+376|Customer number
+378|Websites & permissions
+379|What Junels may do in the browser: fill in, submit, never pay
+381|Permission
+382|Submit
+383|Ask first
+385|Types on/off, quiet hours, info collected
+387|Quiet hours
+388|Reminder
+389|Warning
+390|Sound
+391|Appearance & designs
+392|Light/dark, own designs for presentations and PDFs
+393|Dark
+394|Light
+397|Font
+398|Colors
+399|Data & account
+400|Account, privacy & sync
+401|Privacy level, SSO account, sync Mac ↔ phone
+402|Sign in
+403|Privacy
+405|Sync
+407|Account
+408|Backup & device setups
+409|Back up or restore everything, settings per device
+413|Restore
+416|Phone
+417|Help & maintenance
+418|Updates & news
+420|Changelog
+421|Update
+422|Self-test
+423|Junels checks itself – report to share
+425|Diagnosis
+426|doesn't work
+427|Log
+428|Technical errors and timings
+431|Search settings – e.g. calendar, voice, MCP
+432|Nothing found. Tip: search the help.
+433|Automatic model choice
+434|At startup
+435|Load last model at startup
+436|Answers are ready immediately, but it uses memory
+437|MCP store & servers
+438|Connect more tools (Slack, Gmail, Notion, GitHub …)
+439|Junels for other programs
+440|Off · let Claude Desktop, n8n, Dify … use your skills and processes
+441|Web access
+442|Sign-ins for web APIs and platforms (API keys, Google, SSO)
+443|Control apps
+444|Which apps (e.g. Spotify) the agent may open and control
+446|Appearance
+448|Own designs
+449|Save your corporate design or favorite style for presentations and PDFs
+450|Backup
+451|Export or restore all chats, processes and settings
+452|Device setups
+453|Save and apply settings as “Desktop”, “Phone” …
+454|Model
+455|Language
+456|Local tools
+457|Agent profile
+458|System check & models
+459|Load own file
+460|No new .gguf files found in the app folder.
+461|Take over from app folder
+462|Put the .gguf file into the “Offline Agent” folder via Finder (USB) and take it over – without a copy.
+463|Or choose it from the Files app via “Load model”.
+464|Copy the .gguf file to the device via USB, AirDrop or a file manager, then choose it here.
+465|Remove model?
+466|Delete
+467|Unload
+468|Delete from device
+469|New profile
+470|Own profile
+472|Internet
+473|Create
+474|Knowledge & files
+475|Device & apps
+476|Calculate & organize
+477|More
+478|Tools marked 🌐 go online and ask first.
+479|No Whisper model and no voice installed yet – download them in the system check.
+480|Recognition
+481|choose
+483|Automatic
+484|German
+485|English
+486|Send immediately after voice input
+487|Device voice (fast)
+489|Device voice
+490|Default – change
+491|Uses the device's speech output: no waiting, no pauses. Usually the best choice on a phone
+492|(Android: “Speech Services by Google”, download a high-quality voice for offline use).
+493|System voice
+494|The system voice spoke last (the selected voice was not available).
+495|Kokoro: the most natural voice.
+496|Thorsten HD: clear and fast.
+497|Sounds tinny? Load “Kokoro” or “Thorsten HD” in the system check – much more natural.
+498|Hello! This is how I sound. At 2:30 pm it's 21 °C, for example – about 5 % warmer than yesterday.
+499|Preview
+500|Read answers aloud automatically
+501|Device voice
+502|Language default
+503|No voices found. Android: Settings → Text-to-speech → “Speech Services by Google” → install voice data.
+506|Hello! This is how I sound.
+507|Appearance
+509|Color style (light appearance)
+510|Classic
+512|Choose model per task
+513|The fast model answers everyday questions; analyses, code, presentations and long texts go to the strong one.
+514|If the fast one fails, the strong one takes over automatically.
+515|This needs two language models of different sizes – e.g. Qwen (fast) and Gemma (strong).
+516|Load a second one in the system check.
+517|Fast (everyday)
+518|Strong (complex tasks)
+519|The installed models are too similar in size or the largest doesn't fit in memory.
+520|Both loaded
+521|Switch when needed
+522|Only the fast model
+523|It switches as soon as you type a complex request; after a few minutes of inactivity it goes back to the fast model.
+525|Watched
+526|No own or customized skills yet
+527|View results
+528|Monitoring
+529|Import
+530|Export (ZIP)
+532|New
+533|Run by themselves at the set time. You'll find the results collected under “Results”.
+534|Instructions for recurring tasks – call them in chat with /command or let them be recognized automatically.
+535|Several steps in a row (e.g. search → summarize → save as Word → push).
+536|Junels notifies you when something changes on a web page or about a topic.
+537|Everything Junels can do for you and handles on its own – in one place.
+538|Only entries with problems – tap for all
+540|Nothing scheduled yet
+541|A scheduled task is a skill with a time – e.g. the most important news as a table every morning.
+542|Create scheduled task
+543|No own skills yet
+544|Describe once how a task works – after that, /command in chat is enough.
+545|Draft a skill
+546|My skills
+547|No flows yet
+548|Describe in one sentence what should happen in sequence – Junels builds the steps.
+549|Describe flow
+550|No watches yet
+551|Price, date, web page or topic – Junels checks regularly and notifies you about changes.
+552|Watch something
+553|Where shall we start?
+554|Do something regularly
+555|e.g. news, weather and appointments every morning
+556|Teach a task
+557|Write the instructions once, then /command in chat
+558|Notify when a price, page or topic changes
+559|Connect several steps
+560|Describe a flow – Junels builds it
+561|Appointments, weather and news every morning.
+562|Prepare appointments
+563|Mon–Fri 7:30: a note per appointment with company, website, questions and goals.
+564|“Prepare appointments” created – runs Mon–Fri at 7:30
+565|News on a topic
+566|The most important news on your topic every day – e.g. as cards.
+568|Find the most important current news on the topic “…” and summarize it in 5 points.
+569|Weekly review
+570|Fridays: what you worked on this week and what's still open.
+571|Summarize what I worked on this week (chats and activities) and list open items.
+572|Quick setup
+573|Suggest a follow-up mail after appointments
+574|Push notification as soon as an appointment is over – one tap opens the draft.
+575|Create new
+576|Get it done on the web once
+577|Task in one sentence – Junels does it now in the browser (without creating a skill)
+578|Scheduled task
+579|Runs by itself at a set time – result under “Results”
+581|Instructions for a recurring task, called via /command
+582|Several steps – describe it, Junels builds it
+583|Notify when something changes
+584|Empty flow
+585|Build it yourself from blocks
+586|SKILL.md, ZIP or link
+587|What should Junels get done on the web?
+588|e.g. Find the 5 cheapest e-bikes under €2,000 on geizhals.at and make a table
+589|Junels plans the steps, works in the built-in browser and checks every step.
+590|You do sign-ins, CAPTCHAs and payments yourself – Junels waits.
+591|Start
+592|Running
+593|Paused
+594|Run now
+595|Start in chat
+596|Import skills
+597|No valid SKILL.md found
+599|SKILL.md following the Agent Skills standard (Claude, Codex, Cursor, Gemini CLI …), also as ZIP/.skill with
+600|several skills. Tool names are translated; references/ & co. are kept as files.
+601|Scripts are only taken over as text and never executed.
+602|Choose file(s) – .md, .zip, .skill
+603|From a link
+604|github.com/…/SKILL.md, folder or .zip
+605|Only loads this one address from the internet.
+606|Paste text
+608|Flow taken over – paused until you turn it on
+609|Recorded flow
+610|Fill in name and “What should Junels do?” – or show it
+611|Run as web job
+612|Junels plans, does it on its own in the browser and checks every step.
+613|Keeps running in the background – progress in “Results”.
+614|Show me
+615|Show it once in the browser yourself – Junels writes the instructions from it and replays it afterwards.
+616|Replayed exactly like this.
+618|Record again
+619|Steps
+621|Where does it start?
+622|Junels opens the page in the built-in browser. Just show the flow – search, filter, fill in.
+623|Save it with “Done” at the top of the browser. Passwords and other 🔒 fields are never recorded.
+624|Start page
+625|e.g. geizhals.at
+626|Start recording
+627|Run automatically
+628|Scheduled task – result goes to “Results”
+629|Only when you start it (/command or ▶)
+630|Daily
+631|Weekly
+632|Day
+633|Push notification when done
+634|Internet without asking
+635|Nobody is there to say “yes” during a scheduled run
+636|New scheduled task
+637|New skill
+638|SKILL.md copied
+639|The skill and its flow (trigger, steps, history) will be deleted.
+640|Copy as SKILL.md
+641|Share (skill package .zip)
+642|Check standard
+643|Duplicate
+644|Reset
+645|Icon
+646|Name
+647|e.g. Collect invoices
+648|What should Junels do?
+649|In your own words – or show it below under “Get it done on the web”, then Junels writes this
+651|When
+652|The result should look like this
+653|Get it done on the web
+654|Call in chat
+655|Command in chat
+656|Empty = from the name · also the name in the standard (a-z, 0-9, -)
+657|When to use
+658|e.g. When I want to compile my invoices for the month
+659|Recognize automatically
+660|Junels uses the skill when your message matches the description – otherwise only via /command
+661|Details that are asked for
+662|e.g. month, account
+663|Tools, internet & model
+664|Tools automatically as in chat
+665|None selected = automatic as in chat. Selected = only these (more reliable).
+667|Result must be created with
+668|Free – answer in chat
+669|Only applies while this skill runs
+670|Model (AI routing)
+671|As set in chat or fixed for this skill
+672|Triggers & further steps
+673|e.g. on change, then save as Word
+674|Flow connected
+675|Should the skill also run by itself – on a schedule, when something changes, or with further steps afterwards?
+676|Add trigger or steps
+677|Remove flow
+678|Knowledge & examples (optional)
+679|Facts, phrasing, an example result – included every time it's used
+680|references/, scripts/, assets/ – Junels only reads them when needed
+681|Add file
+682|Test
+684|This is how Junels replays the flow. Inputs in {curly braces} are placeholders –
+685|If Junels can't find a button anymore, the model steps in for this step.
+686|Value
+687|e.g. {searchterm} for a placeholder
+688|Remove step
+689|Placeholders (defaults)
+690|New task
+691|Junels does these tasks at the set time and notifies you.
+692|They run on every device where they're turned on.
+693|Tasks
+694|No scheduled tasks yet
+695|Create your own task or set one up below with a tap.
+696|Appointments, weather and news every morning as a push notification.
+697|The most important news on your topic every day, briefly summarized.
+698|Fridays: what happened in your chats and activities this week.
+699|Set up
+700|New template
+701|Start frequent tasks with a tap. With a schedule they become scheduled tasks.
+702|No templates yet
+703|In chat via ⚡ → “Save input as prompt” or here with “New template”.
+704|Clear history
+705|Everything Junels did for you – and how reliably your flows run.
+706|Duration, success rate and tokens of your processes and external calls
+707|What the agent did
+708|No actions yet. Here you'll see e.g. “E-mail sent to Sara – you tapped ‘Send’”.
+709|not in the app files and not in sync. The agent has no tool that reads the vault:
+710|Only sending mail and signing in to MCP services fetch exactly what they need.
+711|There is no vault on this system.
+712|Send e-mail directly
+713|Not set up
+714|Empty.
+715|Archive
+716|Mark all as read
+719|Mark all read
+720|Mark all unread
+721|Archive read
+722|Empty archive
+723|Unread
+724|Archive is empty
+725|All read
+726|No notifications
+727|Archived messages stay for 180 days and can be restored.
+728|Everything Junels reports to you lands here – even if you swiped the push away. Nothing disappears by itself.
+729|Waiting for you
+730|Older
+731|Earlier
+732|Swipe right = read/unread, left = archive. ⋮ for more.
+733|Undo
+734|Actions
+735|Mark as unread
+736|Mark as read
+737|Done
+738|Snooze 1 h
+739|Archive
+740|10 min
+741|1 h
+742|Tomorrow
+743|Already done – postpone
+744|Done – postpone
+745|View
+746|Continue
+748|Junels only remembers this once you confirm it
+749|Check
+751|Not viewed yet
+752|To do
+753|App action
+755|Action
+756|Knowledge base
+757|Web pages and text files the agent searches with every question.
+758|It automatically gets matching sections and names the source.
+759|The content is loaded once and then stays local.
+760|Add
+761|Include subpages (same website, up to 30 pages)
+762|Add text files (TXT, MD, CSV, JSON)
+763|No sources yet.
+764|Memory
+765|What the agent has remembered about you – applies to all chats and conversation mode.
+766|Just say “Remember that …” or enter it here.
+767|e.g. My name is Christoph and I live in Vienna.
+768|Remember
+769|Confirm
+770|Change category
+771|Forget
+772|Only use new entries after confirmation
+773|What the agent wants to remember appears at the top for confirmation.
+774|Remember sensitive topics
+775|Health, finances, religion, politics and the like – off by default.
+776|Nothing remembered yet.
+777|Nothing recorded.
+778|Discard transcription?
+779|What has been transcribed so far will be lost.
+780|Keep transcribing
+781|Transcription
+782|Title (optional)
+783|e.g. Team meeting project X
+784|Paused – nothing is being recorded.
+785|Transcribing … (everything stays on the device)
+786|Listening – everything stays on the device.
+787|Just speak – the text appears here.
+789|Done – evaluate
+790|Recognize speakers, music & sounds
+791|Speaker
+792|e.g. Anna
+793|Give names
+794|Music
+795|Sound
+796|Who is speaking here?
+797|New speaker
+798|Rename this speaker
+799|Open transcription
+800|with recording
+801|Transcription not found.
+802|Copy text
+803|Transcription copied
+804|Pause
+805|with recording (▶ to listen)
+806|Listen to recording
+807|Corrected to the chat
+808|Working time saved (estimated)
+809|Usage time
+810|Tokens (approx.)
+811|active days
+812|AI compute time
+813|Documents created
+814|answered on the device
+815|History (12 weeks)
+816|Topics
+817|Features
+818|Time saved by type
+819|Time of day
+820|Savings: rough estimate per answer (e.g. web research 8 min, Word document 25 min, presentation 40 min,
+821|transcription 1.5 × conversation length, simple answer 2 min). Tokens from speed × duration.
+822|Show in admin area
+823|When syncing, only send these numbers to your Agent API – no content, no chat titles.
+824|Open admin area
+825|No data yet.
+826|Language model (required)
+827|The agent's brain. Runs entirely on this device.
+828|Generate images – Stable Diffusion (optional)
+829|So the agent can paint images (photos, illustrations for presentations).
+830|Charts and documents work without it.
+831|Speech recognition (optional)
+832|For microphone and conversation. Canary and Parakeet are many times faster than Whisper.
+833|Voice – Kokoro / Piper (optional)
+834|For reading answers aloud.
+835|Import your own .gguf file from the device
+836|Downloads come directly from Hugging Face or GitHub. After that, the app works without internet.
+837|Load another model via link
+838|Link to a .gguf file, e.g. from Hugging Face (“Files” page → file → copy link).
+843|Memory (RAM)
+844|Free storage
+845|Processor
+846|Acceleration
+849|Max. context
+850|Small models (up to 1.5B). Voice input with Whisper base.
+851|Models up to 4B. Whisper large-v3-turbo (compressed) possible.
+852|Models up to 12B and Whisper large-v3-turbo.
+853|Even large models like Gemma 4 26B and 16K context.
+854|Recommended
+855|Fits
+856|Too large
+857|No space
+858|Unpacking …
+859|Connecting …
+860|Resume
+861|Loaded
+862|Ready
+863|Active
+864|Listen
+865|Testing voice …
+866|Piper works
+867|Piper test failed
+868|Please send me a screenshot of this message.
+869|Try again
+870|Understanding images: ready
+871|Understanding images (photos, screenshots, scans) – extra file
+872|Listen
+874|Everything loaded – tap to activate
+875|A complete set of language model, speech recognition and voice – only what runs on this device according to the system check.

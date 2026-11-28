@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../state/app_scope.dart';
 import '../state/memory_store.dart';
 import 'quick_nav.dart';
+import '../l10n.dart';
 
 Future<void> openKnowledge(BuildContext context) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const KnowledgePage()));
@@ -62,19 +63,17 @@ class _KnowledgePageState extends State<KnowledgePage> {
     String date(DateTime d) => '${d.day}.${d.month}.${d.year}';
 
     return Scaffold(
-      appBar: JAppBar(title: const Text('Wissen & Gedächtnis')),
+      appBar: JAppBar(title: Text(tr('Wissen & Gedächtnis'))),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
-              Text('Wissensbasis', style: t.titleLarge),
+              Text(tr('Wissensbasis'), style: t.titleLarge),
               const SizedBox(height: 4),
               Text(
-                'Webseiten und Textdateien, die der Agent bei jeder Frage durchsucht. '
-                'Passende Abschnitte bekommt er automatisch mit und nennt die Quelle. '
-                'Die Inhalte werden einmal geladen und liegen dann lokal.',
+                (tr('Webseiten und Textdateien, die der Agent bei jeder Frage durchsucht. ') + tr('Passende Abschnitte bekommt er automatisch mit und nennt die Quelle. ') + tr('Die Inhalte werden einmal geladen und liegen dann lokal.')),
                 style: t.bodySmall,
               ),
               const SizedBox(height: 12),
@@ -100,7 +99,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        FilledButton(onPressed: busy ? null : _addUrl, child: const Text('Hinzufügen')),
+                        FilledButton(onPressed: busy ? null : _addUrl, child: Text(tr('Hinzufügen'))),
                       ]),
                       CheckboxListTile(
                         contentPadding: EdgeInsets.zero,
@@ -108,21 +107,21 @@ class _KnowledgePageState extends State<KnowledgePage> {
                         controlAffinity: ListTileControlAffinity.leading,
                         value: _crawl,
                         onChanged: busy ? null : (v) => setState(() => _crawl = v ?? false),
-                        title: const Text('Unterseiten mitnehmen (gleiche Website, bis 30 Seiten)'),
+                        title: Text(tr('Unterseiten mitnehmen (gleiche Website, bis 30 Seiten)')),
                       ),
                       if (busy)
                         Row(children: [
                           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                           const SizedBox(width: 10),
                           Expanded(child: Text(app.knowledgeProgress!, style: t.bodySmall, maxLines: 2)),
-                          TextButton(onPressed: app.cancelKnowledgeLoad, child: const Text('Stopp')),
+                          TextButton(onPressed: app.cancelKnowledgeLoad, child: Text(tr('Stopp'))),
                         ]),
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton.icon(
                           onPressed: busy ? null : _addFiles,
                           icon: const Icon(Icons.note_add_outlined),
-                          label: const Text('Textdateien hinzufügen (TXT, MD, CSV, JSON)'),
+                          label: Text(tr('Textdateien hinzufügen (TXT, MD, CSV, JSON)')),
                         ),
                       ),
                     ],
@@ -133,7 +132,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
               if (kb.sources.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(8),
-                  child: Text('Noch keine Quellen.', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  child: Text(tr('Noch keine Quellen.'), style: TextStyle(color: scheme.onSurfaceVariant)),
                 ),
               for (final s in kb.sources)
                 Card(
@@ -150,7 +149,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (s.kind == 'web')
                         IconButton(
-                          tooltip: 'Aktualisieren',
+                          tooltip: tr('Aktualisieren'),
                           icon: const Icon(Icons.refresh),
                           onPressed: busy
                               ? null
@@ -161,7 +160,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                                 },
                         ),
                       IconButton(
-                        tooltip: 'Entfernen',
+                        tooltip: tr('Entfernen'),
                         icon: const Icon(Icons.delete_outline),
                         onPressed: busy ? null : () => app.removeSource(s),
                       ),
@@ -169,11 +168,10 @@ class _KnowledgePageState extends State<KnowledgePage> {
                   ),
                 ),
               const SizedBox(height: 28),
-              Text('Gedächtnis', style: t.titleLarge),
+              Text(tr('Gedächtnis'), style: t.titleLarge),
               const SizedBox(height: 4),
               Text(
-                'Was sich der Agent über dich gemerkt hat – gilt für alle Chats und den Gesprächsmodus. '
-                'Sag einfach „Merk dir, dass …“ oder trag es hier ein.',
+                (tr('Was sich der Agent über dich gemerkt hat – gilt für alle Chats und den Gesprächsmodus. ') + tr('Sag einfach „Merk dir, dass …“ oder trag es hier ein.')),
                 style: t.bodySmall,
               ),
               const SizedBox(height: 12),
@@ -181,7 +179,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                 Expanded(
                   child: TextField(
                     controller: _note,
-                    decoration: const InputDecoration(hintText: 'z. B. Ich heiße Christoph und wohne in Wien.', isDense: true),
+                    decoration: InputDecoration(hintText: tr('z. B. Ich heiße Christoph und wohne in Wien.'), isDense: true),
                     onSubmitted: (v) async {
                       await app.addMemory(v);
                       _note.clear();
@@ -194,7 +192,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                     await app.addMemory(_note.text);
                     _note.clear();
                   },
-                  child: const Text('Merken'),
+                  child: Text(tr('Merken')),
                 ),
               ]),
               const SizedBox(height: 8),
@@ -212,11 +210,11 @@ class _KnowledgePageState extends State<KnowledgePage> {
                       subtitle: Text('${MemoryNote.categories[n.category]} · ${date(n.created)}'),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         IconButton(
-                          tooltip: 'Bestätigen',
+                          tooltip: tr('Bestätigen'),
                           icon: const Icon(Icons.check_circle_outline),
                           onPressed: () => app.confirmMemory(n),
                         ),
-                        IconButton(tooltip: 'Verwerfen', icon: const Icon(Icons.close), onPressed: () => app.removeMemory(n)),
+                        IconButton(tooltip: tr('Verwerfen'), icon: const Icon(Icons.close), onPressed: () => app.removeMemory(n)),
                       ]),
                     ),
                   ),
@@ -243,7 +241,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                         subtitle: Text(date(n.created)),
                         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                           PopupMenuButton<String>(
-                            tooltip: 'Bereich ändern',
+                            tooltip: tr('Bereich ändern'),
                             icon: const Icon(Icons.label_outline, size: 18),
                             onSelected: (k) => app.setMemoryCategory(n, k),
                             itemBuilder: (_) => [
@@ -251,7 +249,7 @@ class _KnowledgePageState extends State<KnowledgePage> {
                             ],
                           ),
                           IconButton(
-                            tooltip: 'Vergessen',
+                            tooltip: tr('Vergessen'),
                             icon: const Icon(Icons.close, size: 18),
                             onPressed: () => app.removeMemory(n),
                           ),
@@ -261,22 +259,22 @@ class _KnowledgePageState extends State<KnowledgePage> {
               const Divider(height: 24),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Neue Einträge erst nach Bestätigung nutzen'),
-                subtitle: const Text('Was der Agent sich merken will, erscheint oben zum Bestätigen.'),
+                title: Text(tr('Neue Einträge erst nach Bestätigung nutzen')),
+                subtitle: Text(tr('Was der Agent sich merken will, erscheint oben zum Bestätigen.')),
                 value: app.settings.memoryConfirm,
                 onChanged: (v) => app.setMemoryOptions(confirm: v),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Sensible Themen merken'),
-                subtitle: const Text('Gesundheit, Finanzen, Religion, Politik u. Ä. – standardmäßig aus.'),
+                title: Text(tr('Sensible Themen merken')),
+                subtitle: Text(tr('Gesundheit, Finanzen, Religion, Politik u. Ä. – standardmäßig aus.')),
                 value: app.settings.memorySensitive,
                 onChanged: (v) => app.setMemoryOptions(sensitive: v),
               ),
               if (app.memory.notes.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(8),
-                  child: Text('Noch nichts gemerkt.', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  child: Text(tr('Noch nichts gemerkt.'), style: TextStyle(color: scheme.onSurfaceVariant)),
                 ),
             ],
           ),

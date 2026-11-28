@@ -1,5 +1,6 @@
 // Vollbild-Gesprächsmodus: sprechen wie mit einem Menschen.
 
+import '../state/skills.dart' show Skill;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -11,14 +12,15 @@ import '../state/app_scope.dart';
 import '../state/conversation_mode.dart';
 import 'internet_menu.dart';
 import 'system_check.dart';
+import '../l10n.dart';
 
 Future<void> openConversation(BuildContext context) async {
   final app = AppScope.read(context);
   final messenger = ScaffoldMessenger.of(context);
   if (app.sttModelPath == null) {
     messenger.showSnackBar(SnackBar(
-      content: const Text('Für den Gesprächsmodus zuerst ein Whisper-Modell laden.'),
-      action: SnackBarAction(label: 'Systemcheck', onPressed: () => openSystemCheck(context)),
+      content: Text(tr('Für den Gesprächsmodus zuerst ein Whisper-Modell laden.')),
+      action: SnackBarAction(label: tr('Systemcheck'), onPressed: () => openSystemCheck(context)),
     ));
     return;
   }
@@ -66,14 +68,14 @@ class _ConversationPageState extends State<ConversationPage> {
       backgroundColor: scheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text('Gespräch'),
+        title: Text(tr('Gespräch')),
         actions: [
           // KI-Modus (Gerät, Cloud, Hybrid …) auch im Gespräch umschaltbar
           AiModeMenu(compact: MediaQuery.sizeOf(context).width < 600, target: app.conversation.target),
           const SizedBox(width: 6),
           const InternetMenu(),
           IconButton(
-            tooltip: 'Einstellungen',
+            tooltip: tr('Einstellungen'),
             icon: const Icon(Icons.tune),
             onPressed: () => _showVoiceSettings(context),
           ),
@@ -81,7 +83,7 @@ class _ConversationPageState extends State<ConversationPage> {
             padding: const EdgeInsets.only(right: 12),
             child: Center(
               child: Text(
-                app.ttsVoicePath == null ? (app.voiceTooSlow ? 'Stimme: Gerät (schneller)' : 'Stimme: System') : (app.settings.ttsVoiceId ?? '').startsWith('kokoro') ? 'Stimme: Kokoro' : 'Stimme: Piper',
+                app.ttsVoicePath == null ? (app.voiceTooSlow ? tr('Stimme: Gerät (schneller)') : tr('Stimme: System')) : (app.settings.ttsVoiceId ?? '').startsWith('kokoro') ? tr('Stimme: Kokoro') : tr('Stimme: Piper'),
                 style: t.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ),
@@ -107,7 +109,7 @@ class _ConversationPageState extends State<ConversationPage> {
                       child: ValueListenableBuilder<String>(
                         valueListenable: conv.userText,
                         builder: (context, u, _) => Text(
-                          u.isEmpty ? 'Sag einfach etwas …' : '„$u“',
+                          u.isEmpty ? tr('Sag einfach etwas …') : '„$u“',
                           textAlign: TextAlign.center,
                           style: t.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
                         ),
@@ -143,8 +145,8 @@ class _ConversationPageState extends State<ConversationPage> {
                                       app.settings.voiceWakeWord
                                           ? 'Unterbrechen: „${conv.agentName}“ sagen oder Kreis tippen'
                                           : app.settings.voiceBargeIn
-                                              ? 'Unterbrechen: einfach reinreden oder Kreis tippen'
-                                              : 'Unterbrechen: Kreis tippen',
+                                              ? tr('Unterbrechen: einfach reinreden oder Kreis tippen')
+                                              : tr('Unterbrechen: Kreis tippen'),
                                       style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
                                 )
                               : const SizedBox.shrink(),
@@ -152,7 +154,7 @@ class _ConversationPageState extends State<ConversationPage> {
                     if (st == ConvState.hearing)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Text('Tipp auf den Kreis, wenn du fertig bist',
+                        child: Text(tr('Tipp auf den Kreis, wenn du fertig bist'),
                             style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
                       ),
                     ValueListenableBuilder<bool>(
@@ -168,7 +170,7 @@ class _ConversationPageState extends State<ConversationPage> {
                                 TextButton.icon(
                                   onPressed: conv.discardSpeaking,
                                   icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Verwerfen'),
+                                  label: Text(tr('Verwerfen')),
                                 ),
                                 const SizedBox(width: 12),
                                 FilledButton.icon(
@@ -176,7 +178,7 @@ class _ConversationPageState extends State<ConversationPage> {
                                       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18)),
                                   onPressed: conv.finishSpeaking,
                                   icon: const Icon(Icons.send),
-                                  label: const Text('Fertig – antworten'),
+                                  label: Text(tr('Fertig – antworten')),
                                 ),
                               ],
                             ),
@@ -185,7 +187,7 @@ class _ConversationPageState extends State<ConversationPage> {
                         return Padding(
                           padding: const EdgeInsets.only(top: 6, bottom: 8),
                           child: Text(
-                            st == ConvState.listening ? 'Absender-Modus: sprich, dann auf „Fertig“ tippen' : '',
+                            st == ConvState.listening ? tr('Absender-Modus: sprich, dann auf „Fertig“ tippen') : '',
                             style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                           ),
                         );
@@ -215,7 +217,7 @@ class _ConversationPageState extends State<ConversationPage> {
                       builder: (context, v, _) => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                         Icon(Icons.circle, size: 10, color: v ? Colors.green : scheme.outlineVariant),
                         const SizedBox(width: 6),
-                        Text(v ? 'Stimme erkannt' : 'keine Stimme', style: t.labelSmall),
+                        Text(v ? tr('Stimme erkannt') : tr('keine Stimme'), style: t.labelSmall),
                       ]),
                     ),
                     ValueListenableBuilder<String>(
@@ -234,8 +236,7 @@ class _ConversationPageState extends State<ConversationPage> {
                           padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(
-                              'Die Stimme rechnet auf diesem Gerät langsamer, als sie spricht – deshalb die kurze Pause vor der Antwort. '
-                              '„${app.fasterVoice!.name}“ klingt ähnlich und ist 3–5× schneller.',
+                              (tr('Die Stimme rechnet auf diesem Gerät langsamer, als sie spricht – deshalb die kurze Pause vor der Antwort. ') + '„${app.fasterVoice!.name}“ klingt ähnlich und ist 3–5× schneller.'),
                               style: t.bodySmall,
                             ),
                             Align(
@@ -243,8 +244,8 @@ class _ConversationPageState extends State<ConversationPage> {
                               child: TextButton(
                                 onPressed: app.downloads.containsKey(app.fasterVoice!.id) ? null : () => app.switchToFasterVoice(),
                                 child: Text(app.downloads.containsKey(app.fasterVoice!.id)
-                                    ? 'Lädt …'
-                                    : (app.settings.installed[app.fasterVoice!.id] != null ? 'Verwenden' : 'Laden & verwenden (${app.fasterVoice!.sizeBytes ~/ (1024 * 1024)} MB)')),
+                                    ? tr('Lädt …')
+                                    : (app.settings.installed[app.fasterVoice!.id] != null ? tr('Verwenden') : 'Laden & verwenden (${app.fasterVoice!.sizeBytes ~/ (1024 * 1024)} MB)')),
                               ),
                             ),
                           ]),
@@ -273,9 +274,9 @@ class _ConversationPageState extends State<ConversationPage> {
                                       textAlign: TextAlign.center),
                                   const SizedBox(height: 8),
                                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                    TextButton(onPressed: () => conv.answerConsent(NetworkChoice.deny), child: const Text('Nein')),
+                                    TextButton(onPressed: () => conv.answerConsent(NetworkChoice.deny), child: Text(tr('Nein'))),
                                     const SizedBox(width: 8),
-                                    OutlinedButton(onPressed: () => conv.answerConsent(NetworkChoice.once), child: const Text('Nur jetzt')),
+                                    OutlinedButton(onPressed: () => conv.answerConsent(NetworkChoice.once), child: Text(tr('Nur jetzt'))),
                                     const SizedBox(width: 8),
                                     FilledButton(onPressed: () => conv.answerConsent(NetworkChoice.chat), child: const Text('Ja')),
                                   ]),
@@ -292,28 +293,47 @@ class _ConversationPageState extends State<ConversationPage> {
                               child: Text(e, style: t.bodySmall?.copyWith(color: scheme.error), textAlign: TextAlign.center),
                             ),
                     ),
+                    ValueListenableBuilder<Skill?>(
+                      valueListenable: conv.pendingSkill,
+                      builder: (context, sk, _) => sk == null
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Text(tr('Skills per Stimme: „Skill Preis-Scout, RTX 4070“ – oder unten wählen.'),
+                                  textAlign: TextAlign.center, style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            )
+                          : InputChip(
+                              avatar: const Icon(Icons.auto_awesome, size: 18),
+                              label: Text('${tr('Nächste Frage mit')} ${sk.name}'),
+                              onDeleted: () => conv.pendingSkill.value = null,
+                            ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
+                          _RoundButton(
+                            icon: Icons.auto_awesome,
+                            label: tr('Skill'),
+                            onTap: () => _pickSkill(context, conv),
+                          ),
                           ValueListenableBuilder<bool>(
                             valueListenable: conv.muted,
                             builder: (context, m, _) => _RoundButton(
                               icon: m ? Icons.mic_off : Icons.mic,
-                              label: m ? 'Stumm' : 'Mikrofon',
+                              label: m ? tr('Stumm') : tr('Mikrofon'),
                               onTap: conv.toggleMute,
                               active: !m,
                             ),
                           ),
                           _RoundButton(
                             icon: Icons.pan_tool_outlined,
-                            label: 'Unterbrechen',
+                            label: tr('Unterbrechen'),
                             onTap: st == ConvState.speaking || st == ConvState.thinking ? conv.interrupt : null,
                           ),
                           _RoundButton(
                             icon: Icons.call_end,
-                            label: 'Beenden',
+                            label: tr('Beenden'),
                             color: scheme.error,
                             onTap: () => Navigator.of(context).pop(),
                           ),
@@ -347,24 +367,23 @@ void _showVoiceSettings(BuildContext context) {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (app.voiceTooSlow) ...[
-                Text('Gerätestimme aktiv', style: t.titleMedium),
+                Text(tr('Gerätestimme aktiv'), style: t.titleMedium),
                 const SizedBox(height: 4),
                 Text(
-                  'Die gewählte Stimme war auf diesem Gerät langsamer als Echtzeit (lange Pausen zwischen den Sätzen). '
-                  'Junels spricht deshalb mit der Stimme des Geräts.',
+                  (tr('Die gewählte Stimme war auf diesem Gerät langsamer als Echtzeit (lange Pausen zwischen den Sätzen). ') + tr('Junels spricht deshalb mit der Stimme des Geräts.')),
                   style: t.bodySmall,
                 ),
-                TextButton(onPressed: () => app.markVoiceSlow(false), child: const Text('Gewählte Stimme trotzdem verwenden')),
+                TextButton(onPressed: () => app.markVoiceSlow(false), child: Text(tr('Gewählte Stimme trotzdem verwenden'))),
                 const SizedBox(height: 12),
               ],
-              Text('Name des Agenten', style: t.titleMedium),
+              Text(tr('Name des Agenten'), style: t.titleMedium),
               const SizedBox(height: 8),
               TextFormField(
                 initialValue: st.agentName,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   border: OutlineInputBorder(),
                   isDense: true,
-                  hintText: 'z. B. Junels',
+                  hintText: tr('z. B. Junels'),
                 ),
                 textCapitalization: TextCapitalization.words,
                 onFieldSubmitted: (v) => app.setVoiceOptions(agentName: v),
@@ -374,27 +393,25 @@ void _showVoiceSettings(BuildContext context) {
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Nur auf den Namen hören'),
-                subtitle: Text('„${st.agentName}, wie wird das Wetter?“ – Geräusche und andere Gespräche lösen nichts aus. '
-                    'Kurz nach einer Antwort geht eine Nachfrage auch ohne Namen. Unterbrechen: Name sagen oder Kreis tippen.'),
+                title: Text(tr('Nur auf den Namen hören')),
+                subtitle: Text(('„${st.agentName}, wie wird das Wetter?“ – Geräusche und andere Gespräche lösen nichts aus. ' + tr('Kurz nach einer Antwort geht eine Nachfrage auch ohne Namen. Unterbrechen: Name sagen oder Kreis tippen.'))),
                 value: st.voiceWakeWord,
                 onChanged: (v) => app.setVoiceOptions(wakeWord: v),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Reinreden unterbricht'),
-                subtitle: const Text('Aus: Der Agent spricht immer zu Ende – unterbrechen per Tipp auf den Kreis '
-                    '(oder mit dem Namen). Ein: Jede Stimme unterbricht, auch Geräusche oder andere Personen.'),
+                title: Text(tr('Reinreden unterbricht')),
+                subtitle: Text((tr('Aus: Der Agent spricht immer zu Ende – unterbrechen per Tipp auf den Kreis ') + tr('(oder mit dem Namen). Ein: Jede Stimme unterbricht, auch Geräusche oder andere Personen.'))),
                 value: st.voiceBargeIn,
                 onChanged: st.voiceWakeWord ? null : (v) => app.setVoiceOptions(bargeIn: v),
               ),
               const Divider(height: 24),
-              Text('Wann bin ich fertig?', style: t.titleMedium),
+              Text(tr('Wann bin ich fertig?'), style: t.titleMedium),
               const SizedBox(height: 8),
               SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, icon: Icon(Icons.hourglass_bottom), label: Text('Sprechpause')),
-                  ButtonSegment(value: true, icon: Icon(Icons.send), label: Text('Fertig-Taste')),
+                segments: [
+                  ButtonSegment(value: false, icon: Icon(Icons.hourglass_bottom), label: Text(tr('Sprechpause'))),
+                  ButtonSegment(value: true, icon: Icon(Icons.send), label: Text(tr('Fertig-Taste'))),
                 ],
                 selected: {st.voiceManualEnd},
                 onSelectionChanged: (v) => app.setVoiceOptions(manualEnd: v.first),
@@ -402,8 +419,8 @@ void _showVoiceSettings(BuildContext context) {
               const SizedBox(height: 6),
               Text(
                 st.voiceManualEnd
-                    ? 'Absender-Modus: Alles wird aufgenommen, Pausen beenden nichts. Du tippst auf „Fertig – antworten“ (oder den Kreis).'
-                    : 'Die Antwort startet nach einer Sprechpause.',
+                    ? tr('Absender-Modus: Alles wird aufgenommen, Pausen beenden nichts. Du tippst auf „Fertig – antworten“ (oder den Kreis).')
+                    : tr('Die Antwort startet nach einer Sprechpause.'),
                 style: t.bodySmall,
               ),
               if (!st.voiceManualEnd) ...[
@@ -417,20 +434,20 @@ void _showVoiceSettings(BuildContext context) {
                   label: '${(st.voicePauseMs / 1000).toStringAsFixed(1)} s',
                   onChanged: (v) => app.setVoiceOptions(pauseMs: v.round()),
                 ),
-                Text('Länger = mehr Zeit zum Überlegen, ohne dass der Agent dazwischenredet.', style: t.bodySmall),
+                Text(tr('Länger = mehr Zeit zum Überlegen, ohne dass der Agent dazwischenredet.'), style: t.bodySmall),
               ],
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Nur meine Stimme'),
-                subtitle: const Text('Leisere Stimmen im Hintergrund (andere Personen, Durchsagen) ignorieren'),
+                title: Text(tr('Nur meine Stimme')),
+                subtitle: Text(tr('Leisere Stimmen im Hintergrund (andere Personen, Durchsagen) ignorieren')),
                 value: st.voiceNearField,
                 onChanged: (v) => app.setVoiceOptions(nearField: v),
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('KI-Spracherkennung (Silero)'),
-                subtitle: const Text('Unterscheidet Sprache von Lärm. Ausschalten, falls deine Stimme nicht erkannt wird.'),
+                title: Text(tr('KI-Spracherkennung (Silero)')),
+                subtitle: Text(tr('Unterscheidet Sprache von Lärm. Ausschalten, falls deine Stimme nicht erkannt wird.')),
                 value: st.voiceSmartVad,
                 onChanged: (v) => app.setVoiceOptions(smartVad: v),
               ),
@@ -444,8 +461,8 @@ void _showVoiceSettings(BuildContext context) {
                     Expanded(
                       child: Text(
                         smart
-                            ? 'Spracherkennung per KI (Silero) aktiv – Lärm wie in der U-Bahn wird ignoriert.'
-                            : 'Einfache Lautstärke-Erkennung aktiv (Silero nicht verfügbar).',
+                            ? tr('Spracherkennung per KI (Silero) aktiv – Lärm wie in der U-Bahn wird ignoriert.')
+                            : tr('Einfache Lautstärke-Erkennung aktiv (Silero nicht verfügbar).'),
                         style: t.bodySmall,
                       ),
                     ),
@@ -555,6 +572,35 @@ class _OrbState extends State<_Orb> with SingleTickerProviderStateMixin {
       },
     );
   }
+}
+
+/// Skill für die nächste Frage im Gespräch wählen
+Future<void> _pickSkill(BuildContext context, ConversationMode conv) async {
+  final app = AppScope.read(context);
+  final list = app.skills.enabled.where((s) => s.id != 'b-mitschrift').toList()..sort((a, b) => a.name.compareTo(b.name));
+  final picked = await showModalBottomSheet<Skill>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      builder: (ctx, scroll) => ListView(controller: scroll, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: Text(tr('Skill für die nächste Frage'), style: Theme.of(ctx).textTheme.titleMedium),
+        ),
+        for (final s in list)
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: Text(s.name),
+            subtitle: Text('/${s.command}${s.when.isEmpty ? '' : ' · ${s.when}'}', maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.pop(ctx, s),
+          ),
+      ]),
+    ),
+  );
+  if (picked != null) conv.pendingSkill.value = picked;
 }
 
 class _RoundButton extends StatelessWidget {

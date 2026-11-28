@@ -13,6 +13,7 @@ import 'system_check.dart';
 import 'chat_style.dart';
 import 'theme.dart';
 import 'update_page.dart';
+import '../l10n.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key, this.inDrawer = false});
@@ -88,7 +89,7 @@ class _SidebarState extends State<Sidebar> {
 
     Widget item(AppSection s, {String? count, bool dot = false}) => _NavItem(
           icon: s.icon,
-          label: s.label,
+          label: s.title,
           count: count,
           dot: dot,
           selected: active == s,
@@ -122,7 +123,7 @@ class _SidebarState extends State<Sidebar> {
                   if (widget.inDrawer) ...[
                     const Spacer(),
                     IconButton(
-                      tooltip: 'Menü schließen',
+                      tooltip: tr('Menü schließen'),
                       icon: const Icon(Icons.close),
                       onPressed: () => Scaffold.maybeOf(context)?.closeDrawer(),
                     ),
@@ -136,7 +137,7 @@ class _SidebarState extends State<Sidebar> {
                 Expanded(
                   child: FilledButton.icon(
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Neuer Chat'),
+                    label: Text(tr('Neuer Chat')),
                     onPressed: () {
                       app.newConversation();
                       _go(AppSection.chat);
@@ -147,7 +148,7 @@ class _SidebarState extends State<Sidebar> {
                 const SizedBox(width: 8),
                 PillIconButton(
                   icon: Icons.graphic_eq,
-                  tooltip: 'Gesprächsmodus',
+                  tooltip: tr('Gesprächsmodus'),
                   onPressed: app.engine == null || app.running
                       ? null
                       : () {
@@ -161,7 +162,7 @@ class _SidebarState extends State<Sidebar> {
                 // Alles, was von selbst läuft (Abläufe, geplante Aufgaben, Gespräche), an einem Ort
                 _NavItem(
                   icon: Icons.inbox_outlined,
-                  label: 'Ergebnisse',
+                  label: tr('Ergebnisse'),
                   count: app.feedUnread > 0 ? '${app.feedUnread}' : null,
                   dot: app.feedUnread > 0,
                   selected: app.current?.id == AppController.feedId && (active == null || active == AppSection.chat),
@@ -179,7 +180,7 @@ class _SidebarState extends State<Sidebar> {
                 decoration: InputDecoration(
                   isDense: true,
                   prefixIcon: Icon(Icons.search, size: 18, color: c.faint),
-                  hintText: 'Chats durchsuchen …',
+                  hintText: tr('Chats durchsuchen …'),
                   suffixIcon: _query.isEmpty
                       ? null
                       : IconButton(
@@ -194,7 +195,7 @@ class _SidebarState extends State<Sidebar> {
 
               // ---- Chats gleich unter der Suche
               _GroupHeader(
-                label: q.isEmpty ? 'Chats' : 'Treffer',
+                label: q.isEmpty ? tr('Chats') : tr('Treffer'),
                 count: '${chats.length}',
                 open: q.isNotEmpty || _open.contains('chats'),
                 onTap: q.isNotEmpty ? null : () => _toggle('chats'),
@@ -203,7 +204,7 @@ class _SidebarState extends State<Sidebar> {
                 if (chats.isEmpty)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                    child: Text(q.isEmpty ? 'Noch keine Chats.' : 'Nichts gefunden.', style: t.bodySmall),
+                    child: Text(q.isEmpty ? tr('Noch keine Chats.') : tr('Nichts gefunden.'), style: t.bodySmall),
                   ),
                 if (q.isNotEmpty)
                   for (final conv in visible) row(conv)
@@ -215,7 +216,7 @@ class _SidebarState extends State<Sidebar> {
                       child: Row(children: [
                         Icon(Icons.push_pin, size: 12, color: c.faint),
                         const SizedBox(width: 6),
-                        Text('Angeheftet', style: t.labelSmall?.copyWith(color: c.faint)),
+                        Text(tr('Angeheftet'), style: t.labelSmall?.copyWith(color: c.faint)),
                       ]),
                     ),
                   for (final f in folders.where(app.folderPinned)) folder(f),
@@ -228,14 +229,14 @@ class _SidebarState extends State<Sidebar> {
                 if (q.isEmpty && looseAll.length > 5)
                   TextButton(
                     onPressed: () => setState(() => _showAll = !_showAll),
-                    child: Text(_showAll ? 'Weniger anzeigen' : 'Alle ${looseAll.length} Chats anzeigen'),
+                    child: Text(_showAll ? tr('Weniger anzeigen') : 'Alle ${looseAll.length} Chats anzeigen'),
                   ),
               ],
 
               if (q.isEmpty) ...[
                 // ---- Skills & Abläufe: Anleitungen, Abläufe mit Auslöser, Beobachtungen und ihre Ergebnis-Chats
                 _GroupHeader(
-                  label: 'Skills & Abläufe',
+                  label: tr('Skills & Abläufe'),
                   open: _open.contains('auto'),
                   dot: app.watchlist.unseen > 0 ? c.amber : null,
                   onTap: () => _toggle('auto'),
@@ -247,7 +248,7 @@ class _SidebarState extends State<Sidebar> {
                 ],
                 // ---- Wissen
                 _GroupHeader(
-                  label: 'Wissen & Vorlagen',
+                  label: tr('Wissen & Vorlagen'),
                   open: _open.contains('skills'),
                   dot: app.memory.pending.isNotEmpty ? c.amber : null,
                   onTap: () => _toggle('skills'),
@@ -258,7 +259,7 @@ class _SidebarState extends State<Sidebar> {
                 ],
                 // ---- Kontrolle
                 _GroupHeader(
-                  label: 'Kontrolle',
+                  label: tr('Kontrolle'),
                   open: _open.contains('control'),
                   dot: app.runStats.records.isNotEmpty && app.runStats.records.last.status == 'error' ? c.red : null,
                   onTap: () => _toggle('control'),
@@ -352,9 +353,9 @@ class _ModelPill extends StatelessWidget {
     final m = app.loadedModel;
     final (color, state) = switch (app.status) {
       EngineStatus.ready => (c.mint, 'bereit'),
-      EngineStatus.loading => (c.amber, 'lädt …'),
-      EngineStatus.error => (c.red, 'Fehler'),
-      _ => (c.faint, 'nicht geladen'),
+      EngineStatus.loading => (c.amber, tr('lädt …')),
+      EngineStatus.error => (c.red, tr('Fehler')),
+      _ => (c.faint, tr('nicht geladen')),
     };
     final route = app.routingLabel;
     return Panel(
@@ -372,11 +373,11 @@ class _ModelPill extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m?.displayName ?? 'Kein Modell geladen',
+              Text(m?.displayName ?? tr('Kein Modell geladen'),
                   style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
-              MonoText(m == null ? 'Tippen zum Einrichten' : 'lokal · $state${route == null ? '' : ' · $route'}', size: 10.5),
+              MonoText(m == null ? tr('Tippen zum Einrichten') : 'lokal · $state${route == null ? '' : ' · $route'}', size: 10.5),
             ]),
           ),
           Icon(Icons.chevron_right, size: 18, color: c.faint),
@@ -462,7 +463,7 @@ class _ChatRowState extends State<_ChatRow> {
                   )
                 else if (_hover || widget.selected)
                   IconButton(
-                    tooltip: 'Mehr',
+                    tooltip: tr('Mehr'),
                     visualDensity: VisualDensity.compact,
                     iconSize: 17,
                     icon: const Icon(Icons.more_horiz),
@@ -490,21 +491,21 @@ class _ChatRowState extends State<_ChatRow> {
           ListTile(title: Text(conv.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
           ListTile(
             leading: Icon(conv.pinned ? Icons.push_pin_outlined : Icons.push_pin),
-            title: Text(conv.pinned ? 'Lösen' : 'Anheften'),
+            title: Text(conv.pinned ? tr('Lösen') : tr('Anheften')),
             onTap: () => Navigator.pop(ctx, 'pin'),
           ),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
-            title: const Text('Symbol & Farbe …'),
+            title: Text(tr('Symbol & Farbe …')),
             onTap: () => Navigator.pop(ctx, 'style'),
           ),
           ListTile(
             leading: const Icon(Icons.folder_outlined),
-            title: Text(conv.folder == null ? 'In Ordner verschieben …' : 'Ordner: ${conv.folder} – ändern …'),
+            title: Text(conv.folder == null ? tr('In Ordner verschieben …') : 'Ordner: ${conv.folder} – ändern …'),
             onTap: () => Navigator.pop(ctx, 'folder'),
           ),
-          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Umbenennen'), onTap: () => Navigator.pop(ctx, 'rename')),
-          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Chat löschen'), onTap: () => Navigator.pop(ctx, 'delete')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('Umbenennen')), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(leading: const Icon(Icons.delete_outline), title: Text(tr('Chat löschen')), onTap: () => Navigator.pop(ctx, 'delete')),
         ]),
       ),
     );
@@ -519,7 +520,7 @@ class _ChatRowState extends State<_ChatRow> {
         final f = await _pickFolder(context, app.chatFolders, conv.folder);
         if (f != null) await app.setFolder(conv, f == '-' ? null : f);
       case 'rename':
-        final t = await _askText(context, 'Chat umbenennen', conv.title);
+        final t = await _askText(context, tr('Chat umbenennen'), conv.title);
         if (t != null) await app.renameConversation(conv, t);
       case 'delete':
         widget.onDelete();
@@ -532,7 +533,7 @@ class _ChatRowState extends State<_ChatRow> {
 Future<String?> _pickFolder(BuildContext context, List<String> folders, String? current) => showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('In Ordner verschieben'),
+        title: Text(tr('In Ordner verschieben')),
         children: [
           for (final f in folders)
             SimpleDialogOption(
@@ -545,15 +546,15 @@ Future<String?> _pickFolder(BuildContext context, List<String> folders, String? 
             ),
           SimpleDialogOption(
             onPressed: () async {
-              final name = await _askText(ctx, 'Neuer Ordner', '');
+              final name = await _askText(ctx, tr('Neuer Ordner'), '');
               if (ctx.mounted) Navigator.pop(ctx, name);
             },
-            child: const Row(children: [Icon(Icons.create_new_folder_outlined, size: 18), SizedBox(width: 10), Text('Neuer Ordner …')]),
+            child: Row(children: [Icon(Icons.create_new_folder_outlined, size: 18), SizedBox(width: 10), Text(tr('Neuer Ordner …'))]),
           ),
           if (current != null)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, '-'),
-              child: const Row(children: [Icon(Icons.folder_off_outlined, size: 18), SizedBox(width: 10), Text('Aus dem Ordner nehmen')]),
+              child: Row(children: [Icon(Icons.folder_off_outlined, size: 18), SizedBox(width: 10), Text(tr('Aus dem Ordner nehmen'))]),
             ),
         ],
       ),
@@ -567,7 +568,7 @@ Future<String?> _askText(BuildContext context, String title, String initial) asy
       title: Text(title),
       content: TextField(controller: ctrl, autofocus: true, onSubmitted: (v) => Navigator.pop(ctx, v)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Abbrechen'))),
         FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('OK')),
       ],
     ),
@@ -612,15 +613,15 @@ class _FolderGroupState extends State<_FolderGroup> {
           ListTile(leading: const Icon(Icons.folder_outlined), title: Text(f, maxLines: 1, overflow: TextOverflow.ellipsis)),
           ListTile(
             leading: Icon(pinned ? Icons.push_pin_outlined : Icons.push_pin),
-            title: Text(pinned ? 'Lösen' : 'Anheften'),
+            title: Text(pinned ? tr('Lösen') : tr('Anheften')),
             onTap: () => Navigator.pop(ctx, 'pin'),
           ),
-          ListTile(leading: const Icon(Icons.palette_outlined), title: const Text('Symbol & Farbe …'), onTap: () => Navigator.pop(ctx, 'style')),
-          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Umbenennen'), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(leading: const Icon(Icons.palette_outlined), title: Text(tr('Symbol & Farbe …')), onTap: () => Navigator.pop(ctx, 'style')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('Umbenennen')), onTap: () => Navigator.pop(ctx, 'rename')),
           ListTile(
             leading: const Icon(Icons.folder_off_outlined),
-            title: const Text('Ordner auflösen'),
-            subtitle: const Text('Die Chats bleiben erhalten, nur ohne Ordner'),
+            title: Text(tr('Ordner auflösen')),
+            subtitle: Text(tr('Die Chats bleiben erhalten, nur ohne Ordner')),
             onTap: () => Navigator.pop(ctx, 'dissolve'),
           ),
         ]),
@@ -634,7 +635,7 @@ class _FolderGroupState extends State<_FolderGroup> {
         final s = await pickStyle(context, title: f, icon: widget.meta['icon'] as String?, color: widget.meta['color'] as String?);
         if (s != null) await app.setFolderStyle(f, icon: s.$1, color: s.$2);
       case 'rename':
-        final t = await _askText(context, 'Ordner umbenennen', f);
+        final t = await _askText(context, tr('Ordner umbenennen'), f);
         if (t != null) await app.renameFolder(f, t);
       case 'dissolve':
         await app.dissolveFolder(f);
@@ -670,7 +671,7 @@ class _FolderGroupState extends State<_FolderGroup> {
               ),
               MonoText('${widget.count}', size: 11, color: c.faint),
               IconButton(
-                tooltip: 'Ordner-Menü',
+                tooltip: tr('Ordner-Menü'),
                 visualDensity: VisualDensity.compact,
                 iconSize: 17,
                 icon: Icon(Icons.more_horiz, color: _hover ? null : c.faint.withValues(alpha: 0.6)),

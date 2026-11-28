@@ -12,6 +12,7 @@ import 'theme.dart';
 import '../state/app_controller.dart' show isImageFile;
 import '../state/native_files.dart';
 import 'quick_nav.dart';
+import '../l10n.dart';
 
 String _size(int b) => b >= 1 << 20 ? '${(b / (1 << 20)).toStringAsFixed(1)} MB' : '${(b / 1024).ceil()} KB';
 
@@ -32,7 +33,7 @@ class FileActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
-      tooltip: 'Datei-Aktionen',
+      tooltip: tr('Datei-Aktionen'),
       icon: const Icon(Icons.more_vert),
       onSelected: (v) => _guard(context, () async {
         switch (v) {
@@ -50,11 +51,11 @@ class FileActions extends StatelessWidget {
         }
       }),
       itemBuilder: (_) => [
-        const PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new), title: Text('Öffnen'))),
-        const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Teilen …'))),
-        const PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save_alt), title: Text('Speichern unter …'))),
+        PopupMenuItem(value: 'open', child: ListTile(leading: Icon(Icons.open_in_new), title: Text(tr('Öffnen')))),
+        PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.ios_share), title: Text(tr('Teilen …')))),
+        PopupMenuItem(value: 'save', child: ListTile(leading: Icon(Icons.save_alt), title: Text(tr('Speichern unter …')))),
         if (Platform.isMacOS)
-          const PopupMenuItem(value: 'reveal', child: ListTile(leading: Icon(Icons.folder_open), title: Text('Im Finder zeigen'))),
+          PopupMenuItem(value: 'reveal', child: ListTile(leading: Icon(Icons.folder_open), title: Text(tr('Im Finder zeigen')))),
       ],
     );
   }
@@ -92,7 +93,7 @@ Widget _aiAware(String p) {
   final preview = ImagePreview(p, size: 220);
   if (!stamped && !legacy) return preview;
   return Semantics(
-    label: 'KI-generiertes Bild',
+    label: tr('KI-generiertes Bild'),
     image: true,
     child: Stack(children: [
       preview,
@@ -132,7 +133,7 @@ class FileCard extends StatelessWidget {
             },
             size: 32),
         title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(exists ? '$label · ${_size(f.lengthSync())}' : 'Datei nicht mehr vorhanden',
+        subtitle: Text(exists ? '$label · ${_size(f.lengthSync())}' : tr('Datei nicht mehr vorhanden'),
             style: TextStyle(color: exists ? null : scheme.error)),
         onTap: exists ? () => _guard(context, () => NativeFiles.open(path)) : null,
         trailing: exists ? FileActions(path) : null,
@@ -269,7 +270,7 @@ class _PageViewerState extends State<_PageViewer> {
                 top: 0,
                 bottom: 0,
                 child: Center(
-                    child: IconButton.filledTonal(onPressed: () => _go(-1), icon: const Icon(Icons.chevron_left), tooltip: 'Zurück')),
+                    child: IconButton.filledTonal(onPressed: () => _go(-1), icon: const Icon(Icons.chevron_left), tooltip: tr('Zurück'))),
               ),
             if (_i < widget.pages.length - 1)
               Positioned(
@@ -277,7 +278,7 @@ class _PageViewerState extends State<_PageViewer> {
                 top: 0,
                 bottom: 0,
                 child: Center(
-                    child: IconButton.filledTonal(onPressed: () => _go(1), icon: const Icon(Icons.chevron_right), tooltip: 'Weiter')),
+                    child: IconButton.filledTonal(onPressed: () => _go(1), icon: const Icon(Icons.chevron_right), tooltip: tr('Weiter'))),
               ),
           ]),
         ),
@@ -295,7 +296,7 @@ class ImagePreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final f = File(path);
     if (!f.existsSync()) {
-      return SizedBox(width: size, height: 40, child: const Center(child: Text('Bild fehlt')));
+      return SizedBox(width: size, height: 40, child: Center(child: Text(tr('Bild fehlt'))));
     }
     return Stack(children: [
       ClipRRect(

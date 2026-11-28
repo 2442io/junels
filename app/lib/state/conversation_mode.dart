@@ -6,6 +6,8 @@
 // unterbrochen ("Barge-in"). "Mach weiter" setzt die unterbrochene Antwort fort,
 // weil die bereits gesprochenen Sätze im Verlauf stehen.
 
+import 'skills.dart' show Skill;
+import '../l10n.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:io';
@@ -33,6 +35,9 @@ extension ConvStateLabel on ConvState {
 class ConversationMode {
   ConversationMode(this.app);
   final AppController app;
+
+  /// Im Gespräch gewählter Skill – gilt für die nächste Frage
+  final pendingSkill = ValueNotifier<Skill?>(null);
 
   final state = ValueNotifier<ConvState>(ConvState.off);
   final userText = ValueNotifier<String>('');
@@ -99,7 +104,7 @@ class ConversationMode {
     manualEnd.value = st.voiceManualEnd;
   }
 
-  String get _language => app.settings.sttLanguage == 'auto' ? 'de' : app.settings.sttLanguage;
+  String get _language => app.settings.sttLanguage == 'auto' ? appLang : app.settings.sttLanguage;
 
   /// Gespräch ohne offenen Chat → läuft in der Sammlung „Ergebnisse“ (kein neuer Chat je Gespräch)
   bool _inFeed = false;
@@ -536,15 +541,20 @@ class ConversationMode {
     final sw = Stopwatch()..start();
     var firstMs = -1;
     var saidWait = false;
+    final sk = pendingSkill.value;
+    if (sk != null) {
+      pendingSkill.value = null;
+      text = '/${sk.command} $text';
+    }
     await app.send(text, voice: true, target: _inFeed ? app.feed : null, onToolStart: (tool) {
       // Werkzeuge (Internet) brauchen Zeit: kurz Bescheid geben statt stumm zu warten
       if (myTurn != _turn || _speakingStarted || saidWait) return;
       saidWait = true;
       out.add(switch (tool) {
-        'weather' => 'Moment, ich schaue mir das Wetter an.',
-        'news' => 'Moment, ich hole die Nachrichten.',
-        'calculator' => 'Einen Moment.',
-        _ => 'Moment, ich schaue nach.',
+        'weather' => isEnglish ? 'One moment, checking the weather.' : 'Moment, ich schaue mir das Wetter an.',
+        'news' => isEnglish ? 'One moment, getting the news.' : 'Moment, ich hole die Nachrichten.',
+        'calculator' => isEnglish ? 'One moment.' : 'Einen Moment.',
+        _ => isEnglish ? 'One moment, let me check.' : 'Moment, ich schaue nach.',
       });
       if (state.value == ConvState.thinking) state.value = ConvState.speaking;
     }, onAnswer: (raw, done) {
@@ -553,7 +563,7 @@ class ConversationMode {
       var full = stripAnswerPreamble(raw, text, done: done);
       if (full == null) return;
       // Nur Gerede über die Frage/Anweisungen, keine Antwort → nachfragen statt vorlesen
-      if (done && !_speakingStarted && full.trim().isNotEmpty && onlyPreamble(full, text)) full = voiceNotUnderstood;
+      if (done && !_speakingStarted && full.trim().isNotEmpty && onlyPreamble(full, text)) full = isEnglish ? "Sorry, I didn't quite catch that. Could you say it again?" : voiceNotUnderstood;
       if (firstMs < 0 && full.trim().isNotEmpty) {
         firstMs = sw.elapsedMilliseconds;
         timing.value = 'Aufnahme ${_sec(audioMs)} · Erkennung ${_sec(sttMs)} · erste Worte nach ${_sec(firstMs)}';

@@ -14,6 +14,11 @@ import '../version.dart';
 import 'quick_nav.dart';
 
 const changelog = <(String, List<String>)>[
+  ('1.75.0', [
+    'Englisch: App und Agent auf Englisch umstellbar (Einstellungen → Darstellung → Sprache · Language, oder „Switch to English“ auf dem Startbildschirm) – Antworten, Spracherkennung und Stimme folgen; die wichtigsten Bereiche sind übersetzt, weitere folgen',
+    'Skills im Gesprächsmodus: sagen „Skill Preis-Scout, RTX 4070“ (oder „mit dem Skill …“, „Slash dossier …“) – oder über den Skill-Knopf für die nächste Frage wählen',
+    'Web-Jobs laufen jetzt auch aus dem Gespräch heraus; Junels sagt kurz Bescheid, das Ergebnis kommt in „Ergebnisse“',
+  ]),
   ('1.74.0', [
     'Neu: Auswertung (Kontrolle → Auswertung) – Nutzung, Themengebiete, Funktionen, Tokens, Nutzungszeit und geschätzte Ersparnis an Arbeitsstunden',
     'Auf Wunsch im Admin-Bereich der Agent-API sichtbar (nur Zahlen, keine Inhalte)',

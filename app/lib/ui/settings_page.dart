@@ -32,6 +32,7 @@ import 'theme.dart';
 import 'web_settings.dart';
 import 'update_page.dart';
 import 'quick_nav.dart';
+import '../l10n.dart';
 
 /// Ein Eintrag der Einstellungen: entweder ein Bereich (eigener Inhalt) oder eine eigene Seite.
 class SettingsEntry {
@@ -53,51 +54,51 @@ class SettingsEntry {
 
 /// Alle Einstellungen, geordnet nach dem, was man erledigen will.
 List<SettingsEntry> settingsEntries(AppController app) => [
-      SettingsEntry('models', 'KI', Icons.memory, 'Modell auf dem Gerät',
-          app.engine == null ? 'Kein Modell geladen · Systemcheck, Modelle laden' : 'Systemcheck, Modell laden, automatische Modellwahl',
-          keywords: ['Systemcheck', 'Context', 'GGUF', 'schnelles Modell', 'starkes Modell', 'Download', 'lokal']),
-      SettingsEntry('providers', 'KI', Icons.cloud_outlined, 'Cloud & eigene Server',
-          app.providers.isEmpty ? 'OpenAI, Claude, Gemini, Ollama … verbinden' : '${app.providers.length} Anbieter · wann die Cloud helfen darf',
-          keywords: ['KI-Anbieter', 'OpenAI', 'Anthropic', 'Claude', 'Gemini', 'Ollama', 'On-Prem', 'Hybrid', 'API-Schlüssel', 'Routing']),
-      SettingsEntry('agent', 'KI', Icons.smart_toy_outlined, 'Agent & Werkzeuge', 'Profil, Persönlichkeit, welche Werkzeuge der Agent nutzt',
-          keywords: ['Profil', 'Systemprompt', 'Werkzeuge', 'Tools', 'Websuche', 'Wetter']),
-      SettingsEntry('voice', 'KI', Icons.graphic_eq, 'Sprache & Stimme', 'Spracheingabe, Stimme, Vorlesen',
-          keywords: ['Whisper', 'Mikrofon', 'Vorlesen', 'Stimme', 'Wake-Word', 'Gesprächsmodus']),
-      SettingsEntry('ext', 'Verbindungen', Icons.extension_outlined, 'Erweiterungen',
-          'MCP-Server, Junels für andere Programme, Web-Zugänge, Apps steuern',
-          keywords: ['MCP', 'MCP-Store', 'MCP-Server', 'Claude Desktop', 'n8n', 'Dify', 'Zugänge', 'OAuth', 'API', 'Spotify', 'Apps']),
-      SettingsEntry('device', 'Verbindungen', Icons.event_outlined, 'Kalender, Gerät & Ordner',
-          app.settings.homeCity.isEmpty ? 'Kalender-Abo, Heimatort, Schnellstart, beobachtete Ordner' : 'Heimatort ${app.settings.homeCity} · Kalender-Abo · Ordner',
-          keywords: ['Kalender', 'iCal', 'Google Kalender', 'Kalender prüfen', 'Heimatort', 'Morgen-Übersicht', 'Ordner', 'Teilen', 'Schnellstart', 'Widget'],
+      SettingsEntry('models', 'KI', Icons.memory, tr('Modell auf dem Gerät'),
+          app.engine == null ? tr('Kein Modell geladen · Systemcheck, Modelle laden') : tr('Systemcheck, Modell laden, automatische Modellwahl'),
+          keywords: [tr('Systemcheck'), 'Context', 'GGUF', tr('schnelles Modell'), tr('starkes Modell'), 'Download', 'lokal']),
+      SettingsEntry('providers', 'KI', Icons.cloud_outlined, tr('Cloud & eigene Server'),
+          app.providers.isEmpty ? tr('OpenAI, Claude, Gemini, Ollama … verbinden') : '${app.providers.length} Anbieter · wann die Cloud helfen darf',
+          keywords: [tr('KI-Anbieter'), 'OpenAI', 'Anthropic', 'Claude', 'Gemini', 'Ollama', 'On-Prem', 'Hybrid', tr('API-Schlüssel'), 'Routing']),
+      SettingsEntry('agent', 'KI', Icons.smart_toy_outlined, tr('Agent & Werkzeuge'), tr('Profil, Persönlichkeit, welche Werkzeuge der Agent nutzt'),
+          keywords: [tr('Profil'), tr('Systemprompt'), tr('Werkzeuge'), 'Tools', tr('Websuche'), tr('Wetter')]),
+      SettingsEntry('voice', 'KI', Icons.graphic_eq, tr('Sprache & Stimme'), tr('Spracheingabe, Stimme, Vorlesen'),
+          keywords: ['Whisper', tr('Mikrofon'), tr('Vorlesen'), tr('Stimme'), 'Wake-Word', tr('Gesprächsmodus')]),
+      SettingsEntry('ext', tr('Verbindungen'), Icons.extension_outlined, tr('Erweiterungen'),
+          tr('MCP-Server, Junels für andere Programme, Web-Zugänge, Apps steuern'),
+          keywords: ['MCP', 'MCP-Store', tr('MCP-Server'), 'Claude Desktop', 'n8n', 'Dify', tr('Zugänge'), 'OAuth', 'API', 'Spotify', 'Apps']),
+      SettingsEntry('device', tr('Verbindungen'), Icons.event_outlined, tr('Kalender, Gerät & Ordner'),
+          app.settings.homeCity.isEmpty ? tr('Kalender-Abo, Heimatort, Schnellstart, beobachtete Ordner') : 'Heimatort ${app.settings.homeCity} · Kalender-Abo · Ordner',
+          keywords: [tr('Kalender'), 'iCal', tr('Google Kalender'), tr('Kalender prüfen'), tr('Heimatort'), tr('Morgen-Übersicht'), tr('Ordner'), tr('Teilen'), tr('Schnellstart'), 'Widget'],
           open: openDevicePage),
-      SettingsEntry('vault', 'Verbindungen', Icons.lock_outline, 'Tresor & Mail-Konto',
-          app.settings.smtpReady ? 'Mail-Konto ${app.settings.smtpUser}' : 'Passwörter und Schlüssel sicher ablegen, Mail direkt senden',
-          keywords: ['Passwort', 'Schlüssel', 'SMTP', 'E-Mail', 'IMAP'], open: openVault),
-      SettingsEntry('mydata', 'Alltag', Icons.badge_outlined, 'Meine Daten',
-          app.settings.myData.isEmpty ? 'Name, Adresse, E-Mail, Kundennummern – zum Ausfüllen von Formularen' : '${app.settings.myData.length} Angaben · zum Ausfüllen',
-          keywords: ['Formular', 'Ausfüllen', 'Adresse', 'Kundennummer', 'Autofill'], open: openMyData),
-      SettingsEntry('sites', 'Verbindungen', Icons.verified_user_outlined, 'Websites & Freigaben',
-          'Was Junels im Browser frei darf: ausfüllen, absenden, nie zahlen',
-          keywords: ['Browser', 'Web-Job', 'Freigabe', 'Absenden', 'Rückfrage', 'Website'], open: openSitePolicy),
-      SettingsEntry('notify', 'Alltag', Icons.notifications_outlined, 'Benachrichtigungen', 'Arten an/aus, Ruhezeit, Infos gesammelt',
-          keywords: ['Push', 'Ruhezeit', 'Erinnerung', 'Warnung', 'Ton'], open: openNotifySettings),
-      SettingsEntry('app', 'Alltag', Icons.palette_outlined, 'Darstellung & Designs', 'Hell/Dunkel, eigene Designs für Präsentationen und PDFs',
-          keywords: ['Dunkel', 'Hell', 'Theme', 'Design', 'CI', 'Präsentation', 'Schrift', 'Farben']),
-      SettingsEntry('sync', 'Daten & Konto', Icons.shield_outlined, 'Konto, Datenschutz & Abgleich',
+      SettingsEntry('vault', tr('Verbindungen'), Icons.lock_outline, tr('Tresor & Mail-Konto'),
+          app.settings.smtpReady ? 'Mail-Konto ${app.settings.smtpUser}' : tr('Passwörter und Schlüssel sicher ablegen, Mail direkt senden'),
+          keywords: [tr('Passwort'), tr('Schlüssel'), 'SMTP', tr('E-Mail'), 'IMAP'], open: openVault),
+      SettingsEntry('mydata', tr('Alltag'), Icons.badge_outlined, tr('Meine Daten'),
+          app.settings.myData.isEmpty ? tr('Name, Adresse, E-Mail, Kundennummern – zum Ausfüllen von Formularen') : '${app.settings.myData.length} Angaben · zum Ausfüllen',
+          keywords: [tr('Formular'), tr('Ausfüllen'), tr('Adresse'), tr('Kundennummer'), 'Autofill'], open: openMyData),
+      SettingsEntry('sites', tr('Verbindungen'), Icons.verified_user_outlined, tr('Websites & Freigaben'),
+          tr('Was Junels im Browser frei darf: ausfüllen, absenden, nie zahlen'),
+          keywords: ['Browser', tr('Web-Job'), tr('Freigabe'), tr('Absenden'), tr('Rückfrage'), 'Website'], open: openSitePolicy),
+      SettingsEntry('notify', tr('Alltag'), Icons.notifications_outlined, tr('Benachrichtigungen'), tr('Arten an/aus, Ruhezeit, Infos gesammelt'),
+          keywords: ['Push', tr('Ruhezeit'), tr('Erinnerung'), tr('Warnung'), tr('Ton')], open: openNotifySettings),
+      SettingsEntry('app', tr('Alltag'), Icons.palette_outlined, tr('Darstellung & Designs'), tr('Hell/Dunkel, eigene Designs für Präsentationen und PDFs'),
+          keywords: [tr('Dunkel'), tr('Hell'), 'Theme', 'Design', 'CI', tr('Präsentation'), tr('Schrift'), tr('Farben')]),
+      SettingsEntry('sync', tr('Daten & Konto'), Icons.shield_outlined, tr('Konto, Datenschutz & Abgleich'),
           app.sync.config.level >= 0
               ? 'Stufe ${app.sync.config.level}: ${PrivacyLevel.all[app.sync.config.level].title}'
                   '${app.sync.ssoSignedIn ? ' · ${app.sync.config.ssoName.isNotEmpty ? app.sync.config.ssoName : app.sync.config.ssoEmail}' : ''}'
-              : 'Datenschutz-Stufe, SSO-Konto, Abgleich Mac ↔ Handy',
-          keywords: ['SSO', 'Anmelden', 'Datenschutz', 'Sync', 'Abgleich', 'Server', 'WLAN', 'Konto'], open: openSync),
-      SettingsEntry('data', 'Daten & Konto', Icons.archive_outlined, 'Sicherung & Geräte-Setups', 'Alles sichern oder wiederherstellen, Einstellungen je Gerät',
-          keywords: ['Backup', 'Export', 'Import', 'Wiederherstellen', 'Setup', 'Desktop', 'Handy']),
-      SettingsEntry('updates', 'Hilfe & Wartung', Icons.system_update_outlined, 'Updates & Neuigkeiten',
+              : tr('Datenschutz-Stufe, SSO-Konto, Abgleich Mac ↔ Handy'),
+          keywords: ['SSO', tr('Anmelden'), tr('Datenschutz'), 'Sync', tr('Abgleich'), 'Server', 'WLAN', tr('Konto')], open: openSync),
+      SettingsEntry('data', tr('Daten & Konto'), Icons.archive_outlined, tr('Sicherung & Geräte-Setups'), tr('Alles sichern oder wiederherstellen, Einstellungen je Gerät'),
+          keywords: ['Backup', 'Export', 'Import', tr('Wiederherstellen'), 'Setup', 'Desktop', tr('Handy')]),
+      SettingsEntry('updates', tr('Hilfe & Wartung'), Icons.system_update_outlined, tr('Updates & Neuigkeiten'),
           app.updates.available.value != null ? 'Neue Version ${app.updates.available.value!.version} verfügbar' : 'Installiert: $appVersion · Was ist neu?',
-          keywords: ['Version', 'Changelog', 'Aktualisieren'], open: openUpdates),
-      SettingsEntry('selftest', 'Hilfe & Wartung', Icons.health_and_safety_outlined, 'Selbsttest', 'Junels prüft sich selbst – Bericht zum Teilen',
-          keywords: ['Fehler', 'Test', 'Diagnose', 'funktioniert nicht'], open: openSelfTest),
-      SettingsEntry('log', 'Hilfe & Wartung', Icons.receipt_long_outlined, 'Protokoll', 'Technische Fehler und Zeiten',
-          keywords: ['Log', 'Fehler', 'Debug'], open: openLog),
+          keywords: ['Version', tr('Changelog'), tr('Aktualisieren')], open: openUpdates),
+      SettingsEntry('selftest', tr('Hilfe & Wartung'), Icons.health_and_safety_outlined, tr('Selbsttest'), tr('Junels prüft sich selbst – Bericht zum Teilen'),
+          keywords: [tr('Fehler'), 'Test', tr('Diagnose'), tr('funktioniert nicht')], open: openSelfTest),
+      SettingsEntry('log', tr('Hilfe & Wartung'), Icons.receipt_long_outlined, tr('Protokoll'), tr('Technische Fehler und Zeiten'),
+          keywords: ['Log', tr('Fehler'), 'Debug'], open: openLog),
     ];
 
 Future<void> openSettings(BuildContext context, {String? section}) => Navigator.of(context)
@@ -151,7 +152,7 @@ class _SettingsPageState extends State<SettingsPage> {
         decoration: InputDecoration(
           isDense: true,
           prefixIcon: Icon(Icons.search, size: 18, color: c.faint),
-          hintText: 'Einstellung suchen – z. B. Kalender, Stimme, MCP',
+          hintText: tr('Einstellung suchen – z. B. Kalender, Stimme, MCP'),
           suffixIcon: _q.isEmpty
               ? null
               : IconButton(
@@ -175,7 +176,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!wide) {
         if (widget.initial != null && all.any((e) => e.id == widget.initial && e.isSection)) return _SectionPage(id: widget.initial!);
         return Scaffold(
-          appBar: JAppBar(title: const Text('Einstellungen')),
+          appBar: JAppBar(title: Text(tr('Einstellungen'))),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
             children: [
@@ -183,7 +184,7 @@ class _SettingsPageState extends State<SettingsPage> {
               if (hits.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text('Nichts gefunden. Tipp: in der Hilfe suchen.', style: Theme.of(context).textTheme.bodySmall),
+                  child: Text(tr('Nichts gefunden. Tipp: in der Hilfe suchen.'), style: Theme.of(context).textTheme.bodySmall),
                 ),
               for (final g in groups)
                 if (hits.any((h) => h.$1.group == g)) ...[
@@ -210,7 +211,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       final current = all.firstWhere((e) => e.id == _section && e.isSection, orElse: () => all.first);
       return Scaffold(
-        appBar: JAppBar(title: const Text('Einstellungen')),
+        appBar: JAppBar(title: Text(tr('Einstellungen'))),
         body: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Container(
             width: 280,
@@ -305,12 +306,12 @@ class SettingsBody extends StatelessWidget {
       case 'models':
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           group(null, [_ModelSection(app: app)]),
-          group('Automatische Modellwahl', [_AutoModelSection(app: app)]),
-          group('Beim Start', [
+          group(tr('Automatische Modellwahl'), [_AutoModelSection(app: app)]),
+          group(tr('Beim Start'), [
             SwitchListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              title: const Text('Letztes Modell beim Start laden'),
-              subtitle: const Text('Antworten sind sofort bereit, braucht aber Arbeitsspeicher'),
+              title: Text(tr('Letztes Modell beim Start laden')),
+              subtitle: Text(tr('Antworten sind sofort bereit, braucht aber Arbeitsspeicher')),
               value: app.settings.autoLoadLastModel,
               onChanged: app.setAutoLoad,
             ),
@@ -320,8 +321,8 @@ class SettingsBody extends StatelessWidget {
         return const ProvidersSettings();
       case 'agent':
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          group('Profil', [_ProfileSection(app: app)]),
-          group('Werkzeuge', [_ToolSection(app: app)]),
+          group(tr('Profil'), [_ProfileSection(app: app)]),
+          group(tr('Werkzeuge'), [_ToolSection(app: app)]),
         ]);
       case 'voice':
         return group(null, [_VoiceSection(app: app)]);
@@ -329,46 +330,46 @@ class SettingsBody extends StatelessWidget {
         return group(null, [
           _NavTile(
             icon: Icons.hub_outlined,
-            title: 'MCP-Store & Server',
+            title: tr('MCP-Store & Server'),
             subtitle: app.mcpServers.isEmpty
-                ? 'Weitere Werkzeuge anbinden (Slack, Gmail, Notion, GitHub …)'
+                ? tr('Weitere Werkzeuge anbinden (Slack, Gmail, Notion, GitHub …)')
                 : '${app.mcpServers.where((s) => s.enabled).length} aktiv · ${app.mcpTools.length} Werkzeuge',
             onTap: () => openMcp(context),
           ),
           _NavTile(
             icon: Icons.cable_outlined,
-            title: 'Junels für andere Programme',
+            title: tr('Junels für andere Programme'),
             subtitle: app.mcpServe.running
                 ? 'An · ${app.mcpServe.url}'
-                : 'Aus · Claude Desktop, n8n, Dify … deine Skills und Prozesse nutzen lassen',
+                : tr('Aus · Claude Desktop, n8n, Dify … deine Skills und Prozesse nutzen lassen'),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const McpServePage())),
           ),
           _NavTile(
             icon: Icons.key_outlined,
-            title: 'Web-Zugänge',
+            title: tr('Web-Zugänge'),
             subtitle: app.connections.items.isEmpty
-                ? 'Anmeldungen für Web-APIs und Plattformen (API-Schlüssel, Google, SSO)'
+                ? tr('Anmeldungen für Web-APIs und Plattformen (API-Schlüssel, Google, SSO)')
                 : '${app.connections.items.length} Zugänge',
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ConnectionsPage())),
           ),
           _NavTile(
             icon: Icons.apps,
-            title: 'Apps steuern',
+            title: tr('Apps steuern'),
             subtitle: app.allowedApps.isEmpty
-                ? 'Welche Apps (z. B. Spotify) der Agent öffnen und steuern darf'
+                ? tr('Welche Apps (z. B. Spotify) der Agent öffnen und steuern darf')
                 : '${app.allowedApps.map((a) => a.name).join(', ')} freigegeben',
             onTap: () => openAppsPage(context),
           ),
         ]);
       case 'app':
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          group('Darstellung', [_SettingsSection(app: app)]),
+          group(tr('Darstellung'), [_SettingsSection(app: app)]),
           group('Designs', [
             _NavTile(
               icon: Icons.palette_outlined,
-              title: 'Eigene Designs',
+              title: tr('Eigene Designs'),
               subtitle: DesignLibrary.user.isEmpty
-                  ? 'Firmen-CI oder Lieblingsstil für Präsentationen und PDFs speichern'
+                  ? tr('Firmen-CI oder Lieblingsstil für Präsentationen und PDFs speichern')
                   : '${DesignLibrary.user.length} gespeichert${DesignLibrary.standard != null ? ' · Standard: ${DesignLibrary.standard!.name}' : ''}',
               onTap: () => openDesigns(context),
             ),
@@ -378,14 +379,14 @@ class SettingsBody extends StatelessWidget {
         return group(null, [
           _NavTile(
             icon: Icons.archive_outlined,
-            title: 'Sicherung',
-            subtitle: 'Alle Chats, Prozesse und Einstellungen exportieren oder wiederherstellen',
+            title: tr('Sicherung'),
+            subtitle: tr('Alle Chats, Prozesse und Einstellungen exportieren oder wiederherstellen'),
             onTap: () => openBackup(context),
           ),
           _NavTile(
             icon: Icons.devices_outlined,
-            title: 'Geräte-Setups',
-            subtitle: 'Einstellungen als „Desktop“, „Handy“ … speichern und anwenden',
+            title: tr('Geräte-Setups'),
+            subtitle: tr('Einstellungen als „Desktop“, „Handy“ … speichern und anwenden'),
             onTap: () => openSetups(context),
           ),
         ]);
@@ -419,7 +420,7 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Der Bereich hat schon eine Überschrift – Haupttitel nicht wiederholen.
-    if (const {'Modell', 'Sprache', 'Einstellungen', 'Lokale Tools', 'Agent-Profil'}.contains(text)) {
+    if ({tr('Modell'), tr('Sprache'), tr('Einstellungen'), tr('Lokale Tools'), tr('Agent-Profil')}.contains(text)) {
       return trailing == null ? const SizedBox(height: 4) : Align(alignment: Alignment.centerRight, child: trailing);
     }
     return SectionLabel(text, trailing: trailing, padding: const EdgeInsets.fromLTRB(4, 4, 0, 8));
@@ -440,7 +441,7 @@ class _ModelSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionTitle('Modell'),
+        _SectionTitle(tr('Modell')),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -458,13 +459,13 @@ class _ModelSection extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: () => openSystemCheck(context),
                   icon: const Icon(Icons.speed_outlined),
-                  label: const Text('Systemcheck & Modelle'),
+                  label: Text(tr('Systemcheck & Modelle')),
                 ),
                 const SizedBox(height: 6),
                 OutlinedButton.icon(
                   onPressed: busy ? null : () => pickAndImportModel(context),
                   icon: const Icon(Icons.file_open_outlined),
-                  label: const Text('Eigene Datei laden'),
+                  label: Text(tr('Eigene Datei laden')),
                 ),
                 if (Platform.isIOS) const SizedBox(height: 6),
                 if (Platform.isIOS)
@@ -479,18 +480,17 @@ class _ModelSection extends StatelessWidget {
                                   ? '${r.added} Modell(e) aus dem App-Ordner übernommen.'
                                   : r.errors.isNotEmpty
                                       ? r.errors.first
-                                      : 'Keine neuen .gguf-Dateien im App-Ordner gefunden.'),
+                                      : tr('Keine neuen .gguf-Dateien im App-Ordner gefunden.')),
                             ));
                           },
                     icon: const Icon(Icons.folder_open_outlined),
-                    label: const Text('Aus App-Ordner übernehmen'),
+                    label: Text(tr('Aus App-Ordner übernehmen')),
                   ),
                 const SizedBox(height: 4),
                 Text(
                     Platform.isIOS
-                        ? '.gguf-Datei per Finder (USB) in den Ordner „Offline Agent“ legen und übernehmen – ohne Kopie. '
-                            'Oder über „Modell laden“ aus der Dateien-App wählen.'
-                        : '.gguf-Datei per USB, AirDrop oder Dateimanager aufs Gerät kopieren, dann hier wählen.',
+                        ? (tr('.gguf-Datei per Finder (USB) in den Ordner „Offline Agent“ legen und übernehmen – ohne Kopie. ') + tr('Oder über „Modell laden“ aus der Dateien-App wählen.'))
+                        : tr('.gguf-Datei per USB, AirDrop oder Dateimanager aufs Gerät kopieren, dann hier wählen.'),
                     style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
               ],
             ),
@@ -510,11 +510,11 @@ class _ModelSection extends StatelessWidget {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    title: const Text('Modell entfernen?'),
+                    title: Text(tr('Modell entfernen?')),
                     content: Text('${m.displayName} (${m.sizeLabel}) wird vom Gerät gelöscht.'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Löschen')),
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Abbrechen'))),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Löschen'))),
                     ],
                   ),
                 );
@@ -610,9 +610,9 @@ class _ModelTile extends StatelessWidget {
           _ => null,
         },
         itemBuilder: (_) => [
-          if (!loaded && !tooBig) const PopupMenuItem(value: 'load', child: Text('Laden')),
-          if (loaded) const PopupMenuItem(value: 'unload', child: Text('Entladen')),
-          const PopupMenuItem(value: 'delete', child: Text('Vom Gerät löschen')),
+          if (!loaded && !tooBig) PopupMenuItem(value: 'load', child: Text(tr('Laden'))),
+          if (loaded) PopupMenuItem(value: 'unload', child: Text(tr('Entladen'))),
+          PopupMenuItem(value: 'delete', child: Text(tr('Vom Gerät löschen'))),
         ],
       ),
     );
@@ -632,14 +632,14 @@ class _ProfileSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionTitle('Agent-Profil',
+        _SectionTitle(tr('Agent-Profil'),
             trailing: TextButton.icon(
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Neues Profil'),
+              label: Text(tr('Neues Profil')),
               onPressed: app.running
                   ? null
                   : () => editProfile(context,
-                      AgentProfile(id: newId(), name: 'Eigenes Profil', systemPrompt: p.systemPrompt)),
+                      AgentProfile(id: newId(), name: tr('Eigenes Profil'), systemPrompt: p.systemPrompt)),
             )),
         DropdownButtonFormField<String>(
           key: ValueKey(p.id),
@@ -715,19 +715,19 @@ class _ToolSection extends StatelessWidget {
     'knowledge_search': Icons.local_library_outlined,
   };
 
-  static const _groups = [
-    ('Internet', ['web_search', 'web_fetch', 'news', 'weather', 'site_search', 'browser', 'begleiten', 'mail_inbox']),
-    ('Erstellen', ['create_document', 'create_word', 'create_excel', 'create_presentation', 'create_chart', 'write_artifact', 'edit_file', 'generate_image', 'skill_erstellen', 'save_prompt']),
-    ('Wissen & Dateien', ['text_search', 'read_file', 'knowledge_search', 'search_history', 'remember', 'look_at_image', 'json_query', 'file_search', 'file_rename', 'file_move']),
-    ('Gerät & Apps', ['calendar_list', 'calendar_add', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'control_app', 'send_notification']),
-    ('Rechnen & Ordnen', ['calculator', 'datetime', 'find_loose_ends']),
+  static final _groups = [
+    (tr('Internet'), ['web_search', 'web_fetch', 'news', 'weather', 'site_search', 'browser', 'begleiten', 'mail_inbox']),
+    (tr('Erstellen'), ['create_document', 'create_word', 'create_excel', 'create_presentation', 'create_chart', 'write_artifact', 'edit_file', 'generate_image', 'skill_erstellen', 'save_prompt']),
+    (tr('Wissen & Dateien'), ['text_search', 'read_file', 'knowledge_search', 'search_history', 'remember', 'look_at_image', 'json_query', 'file_search', 'file_rename', 'file_move']),
+    (tr('Gerät & Apps'), ['calendar_list', 'calendar_add', 'contacts_search', 'compose_email', 'compose_whatsapp', 'call_phone', 'control_app', 'send_notification']),
+    (tr('Rechnen & Ordnen'), ['calculator', 'datetime', 'find_loose_ends']),
   ];
 
   static String _groupOf(String name) {
     for (final (g, names) in _groups) {
       if (names.contains(name)) return g;
     }
-    return 'Weitere';
+    return tr('Weitere');
   }
 
   @override
@@ -745,11 +745,10 @@ class _ToolSection extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
           child: Text(
-              '${app.tools.where((x) => app.settings.enabledTools.contains(x.name)).length} von ${app.tools.length} Werkzeugen an. '
-              'Werkzeuge mit 🌐 gehen ins Internet und fragen vorher.',
+              ('${app.tools.where((x) => app.settings.enabledTools.contains(x.name)).length} von ${app.tools.length} Werkzeugen an. ' + tr('Werkzeuge mit 🌐 gehen ins Internet und fragen vorher.')),
               style: t.bodySmall),
         ),
-        for (final (group, _) in [..._groups, ('Weitere', const <String>[])])
+        for (final (group, _) in [..._groups, (tr('Weitere'), const <String>[])])
           if (app.tools.any((x) => _groupOf(x.name) == group))
             ExpansionTile(
               tilePadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -797,49 +796,49 @@ class _VoiceSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionTitle('Sprache'),
+        _SectionTitle(tr('Sprache')),
         if (stt.isEmpty && tts.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text('Noch kein Whisper-Modell und keine Stimme installiert – im Systemcheck herunterladen.',
+            child: Text(tr('Noch kein Whisper-Modell und keine Stimme installiert – im Systemcheck herunterladen.'),
                 style: t.bodySmall),
           ),
         if (stt.isNotEmpty) ...[
-          _row(context, 'Erkennung', DropdownButton<String>(
+          _row(context, tr('Erkennung'), DropdownButton<String>(
             value: stt.any((e) => e.id == app.settings.sttModelId) ? app.settings.sttModelId : null,
-            hint: const Text('wählen'),
+            hint: Text(tr('wählen')),
             isDense: true,
             underline: const SizedBox(),
             items: [for (final e in stt) DropdownMenuItem(value: e.id, child: Text(e.name.replaceFirst('Whisper ', '')))],
             onChanged: (v) => app.setVoiceSettings(sttModelId: v),
           )),
-          _row(context, 'Sprache', DropdownButton<String>(
+          _row(context, tr('Sprache'), DropdownButton<String>(
             value: app.settings.sttLanguage,
             isDense: true,
             underline: const SizedBox(),
-            items: const [
-              DropdownMenuItem(value: 'auto', child: Text('Automatisch')),
-              DropdownMenuItem(value: 'de', child: Text('Deutsch')),
-              DropdownMenuItem(value: 'en', child: Text('Englisch')),
+            items: [
+              DropdownMenuItem(value: 'auto', child: Text(tr('Automatisch'))),
+              DropdownMenuItem(value: 'de', child: Text(tr('Deutsch'))),
+              DropdownMenuItem(value: 'en', child: Text(tr('Englisch'))),
             ],
             onChanged: (v) => app.setVoiceSettings(sttLanguage: v),
           )),
           SwitchListTile(
             dense: true,
             contentPadding: const EdgeInsets.only(left: 4),
-            title: const Text('Nach Spracheingabe sofort senden'),
+            title: Text(tr('Nach Spracheingabe sofort senden')),
             value: app.settings.sendAfterVoice,
             onChanged: (v) => app.setVoiceSettings(sendAfterVoice: v),
           ),
         ],
         ...[
-          _row(context, 'Stimme', DropdownButton<String>(
+          _row(context, tr('Stimme'), DropdownButton<String>(
             value: app.settings.ttsVoiceId == '__system__' || tts.any((e) => e.id == app.settings.ttsVoiceId) ? app.settings.ttsVoiceId : null,
-            hint: const Text('wählen'),
+            hint: Text(tr('wählen')),
             isDense: true,
             underline: const SizedBox(),
             items: [
-              const DropdownMenuItem(value: '__system__', child: Text('Stimme des Geräts (schnell)')),
+              DropdownMenuItem(value: '__system__', child: Text(tr('Stimme des Geräts (schnell)'))),
               for (final e in tts) DropdownMenuItem(value: e.id, child: Text(e.name.replaceFirst('Piper ', ''))),
             ],
             onChanged: (v) => app.setVoiceSettings(ttsVoiceId: v),
@@ -847,10 +846,10 @@ class _VoiceSection extends StatelessWidget {
           if (app.settings.ttsVoiceId == '__system__' || app.ttsVoicePath == null)
             _row(
               context,
-              'Gerätestimme',
+              tr('Gerätestimme'),
               TextButton(
                 onPressed: () => _pickSystemVoice(context, app),
-                child: Text(app.settings.systemVoice.isEmpty ? 'Standard – ändern' : app.settings.systemVoice.split('|').first,
+                child: Text(app.settings.systemVoice.isEmpty ? tr('Standard – ändern') : app.settings.systemVoice.split('|').first,
                     overflow: TextOverflow.ellipsis),
               ),
             ),
@@ -862,30 +861,29 @@ class _VoiceSection extends StatelessWidget {
                   () {
                     final id = app.settings.ttsVoiceId ?? '';
                     if (id == '__system__') {
-                      return 'Spricht die Sprachausgabe des Geräts: kein Warten, keine Pausen. Am Handy meist die beste Wahl '
-                          '(Android: „Sprachausgabe von Google“, Stimme mit hoher Qualität offline laden).';
+                      return (tr('Spricht die Sprachausgabe des Geräts: kein Warten, keine Pausen. Am Handy meist die beste Wahl ') + tr('(Android: „Sprachausgabe von Google“, Stimme mit hoher Qualität offline laden).'));
                     }
                     if (app.voice.output.engineLabel == 'Systemstimme') {
-                      return 'Zuletzt sprach die Systemstimme (die gewählte Stimme war nicht verfügbar).';
+                      return tr('Zuletzt sprach die Systemstimme (die gewählte Stimme war nicht verfügbar).');
                     }
-                    if (id.startsWith('kokoro')) return 'Kokoro: die natürlichste Stimme.';
-                    if (id == 'piper-de-thorsten-high') return 'Thorsten HD: klar und schnell.';
-                    return 'Klingt es blechern? Im Systemcheck „Kokoro Deutsch – Martin/Victoria“ oder „Thorsten HD“ laden – deutlich natürlicher.';
+                    if (id.startsWith('kokoro')) return tr('Kokoro: die natürlichste Stimme.');
+                    if (id == 'piper-de-thorsten-high') return tr('Thorsten HD: klar und schnell.');
+                    return tr('Klingt es blechern? Im Systemcheck „Kokoro Deutsch – Martin/Victoria“ oder „Thorsten HD“ laden – deutlich natürlicher.');
                   }(),
                   style: t.bodySmall,
                 ),
               ),
               TextButton.icon(
-                onPressed: () => app.speakText('Hallo! So klinge ich. Um 14:30 Uhr sind es z. B. 21 °C – ca. 5 % wärmer als gestern.'),
+                onPressed: () => app.speakText(tr('Hallo! So klinge ich. Um 14:30 Uhr sind es z. B. 21 °C – ca. 5 % wärmer als gestern.')),
                 icon: const Icon(Icons.volume_up_outlined, size: 18),
-                label: const Text('Probehören'),
+                label: Text(tr('Probehören')),
               ),
             ]),
           ),
           SwitchListTile(
             dense: true,
             contentPadding: const EdgeInsets.only(left: 4),
-            title: const Text('Antworten automatisch vorlesen'),
+            title: Text(tr('Antworten automatisch vorlesen')),
             value: app.settings.autoSpeak,
             onChanged: (v) => app.setVoiceSettings(autoSpeak: v),
           ),
@@ -901,13 +899,13 @@ class _VoiceSection extends StatelessWidget {
     final picked = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Stimme des Geräts'),
+        title: Text(tr('Stimme des Geräts')),
         children: [
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Standard der Sprache')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, ''), child: Text(tr('Standard der Sprache'))),
           if (voices.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(16),
-              child: Text('Keine Stimmen gefunden. Android: Einstellungen → Sprachausgabe → „Sprachausgabe von Google“ → Sprachdaten installieren.'),
+              child: Text(tr('Keine Stimmen gefunden. Android: Einstellungen → Sprachausgabe → „Sprachausgabe von Google“ → Sprachdaten installieren.')),
             ),
           for (final (name, loc) in voices)
             SimpleDialogOption(
@@ -923,7 +921,7 @@ class _VoiceSection extends StatelessWidget {
     );
     if (picked == null) return;
     await app.setVoiceSettings(systemVoice: picked);
-    await app.speakText('Hallo! So klinge ich.');
+    await app.speakText(tr('Hallo! So klinge ich.'));
   }
 
   Widget _row(BuildContext context, String label, Widget child) => Padding(
@@ -947,12 +945,12 @@ class _SettingsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionTitle('Erscheinungsbild'),
+        _SectionTitle(tr('Erscheinungsbild')),
         SegmentedButton<int>(
-          segments: const [
+          segments: [
             ButtonSegment(value: 0, label: Text('System'), icon: Icon(Icons.brightness_auto, size: 18)),
-            ButtonSegment(value: 1, label: Text('Hell'), icon: Icon(Icons.light_mode_outlined, size: 18)),
-            ButtonSegment(value: 2, label: Text('Dunkel'), icon: Icon(Icons.dark_mode_outlined, size: 18)),
+            ButtonSegment(value: 1, label: Text(tr('Hell')), icon: Icon(Icons.light_mode_outlined, size: 18)),
+            ButtonSegment(value: 2, label: Text(tr('Dunkel')), icon: Icon(Icons.dark_mode_outlined, size: 18)),
           ],
           selected: {
             switch (app.settings.darkMode) {
@@ -969,10 +967,25 @@ class _SettingsSection extends StatelessWidget {
           }),
         ),
         const SizedBox(height: 14),
-        const _SectionTitle('Farbstil (helles Erscheinungsbild)'),
+        const _SectionTitle('Sprache · Language'),
         SegmentedButton<String>(
           segments: const [
-            ButtonSegment(value: 'standard', label: Text('Klassisch'), icon: Icon(Icons.contrast, size: 18)),
+            ButtonSegment(value: 'de', label: Text('Deutsch')),
+            ButtonSegment(value: 'en', label: Text('English')),
+          ],
+          selected: {app.settings.appLanguage == 'en' ? 'en' : 'de'},
+          showSelectedIcon: false,
+          onSelectionChanged: (s) => app.setLanguage(s.first),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(tr('Gilt für die App und den Agenten: Antworten, Spracherkennung und Stimme.'), style: Theme.of(context).textTheme.bodySmall),
+        ),
+        const SizedBox(height: 14),
+        _SectionTitle(tr('Farbstil (helles Erscheinungsbild)')),
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment(value: 'standard', label: Text(tr('Klassisch')), icon: Icon(Icons.contrast, size: 18)),
             ButtonSegment(value: 'junels', label: Text('Junels · warm'), icon: Icon(Icons.wb_sunny_outlined, size: 18)),
           ],
           selected: {app.settings.uiStyle == 'junels' ? 'junels' : 'standard'},
@@ -1018,7 +1031,7 @@ class _AutoModelSectionState extends State<_AutoModelSection> {
             isExpanded: true,
             decoration: InputDecoration(labelText: label, helperText: hint),
             items: [
-              const DropdownMenuItem(value: '', child: Text('Automatisch')),
+              DropdownMenuItem(value: '', child: Text(tr('Automatisch'))),
               for (final m in models) DropdownMenuItem(value: m.id, child: Text('${m.displayName} · ${gb(m.sizeBytes)}', overflow: TextOverflow.ellipsis)),
             ],
             onChanged: (v) => onChanged(v ?? ''),
@@ -1027,9 +1040,8 @@ class _AutoModelSectionState extends State<_AutoModelSection> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SwitchListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-        title: const Text('Modell je Aufgabe wählen'),
-        subtitle: const Text('Alltagsfragen beantwortet das schnelle Modell, Analysen, Code, Präsentationen und lange Texte das starke. '
-            'Scheitert das schnelle, übernimmt automatisch das starke.'),
+        title: Text(tr('Modell je Aufgabe wählen')),
+        subtitle: Text((tr('Alltagsfragen beantwortet das schnelle Modell, Analysen, Code, Präsentationen und lange Texte das starke. ') + tr('Scheitert das schnelle, übernimmt automatisch das starke.'))),
         value: app.settings.autoModel,
         onChanged: (v) => app.setAutoModel(enabled: v),
       ),
@@ -1037,26 +1049,25 @@ class _AutoModelSectionState extends State<_AutoModelSection> {
         if (models.length < 2)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-            child: Text('Dafür braucht es zwei Sprachmodelle unterschiedlicher Größe – z. B. Qwen (schnell) und Gemma (stark). '
-                'Im Systemcheck ein zweites laden.', style: t.bodySmall?.copyWith(color: c.amber)),
+            child: Text((tr('Dafür braucht es zwei Sprachmodelle unterschiedlicher Größe – z. B. Qwen (schnell) und Gemma (stark). ') + tr('Im Systemcheck ein zweites laden.')), style: t.bodySmall?.copyWith(color: c.amber)),
           )
         else ...[
           const SizedBox(height: 8),
-          pick('Schnell (Alltag)', app.settings.fastModelId, pair == null ? '' : 'Jetzt: ${pair.$1.displayName}',
+          pick(tr('Schnell (Alltag)'), app.settings.fastModelId, pair == null ? '' : 'Jetzt: ${pair.$1.displayName}',
               (v) => app.setAutoModel(fastId: v)),
           DropdownButtonFormField<String>(
             initialValue: models.any((m) => m.id == app.settings.strongModelId) ? app.settings.strongModelId : '',
             isExpanded: true,
-            decoration: InputDecoration(labelText: 'Stark (komplexe Aufgaben)', helperText: pair == null ? '' : 'Jetzt: ${pair.$2.displayName}'),
+            decoration: InputDecoration(labelText: tr('Stark (komplexe Aufgaben)'), helperText: pair == null ? '' : 'Jetzt: ${pair.$2.displayName}'),
             items: [
-              const DropdownMenuItem(value: '', child: Text('Automatisch')),
+              DropdownMenuItem(value: '', child: Text(tr('Automatisch'))),
               for (final m in models) DropdownMenuItem(value: m.id, child: Text('${m.displayName} · ${gb(m.sizeBytes)}', overflow: TextOverflow.ellipsis)),
             ],
             onChanged: (v) => app.setAutoModel(strongId: v ?? ''),
           ),
           const SizedBox(height: 12),
           if (pair == null)
-            Text('Die installierten Modelle sind zu ähnlich groß oder das größte passt nicht in den Speicher.', style: t.bodySmall)
+            Text(tr('Die installierten Modelle sind zu ähnlich groß oder das größte passt nicht in den Speicher.'), style: t.bodySmall)
           else if (plan != null)
             Container(
               padding: const EdgeInsets.all(12),
@@ -1076,15 +1087,15 @@ class _AutoModelSectionState extends State<_AutoModelSection> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(
                         switch (plan.residency) {
-                          Residency.both => 'Beide geladen',
-                          Residency.swap => 'Wechsel bei Bedarf',
-                          Residency.fastOnly => 'Nur das schnelle Modell',
+                          Residency.both => tr('Beide geladen'),
+                          Residency.swap => tr('Wechsel bei Bedarf'),
+                          Residency.fastOnly => tr('Nur das schnelle Modell'),
                         },
                         style: t.titleSmall),
                     const SizedBox(height: 2),
                     Text(plan.message, style: t.bodySmall),
                     if (plan.residency == Residency.swap)
-                      Text('Schon beim Tippen einer komplexen Anfrage wird gewechselt; nach einigen Minuten Pause geht es zurück zum schnellen Modell.',
+                      Text(tr('Schon beim Tippen einer komplexen Anfrage wird gewechselt; nach einigen Minuten Pause geht es zurück zum schnellen Modell.'),
                           style: t.bodySmall),
                     if (app.strongResident != null) ...[
                       const SizedBox(height: 4),

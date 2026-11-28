@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import '../state/app_scope.dart';
 import '../state/transcriber.dart';
 import 'theme.dart';
+import '../l10n.dart';
 
 Color speakerColor(BuildContext context, int i) {
   final c = AppColors.of(context);
@@ -29,12 +30,12 @@ Future<String?> askSpeakerName(BuildContext context, String current) async {
         controller: ctl,
         autofocus: true,
         textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(hintText: 'z. B. Anna', labelText: 'Name'),
+        decoration: InputDecoration(hintText: tr('z. B. Anna'), labelText: tr('Name')),
         onSubmitted: (v) => Navigator.pop(ctx, v),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Übernehmen')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Abbrechen'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: Text(tr('Übernehmen'))),
       ],
     ),
   );
@@ -68,7 +69,7 @@ class SpeakerBar extends StatelessWidget {
               child: ActionChip(
                 avatar: CircleAvatar(backgroundColor: speakerColor(context, i), radius: 9),
                 label: Text('${i < speakers.length ? speakers[i] : 'Sprecher ${i + 1}'} · ${counts[i]}'),
-                tooltip: 'Namen geben',
+                tooltip: tr('Namen geben'),
                 onPressed: () async {
                   final n = await askSpeakerName(context, i < speakers.length ? speakers[i] : 'Sprecher ${i + 1}');
                   if (n != null) onRename(i, n);
@@ -132,7 +133,7 @@ class TranscriptLinesView extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
     final music = l.kind == 'music';
-    final label = l.label.isNotEmpty ? l.label : (music ? 'Musik' : 'Geräusch');
+    final label = l.label.isNotEmpty ? l.label : (music ? tr('Musik') : tr('Geräusch'));
     final span = l.end != null && l.end! - l.at >= const Duration(seconds: 2)
         ? '${MeetingTranscriber.stamp(l.at)}–${MeetingTranscriber.stamp(l.end!)}'
         : MeetingTranscriber.stamp(l.at);
@@ -229,7 +230,7 @@ class TranscriptLinesView extends StatelessWidget {
       showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Padding(padding: EdgeInsets.fromLTRB(20, 0, 20, 8), child: Text('Wer spricht hier?')),
+          Padding(padding: EdgeInsets.fromLTRB(20, 0, 20, 8), child: Text(tr('Wer spricht hier?'))),
           for (final i in used)
             ListTile(
               leading: CircleAvatar(backgroundColor: speakerColor(ctx, i), radius: 8),
@@ -237,8 +238,8 @@ class TranscriptLinesView extends StatelessWidget {
               trailing: i == b.first.speaker ? const Icon(Icons.check) : null,
               onTap: () => Navigator.pop(ctx, i),
             ),
-          ListTile(leading: const Icon(Icons.person_add_alt), title: const Text('Neuer Sprecher'), onTap: () => Navigator.pop(ctx, -1)),
-          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Diesen Sprecher umbenennen'), onTap: () => Navigator.pop(ctx, -2)),
+          ListTile(leading: const Icon(Icons.person_add_alt), title: Text(tr('Neuer Sprecher')), onTap: () => Navigator.pop(ctx, -1)),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('Diesen Sprecher umbenennen')), onTap: () => Navigator.pop(ctx, -2)),
         ]),
       ),
     );
@@ -274,12 +275,12 @@ class TranscriptCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 6),
       child: ListTile(
         leading: CircleAvatar(backgroundColor: c.blueSoft, child: Icon(Icons.record_voice_over_outlined, color: c.blue)),
-        title: Text('Mitschrift öffnen', style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(tr('Mitschrift öffnen'), style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text([
           MeetingTranscriber.stamp(t.duration),
           '${t.words} Wörter',
           if (who.isNotEmpty) who,
-          if (t.audio != null && File(t.audio!).existsSync()) 'mit Aufnahme',
+          if (t.audio != null && File(t.audio!).existsSync()) tr('mit Aufnahme'),
         ].join(' · ')),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TranscriptViewerPage(path: path))),
@@ -362,22 +363,22 @@ class _TranscriptViewerPageState extends State<TranscriptViewerPage> {
     final c = AppColors.of(context);
     final tt = Theme.of(context).textTheme;
     if (t == null) {
-      return Scaffold(appBar: AppBar(title: const Text('Mitschrift')), body: const Center(child: Text('Mitschrift nicht gefunden.')));
+      return Scaffold(appBar: AppBar(title: Text(tr('Mitschrift'))), body: Center(child: Text(tr('Mitschrift nicht gefunden.'))));
     }
     return Scaffold(
       appBar: AppBar(
         title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           IconButton(
-            tooltip: 'Text kopieren',
+            tooltip: tr('Text kopieren'),
             icon: const Icon(Icons.copy_outlined),
             onPressed: () {
               Clipboard.setData(ClipboardData(text: t.interview()));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mitschrift kopiert')));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Mitschrift kopiert'))));
             },
           ),
           if (_playing)
-            IconButton(tooltip: 'Anhalten', icon: const Icon(Icons.pause_circle_outline), onPressed: () => _player?.pause()),
+            IconButton(tooltip: tr('Anhalten'), icon: const Icon(Icons.pause_circle_outline), onPressed: () => _player?.pause()),
         ],
       ),
       body: Column(children: [
@@ -388,7 +389,7 @@ class _TranscriptViewerPageState extends State<TranscriptViewerPage> {
                 MeetingTranscriber.stamp(t.duration),
                 '${t.words} Wörter',
                 if (t.usedSpeakers.isNotEmpty) '${t.usedSpeakers.length} Sprecher – zum Benennen antippen',
-                if (_hasAudio) 'mit Aufnahme (▶ zum Anhören)',
+                if (_hasAudio) tr('mit Aufnahme (▶ zum Anhören)'),
               ].join(' · '),
               style: tt.bodySmall?.copyWith(color: c.muted)),
         ),
@@ -431,7 +432,7 @@ class _TranscriptViewerPageState extends State<TranscriptViewerPage> {
                   child: OutlinedButton.icon(
                     onPressed: () => _playing ? _player?.pause() : _play(t.lines.first),
                     icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-                    label: Text(_playing ? 'Pause' : 'Aufnahme anhören'),
+                    label: Text(_playing ? 'Pause' : tr('Aufnahme anhören')),
                   ),
                 ),
               if (_hasAudio) const SizedBox(width: 12),
@@ -439,7 +440,7 @@ class _TranscriptViewerPageState extends State<TranscriptViewerPage> {
                 child: FilledButton.icon(
                   onPressed: _toChat,
                   icon: const Icon(Icons.send_outlined),
-                  label: const Text('Korrigiert an den Chat'),
+                  label: Text(tr('Korrigiert an den Chat')),
                 ),
               ),
             ]),

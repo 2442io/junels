@@ -12,6 +12,7 @@ import 'knowledge_page.dart';
 import 'settings_page.dart';
 import 'tasks_page.dart';
 import 'watchlist_page.dart';
+import '../l10n.dart';
 
 enum AppSection {
   chat('Chat', Icons.forum_outlined),
@@ -30,6 +31,9 @@ enum AppSection {
   const AppSection(this.label, this.icon);
   final String label;
   final IconData icon;
+
+  /// Anzeigename in der eingestellten Sprache
+  String get title => tr(label);
 }
 
 Widget pageFor(AppSection s) => switch (s) {

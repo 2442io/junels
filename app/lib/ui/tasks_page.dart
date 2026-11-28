@@ -13,6 +13,7 @@ import 'prompt_editor.dart';
 import 'theme.dart';
 import 'quick_nav.dart';
 import 'skills_page.dart' show SkillsPage;
+import '../l10n.dart';
 
 /// Geplante Aufgaben sind Skills mit Zeitplan → Skills & Abläufe, Tab „Geplant“
 Future<void> openTasks(BuildContext context) =>
@@ -43,13 +44,13 @@ class TasksPage extends StatelessWidget {
     final now = DateTime.now();
     final active = tasks.where((p) => p.enabled).length;
     return Scaffold(
-      appBar: JAppBar(title: const Text('Geplante Aufgaben'), actions: [
+      appBar: JAppBar(title: Text(tr('Geplante Aufgaben')), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(
             onPressed: () => editPrompt(context, initialText: '', scheduled: true),
             icon: const Icon(Icons.add, size: 18),
-            label: const Text('Neue Aufgabe'),
+            label: Text(tr('Neue Aufgabe')),
           ),
         ),
       ]),
@@ -62,11 +63,10 @@ class TasksPage extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 PageHeader(
                   icon: Icons.schedule,
-                  title: 'Geplante Aufgaben',
-                  subtitle: 'Junels erledigt diese Aufträge zur eingestellten Zeit und meldet sich. '
-                      'Sie laufen auf jedem Gerät, auf dem sie eingeschaltet sind.',
+                  title: tr('Geplante Aufgaben'),
+                  subtitle: (tr('Junels erledigt diese Aufträge zur eingestellten Zeit und meldet sich. ') + tr('Sie laufen auf jedem Gerät, auf dem sie eingeschaltet sind.')),
                 ),
-                SectionLabel('Aufgaben',
+                SectionLabel(tr('Aufgaben'),
                     padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
                     trailing: Builder(builder: (_) {
                       final next = tasks
@@ -80,8 +80,8 @@ class TasksPage extends StatelessWidget {
                   Panel(
                     child: EmptyHint(
                       icon: Icons.alarm_add_outlined,
-                      title: 'Noch keine geplanten Aufgaben',
-                      text: 'Leg eine eigene Aufgabe an oder richte unten eine mit einem Tipp ein.',
+                      title: tr('Noch keine geplanten Aufgaben'),
+                      text: tr('Leg eine eigene Aufgabe an oder richte unten eine mit einem Tipp ein.'),
                     ),
                   ),
                 for (final p in tasks)
@@ -112,7 +112,7 @@ class TasksPage extends StatelessWidget {
                               ),
                               if (!p.enabled) ...[
                                 const SizedBox(width: 8),
-                                StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
+                                StatusChip(tr('Pausiert'), color: c.muted, soft: c.raised, dense: true),
                               ],
                             ]),
                             const SizedBox(height: 4),
@@ -124,7 +124,7 @@ class TasksPage extends StatelessWidget {
                           ]),
                         ),
                         IconButton(
-                          tooltip: 'Jetzt ausführen',
+                          tooltip: tr('Jetzt ausführen'),
                           icon: const Icon(Icons.play_arrow_rounded),
                           onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
                         ),
@@ -138,45 +138,45 @@ class TasksPage extends StatelessWidget {
                       ]),
                     ),
                   ),
-                const SectionLabel('Schnell einrichten', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+                SectionLabel(tr('Schnell einrichten'), padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
                 LayoutBuilder(builder: (context, box) {
                   final cols = box.maxWidth >= 640 ? 2 : 1;
                   final w = (box.maxWidth - (cols - 1) * 10) / cols;
                   final cards = <Widget>[
                     TemplateCard(
                       icon: Icons.wb_twilight,
-                      title: 'Morgen-Übersicht',
-                      text: 'Termine, Wetter und Nachrichten jeden Morgen als Push-Nachricht.',
+                      title: tr('Morgen-Übersicht'),
+                      text: tr('Termine, Wetter und Nachrichten jeden Morgen als Push-Nachricht.'),
                       done: hasMorning,
                       onTap: () => setupMorningBriefing(context),
                     ),
                     TemplateCard(
                       icon: Icons.event_note_outlined,
-                      title: 'Termine vorbereiten',
-                      text: 'Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.',
+                      title: tr('Termine vorbereiten'),
+                      text: tr('Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.'),
                       done: hasPrep,
                       onTap: () async {
                         await app.createMeetingPrep();
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30')));
+                              SnackBar(content: Text(tr('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30'))));
                         }
                       },
                     ),
                     TemplateCard(
                       icon: Icons.newspaper,
-                      title: 'News zu einem Thema',
-                      text: 'Täglich die wichtigsten Meldungen zu deinem Thema, kurz zusammengefasst.',
+                      title: tr('News zu einem Thema'),
+                      text: tr('Täglich die wichtigsten Meldungen zu deinem Thema, kurz zusammengefasst.'),
                       onTap: () => editPrompt(context,
-                          initialText: 'Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.',
+                          initialText: tr('Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.'),
                           scheduled: true),
                     ),
                     TemplateCard(
                       icon: Icons.summarize_outlined,
-                      title: 'Wochenrückblick',
-                      text: 'Freitags: was diese Woche in deinen Chats und Aktivitäten passiert ist.',
+                      title: tr('Wochenrückblick'),
+                      text: tr('Freitags: was diese Woche in deinen Chats und Aktivitäten passiert ist.'),
                       onTap: () => editPrompt(context,
-                          initialText: 'Fasse zusammen, woran ich diese Woche gearbeitet habe (Chats und Aktivitäten), und nenne offene Punkte.',
+                          initialText: tr('Fasse zusammen, woran ich diese Woche gearbeitet habe (Chats und Aktivitäten), und nenne offene Punkte.'),
                           scheduled: true),
                     ),
                   ];
@@ -186,8 +186,8 @@ class TasksPage extends StatelessWidget {
                 Panel(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   child: SwitchListTile(
-                    title: const Text('Nach Terminen Folgemail vorschlagen'),
-                    subtitle: const Text('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.'),
+                    title: Text(tr('Nach Terminen Folgemail vorschlagen')),
+                    subtitle: Text(tr('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.')),
                     value: app.settings.meetingFollowUp,
                     onChanged: (v) => app.setMeetingFollowUp(v),
                   ),
@@ -232,7 +232,7 @@ class TemplateCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Flexible(child: Text(title, style: t.titleSmall)),
-              if (done) ...[const SizedBox(width: 8), StatusChip('Eingerichtet', color: c.mint, soft: c.mintSoft, dense: true)],
+              if (done) ...[const SizedBox(width: 8), StatusChip(tr('Eingerichtet'), color: c.mint, soft: c.mintSoft, dense: true)],
             ]),
             const SizedBox(height: 4),
             Text(text, style: t.bodySmall),
@@ -256,13 +256,13 @@ class PromptsPage extends StatelessWidget {
     // Geplante Aufgaben, die Skills sind, stehen unter Skills & Abläufe → Geplant
     final list = app.prompts.where((p) => app.skills.forPrompt(p.id) == null).toList();
     return Scaffold(
-      appBar: JAppBar(title: const Text('Vorlagen'), actions: [
+      appBar: JAppBar(title: Text(tr('Vorlagen')), actions: [
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: FilledButton.icon(
             onPressed: () => editPrompt(context, initialText: ''),
             icon: const Icon(Icons.add, size: 18),
-            label: const Text('Neue Vorlage'),
+            label: Text(tr('Neue Vorlage')),
           ),
         ),
       ]),
@@ -273,17 +273,17 @@ class PromptsPage extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 860),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const PageHeader(
+                PageHeader(
                   icon: Icons.bolt_outlined,
-                  title: 'Vorlagen',
-                  subtitle: 'Häufige Aufträge mit einem Tipp starten. Mit Zeitplan werden sie zu geplanten Aufgaben.',
+                  title: tr('Vorlagen'),
+                  subtitle: tr('Häufige Aufträge mit einem Tipp starten. Mit Zeitplan werden sie zu geplanten Aufgaben.'),
                 ),
                 if (list.isEmpty)
                   Panel(
                     child: EmptyHint(
                       icon: Icons.bolt_outlined,
-                      title: 'Noch keine Vorlagen',
-                      text: 'Im Chat über ⚡ → „Eingabe als Prompt speichern“ oder hier mit „Neue Vorlage“.',
+                      title: tr('Noch keine Vorlagen'),
+                      text: tr('Im Chat über ⚡ → „Eingabe als Prompt speichern“ oder hier mit „Neue Vorlage“.'),
                     ),
                   ),
                 for (final p in list)
@@ -310,7 +310,7 @@ class PromptsPage extends StatelessWidget {
                         FilledButton.tonalIcon(
                           onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
                           icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                          label: const Text('Starten'),
+                          label: Text(tr('Starten')),
                         ),
                       ]),
                     ),
@@ -349,9 +349,9 @@ class ActivityPage extends StatelessWidget {
     final items = app.activity.items.reversed.toList();
     String day(DateTime d) {
       final n = DateTime.now();
-      if (d.year == n.year && d.month == n.month && d.day == n.day) return 'Heute';
+      if (d.year == n.year && d.month == n.month && d.day == n.day) return tr('Heute');
       final y = n.subtract(const Duration(days: 1));
-      if (d.year == y.year && d.month == y.month && d.day == y.day) return 'Gestern';
+      if (d.year == y.year && d.month == y.month && d.day == y.day) return tr('Gestern');
       return '${d.day}.${d.month}.${d.year}';
     }
 
@@ -382,10 +382,10 @@ class ActivityPage extends StatelessWidget {
       ));
     }
     return Scaffold(
-      appBar: JAppBar(title: const Text('Aktivität & Überwachung'), actions: [
+      appBar: JAppBar(title: Text(tr('Aktivität & Überwachung')), actions: [
         if (items.isNotEmpty)
           IconButton(
-            tooltip: 'Verlauf leeren',
+            tooltip: tr('Verlauf leeren'),
             icon: const Icon(Icons.delete_outline),
             onPressed: () async {
               await app.activity.clear();
@@ -399,8 +399,8 @@ class ActivityPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 8, 4, 10),
             child: Text(
-              'Alles, was Junels für dich getan hat – und wie zuverlässig deine Abläufe laufen. '
-              '${app.settings.routing == 'local' ? 'Es läuft alles auf diesem Gerät.' : 'KI: ${app.routingLabel ?? 'lokal'}.'}',
+              tr('Alles, was Junels für dich getan hat – und wie zuverlässig deine Abläufe laufen. ') +
+                  (app.settings.routing == 'local' ? tr('Es läuft alles auf diesem Gerät.') : 'KI: ${app.routingLabel ?? 'lokal'}.'),
               style: t.bodySmall,
             ),
           ),
@@ -410,21 +410,21 @@ class ActivityPage extends StatelessWidget {
             return Card(
               child: ListTile(
                 leading: const Icon(Icons.insights_outlined),
-                title: const Text('Überwachung'),
+                title: Text(tr('Überwachung')),
                 subtitle: Text(week.isEmpty
-                    ? 'Dauer, Erfolgsquote und Tokens deiner Prozesse und externen Aufrufe'
+                    ? tr('Dauer, Erfolgsquote und Tokens deiner Prozesse und externen Aufrufe')
                     : '${week.length} Läufe in 7 Tagen · ${bad == 0 ? 'alle erfolgreich' : '$bad mit Fehler'}'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MonitorPage())),
               ),
             );
           }),
-          const SectionLabel('Was der Agent getan hat', padding: EdgeInsets.fromLTRB(4, 16, 4, 8)),
+          SectionLabel(tr('Was der Agent getan hat'), padding: EdgeInsets.fromLTRB(4, 16, 4, 8)),
           ...rows,
           if (items.isEmpty)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Noch keine Aktionen. Hier erscheint z. B. „E-Mail an Sara gesendet – du hast ‚Senden‘ getippt“.',
+              child: Text(tr('Noch keine Aktionen. Hier erscheint z. B. „E-Mail an Sara gesendet – du hast ‚Senden‘ getippt“.'),
                   style: TextStyle(color: scheme.onSurfaceVariant)),
             ),
         ],
@@ -471,7 +471,7 @@ class _VaultPageState extends State<VaultPage> {
     }
 
     return Scaffold(
-      appBar: JAppBar(title: const Text('Tresor & Mail-Konto')),
+      appBar: JAppBar(title: Text(tr('Tresor & Mail-Konto'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -484,10 +484,14 @@ class _VaultPageState extends State<VaultPage> {
                 Expanded(
                   child: Text(
                     Vault.secure
-                        ? 'Passwörter und Anmelde-Schlüssel liegen verschlüsselt im ${Theme.of(context).platform == TargetPlatform.macOS ? 'macOS-Schlüsselbund' : 'Android-Keystore'} – '
-                            'nicht in den App-Dateien und nicht im Abgleich. Der Agent hat kein Werkzeug, das den Tresor liest: '
-                            'Nur der Mailversand und die Anmeldung bei MCP-Diensten holen sich gezielt, was sie brauchen.'
-                        : 'Auf diesem System gibt es keinen Tresor.',
+                        ? (isEnglish
+                            ? 'Passwords and sign-in keys are stored encrypted in the ${Theme.of(context).platform == TargetPlatform.macOS ? 'macOS Keychain' : 'Android Keystore'} – '
+                                'not in the app files and not in sync. The agent has no tool that reads the vault: '
+                                'only sending mail and signing in to MCP services fetch exactly what they need.'
+                            : 'Passwörter und Anmelde-Schlüssel liegen verschlüsselt im ${Theme.of(context).platform == TargetPlatform.macOS ? 'macOS-Schlüsselbund' : 'Android-Keystore'} – '
+                                'nicht in den App-Dateien und nicht im Abgleich. Der Agent hat kein Werkzeug, das den Tresor liest: '
+                                'Nur der Mailversand und die Anmeldung bei MCP-Diensten holen sich gezielt, was sie brauchen.')
+                        : tr('Auf diesem System gibt es keinen Tresor.'),
                     style: t.bodyMedium,
                   ),
                 ),
@@ -497,8 +501,8 @@ class _VaultPageState extends State<VaultPage> {
           const SizedBox(height: 12),
           ListTile(
             leading: const Icon(Icons.mail_outline),
-            title: const Text('E-Mail direkt senden'),
-            subtitle: Text(app.settings.smtpReady ? '${app.settings.smtpUser} · ${app.settings.smtpHost}' : 'Nicht eingerichtet'),
+            title: Text(tr('E-Mail direkt senden')),
+            subtitle: Text(app.settings.smtpReady ? '${app.settings.smtpUser} · ${app.settings.smtpHost}' : tr('Nicht eingerichtet')),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               await showMailAccountDialog(context);
@@ -510,7 +514,7 @@ class _VaultPageState extends State<VaultPage> {
           for (final k in _keys)
             ListTile(dense: true, leading: const Icon(Icons.key_outlined, size: 18), title: Text(label(k)), subtitle: const Text('••••••••')),
           if (_keys.isEmpty)
-            Padding(padding: const EdgeInsets.all(8), child: Text('Leer.', style: TextStyle(color: scheme.onSurfaceVariant))),
+            Padding(padding: const EdgeInsets.all(8), child: Text(tr('Leer.'), style: TextStyle(color: scheme.onSurfaceVariant))),
         ],
       ),
     );

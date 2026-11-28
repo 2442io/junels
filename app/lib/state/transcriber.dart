@@ -2,6 +2,7 @@
 // Sprecher werden am Stimm-Fingerabdruck unterschieden, Musik und Geräusche erkannt;
 // die Aufnahme wird als WAV gesichert. Danach: neuer Chat mit Zusammenfassung und Rückfragen.
 
+import '../l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -176,7 +177,7 @@ class MeetingTranscriber extends ChangeNotifier {
 
   MeetingTranscript get doc => MeetingTranscript(title: '', lines: lines, speakers: speakers, duration: elapsed);
 
-  String _language() => app.settings.sttLanguage == 'auto' ? 'de' : app.settings.sttLanguage;
+  String _language() => app.settings.sttLanguage == 'auto' ? appLang : app.settings.sttLanguage;
 
   Future<void> downloadModels() async {
     if (downloadProgress != null) return;

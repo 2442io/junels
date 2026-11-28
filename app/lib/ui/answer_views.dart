@@ -9,6 +9,7 @@ import '../state/app_scope.dart';
 import 'chat_view.dart' show ResultCarousel;
 import 'markdown_lite.dart';
 import 'theme.dart';
+import '../l10n.dart';
 
 IconData outputViewIcon(String v) => switch (v) {
       OutputView.text => Icons.notes,
@@ -49,7 +50,7 @@ class AnswerBody extends StatelessWidget {
           ResultCarousel(
             cards: cards,
             loadImages: loadImages,
-            onMore: () => AppScope.read(context).pendingInput.value = 'Such bitte weitere Ergebnisse dazu.',
+            onMore: () => AppScope.read(context).pendingInput.value = tr('Such bitte weitere Ergebnisse dazu.'),
           ),
           _md(outro),
         ]);
@@ -127,11 +128,11 @@ class _TableCard extends StatelessWidget {
           alignment: Alignment.centerRight,
           child: TextButton.icon(
             icon: const Icon(Icons.table_chart_outlined, size: 18),
-            label: const Text('Als Excel speichern'),
+            label: Text(tr('Als Excel speichern')),
             onPressed: () async {
               final m = ScaffoldMessenger.of(context);
               final path = await AppScope.read(context).tableToExcel(entry);
-              m.showSnackBar(SnackBar(content: Text(path == null ? 'Keine Tabelle gefunden' : 'Excel-Datei erstellt')));
+              m.showSnackBar(SnackBar(content: Text(path == null ? tr('Keine Tabelle gefunden') : tr('Excel-Datei erstellt'))));
             },
           ),
         ),
@@ -277,7 +278,7 @@ class OutputViewMenu extends StatelessWidget {
 
 /// Auswahl des Ausgabeformats in Formularen (Skill, Ablauf-Baustein, Beobachtung)
 class OutputViewField extends StatelessWidget {
-  const OutputViewField({super.key, required this.value, required this.onChanged, this.label = 'Ausgabe', this.helper});
+  OutputViewField({super.key, required this.value, required this.onChanged, this.label = 'Ausgabe', this.helper});
   final String value;
   final ValueChanged<String> onChanged;
   final String label;

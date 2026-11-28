@@ -23,6 +23,7 @@ import '../state/notifications.dart';
 import 'notify_style.dart';
 import 'theme.dart';
 import 'transcribe_page.dart';
+import '../l10n.dart';
 
 /// Fragt, ob der Agent ins Internet darf.
 Future<NetworkChoice> askNetworkConsent(BuildContext context, String purpose) async {
@@ -31,27 +32,25 @@ Future<NetworkChoice> askNetworkConsent(BuildContext context, String purpose) as
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.public),
-      title: const Text('Internetzugriff erlauben?'),
-      content: Text('Der Agent möchte ins Internet:\n\n$purpose\n\n'
-          'Dabei wird nur diese Anfrage gesendet. Das Sprachmodell selbst läuft weiter lokal.\n\n'
-          '„Einmal“ gilt für diese Frage, „Ganzer Chat“ für alle weiteren Fragen in diesem Chat.'),
+      title: Text(tr('Internetzugriff erlauben?')),
+      content: Text(('Der Agent möchte ins Internet:\n\n$purpose\n\n' + tr('Dabei wird nur diese Anfrage gesendet. Das Sprachmodell selbst läuft weiter lokal.\n\n') + tr('„Einmal“ gilt für diese Frage, „Ganzer Chat“ für alle weiteren Fragen in diesem Chat.'))),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
         Row(children: [
           Expanded(
-            child: TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: const Text('Nein')),
+            child: TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: Text(tr('Nein'))),
           ),
           const SizedBox(width: 6),
           Expanded(
             child: OutlinedButton(
                 onPressed: () => Navigator.pop(ctx, NetworkChoice.once),
-                child: const Text('Einmal', textAlign: TextAlign.center)),
+                child: Text(tr('Einmal'), textAlign: TextAlign.center)),
           ),
           const SizedBox(width: 6),
           Expanded(
             child: FilledButton(
                 onPressed: () => Navigator.pop(ctx, NetworkChoice.chat),
-                child: const Text('Ganzer Chat', textAlign: TextAlign.center)),
+                child: Text(tr('Ganzer Chat'), textAlign: TextAlign.center)),
           ),
         ]),
       ],
@@ -68,25 +67,23 @@ Future<NetworkChoice> askCloudConsent(BuildContext context, String reason) async
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       icon: Icon(Icons.cloud_upload_outlined, color: c.blue),
-      title: const Text('Cloud-Anbieter verwenden?'),
-      content: Text('$reason\n\n'
-          'Dabei gehen deine Frage, der bisherige Chatverlauf und gefundene Inhalte an den Anbieter.\n\n'
-          '„Einmal“ gilt für diese Frage, „Ganzer Chat“ für alle weiteren Fragen in diesem Chat.'),
+      title: Text(tr('Cloud-Anbieter verwenden?')),
+      content: Text(('$reason\n\n' + tr('Dabei gehen deine Frage, der bisherige Chatverlauf und gefundene Inhalte an den Anbieter.\n\n') + tr('„Einmal“ gilt für diese Frage, „Ganzer Chat“ für alle weiteren Fragen in diesem Chat.'))),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
         Row(children: [
-          Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: const Text('Nein'))),
+          Expanded(child: TextButton(onPressed: () => Navigator.pop(ctx, NetworkChoice.deny), child: Text(tr('Nein')))),
           const SizedBox(width: 6),
           Expanded(
             child: OutlinedButton(
                 onPressed: () => Navigator.pop(ctx, NetworkChoice.once),
-                child: const Text('Einmal', textAlign: TextAlign.center)),
+                child: Text(tr('Einmal'), textAlign: TextAlign.center)),
           ),
           const SizedBox(width: 6),
           Expanded(
             child: FilledButton(
                 onPressed: () => Navigator.pop(ctx, NetworkChoice.chat),
-                child: const Text('Ganzer Chat', textAlign: TextAlign.center)),
+                child: Text(tr('Ganzer Chat'), textAlign: TextAlign.center)),
           ),
         ]),
       ],
@@ -139,8 +136,8 @@ class _HomeShellState extends State<HomeShell> {
         title: Text(title),
         content: Text(detail),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Nein')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ja, ausführen')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Nein'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Ja, ausführen'))),
         ],
       ),
     );
@@ -158,9 +155,9 @@ class _HomeShellState extends State<HomeShell> {
         content: Text(detail),
         actionsOverflowButtonSpacing: 4,
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, 'no'), child: const Text('Nein')),
-          OutlinedButton(onPressed: () => Navigator.pop(ctx, 'always'), child: const Text('Hier immer')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, 'once'), child: const Text('Ja, einmal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'no'), child: Text(tr('Nein'))),
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, 'always'), child: Text(tr('Hier immer'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, 'once'), child: Text(tr('Ja, einmal'))),
         ],
       ),
     );
@@ -246,7 +243,7 @@ class _HomeShellState extends State<HomeShell> {
             final top = app.notifier.topUnread ?? (app.todoCount > 0 ? NotifyKind.aktion : null);
             return PillIconButton(
               icon: top != null ? Icons.notifications_active : Icons.notifications_none,
-              tooltip: top == null ? 'Mitteilungen' : 'Mitteilungen – neu: ${top.label}',
+              tooltip: top == null ? tr('Mitteilungen') : 'Mitteilungen – neu: ${top.label}',
               badge: top != null,
               badgeColor: top?.colors(context).$1,
               onPressed: () => openSection(context, AppSection.inbox),
@@ -256,19 +253,19 @@ class _HomeShellState extends State<HomeShell> {
           if (!compact) ...[
             PillIconButton(
               icon: Icons.graphic_eq,
-              tooltip: 'Gesprächsmodus',
+              tooltip: tr('Gesprächsmodus'),
               onPressed: app.status == EngineStatus.ready && !app.running ? () => openConversation(context) : null,
             ),
             const SizedBox(width: 6),
           ],
           if (!compact) ...[
-            PillIconButton(icon: Icons.add, tooltip: 'Neuer Chat', onPressed: app.newConversation),
+            PillIconButton(icon: Icons.add, tooltip: tr('Neuer Chat'), onPressed: app.newConversation),
             const SizedBox(width: 6),
           ],
           if (compact)
             PillIconButton(
               icon: Icons.dashboard_outlined,
-              tooltip: 'Artefakte & Metriken',
+              tooltip: tr('Artefakte & Metriken'),
               badge: app.inspectorAttention,
               onPressed: () {
                 app.clearInspectorAttention();
@@ -278,7 +275,7 @@ class _HomeShellState extends State<HomeShell> {
           else
             PillIconButton(
               icon: Icons.view_sidebar_outlined,
-              tooltip: _inspectorVisible ? 'Artefakte ausblenden' : 'Artefakte einblenden',
+              tooltip: _inspectorVisible ? tr('Artefakte ausblenden') : tr('Artefakte einblenden'),
               active: _inspectorVisible,
               badge: app.inspectorAttention && !_inspectorVisible,
               onPressed: () {
@@ -291,7 +288,7 @@ class _HomeShellState extends State<HomeShell> {
         if (!compact || _focus)
           PillIconButton(
             icon: _focus ? Icons.close_fullscreen : Icons.open_in_full,
-            tooltip: _focus ? 'Fokus beenden' : 'Fokus: nur der Chat',
+            tooltip: _focus ? tr('Fokus beenden') : tr('Fokus: nur der Chat'),
             active: _focus,
             onPressed: toggleFocus,
           ),
@@ -305,7 +302,7 @@ class _HomeShellState extends State<HomeShell> {
         leading: desktop || _focus
             ? null
             : IconButton(
-                tooltip: 'Menü',
+                tooltip: tr('Menü'),
                 icon: ValueListenableBuilder(
                   valueListenable: app.updates.available,
                   builder: (context, info, _) => Badge(isLabelVisible: info != null, child: const Icon(Icons.menu)),
@@ -359,7 +356,7 @@ class _HomeShellState extends State<HomeShell> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: IconButton(
-                          tooltip: 'Schließen',
+                          tooltip: tr('Schließen'),
                           icon: const Icon(Icons.close),
                           onPressed: () => _scaffold.currentState?.closeEndDrawer(),
                         ),
@@ -397,10 +394,10 @@ class _TitleBar extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final c = AppColors.of(context);
     final (color, label) = switch (app.status) {
-      EngineStatus.ready => (c.mint, app.loadedModel?.displayName ?? 'Modell bereit'),
-      EngineStatus.loading => (c.amber, 'Modell wird geladen …'),
-      EngineStatus.error => (c.red, 'Fehler beim Laden'),
-      EngineStatus.none => (c.faint, 'Kein Modell geladen'),
+      EngineStatus.ready => (c.mint, app.loadedModel?.displayName ?? tr('Modell bereit')),
+      EngineStatus.loading => (c.amber, tr('Modell wird geladen …')),
+      EngineStatus.error => (c.red, tr('Fehler beim Laden')),
+      EngineStatus.none => (c.faint, tr('Kein Modell geladen')),
     };
     final route = app.routingLabel;
     return InkWell(
@@ -410,7 +407,7 @@ class _TitleBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(app.current?.title ?? 'Neuer Chat',
+          Text(app.current?.title ?? tr('Neuer Chat'),
               style: t.titleMedium?.copyWith(fontSize: 16.5), overflow: TextOverflow.ellipsis),
           const SizedBox(height: 2),
           Row(children: [

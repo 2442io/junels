@@ -12,6 +12,7 @@ import 'package:offline_agent/state/skill_import.dart';
 import 'package:agent_engine/agent_engine.dart';
 import 'package:offline_agent/state/run_stats.dart';
 import 'dart:io';
+import 'package:offline_agent/l10n.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:offline_agent/state/meeting_audio.dart';
@@ -125,6 +126,25 @@ void main() {
       w.add(Float32List(16000));
       w.close();
       expect(f.lengthSync(), 44 + 32000);
+    });
+  });
+
+  group('Sprache & Skills per Stimme', () {
+    test('Übersetzung', () {
+      appLang = 'en';
+      expect(tr('Neuer Chat'), 'New chat');
+      expect(tr('Gibt es nicht'), 'Gibt es nicht');
+      appLang = 'de';
+      expect(tr('Neuer Chat'), 'Neuer Chat');
+    });
+    test('Skill gesprochen aufrufen', () {
+      final lib = SkillLibrary(File('${Directory.systemTemp.createTempSync('sk').path}/skills.json'));
+      final a = lib.matchSpoken('Skill Preis-Scout, RTX 4070 unter 550 Euro');
+      expect(a?.$1.id, 'b-preis-scout');
+      expect(a?.$2, 'RTX 4070 unter 550 Euro');
+      expect(lib.matchSpoken('Mit dem Skill Firmen Dossier zu Anthropic')?.$1.id, 'b-firmen-dossier');
+      expect(lib.matchSpoken('Slash dossier Anthropic')?.$1.id, 'b-firmen-dossier');
+      expect(lib.matchSpoken('Wie wird das Wetter morgen?'), isNull);
     });
   });
 

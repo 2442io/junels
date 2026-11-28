@@ -6,6 +6,7 @@ import '../state/app_scope.dart';
 import '../state/native_files.dart';
 import '../state/usage_stats.dart';
 import 'theme.dart';
+import '../l10n.dart';
 
 class AnalyticsPage extends StatelessWidget {
   const AnalyticsPage({super.key});
@@ -29,7 +30,7 @@ class AnalyticsPage extends StatelessWidget {
         );
     final local = s.local + s.cloud == 0 ? 0 : (s.local * 100 / (s.local + s.cloud)).round();
     return Scaffold(
-      appBar: AppBar(title: const Text('Auswertung')),
+      appBar: AppBar(title: Text(tr('Auswertung'))),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
         Text('Berechnet auf diesem Gerät aus deinen Chats${s.first != null ? ' seit ${s.first!.day}.${s.first!.month}.${s.first!.year}' : ''}.',
             style: t.bodySmall?.copyWith(color: c.muted)),
@@ -44,32 +45,31 @@ class AnalyticsPage extends StatelessWidget {
             crossAxisSpacing: 10,
             childAspectRatio: 1.55,
             children: [
-              kpi(UsageStats.fmtHours(s.savedHours), 'Arbeitszeit gespart (geschätzt)', c.mint, Icons.savings_outlined),
-              kpi(UsageStats.fmtHours(s.usageHours), 'Nutzungszeit', c.blue, Icons.schedule),
+              kpi(UsageStats.fmtHours(s.savedHours), tr('Arbeitszeit gespart (geschätzt)'), c.mint, Icons.savings_outlined),
+              kpi(UsageStats.fmtHours(s.usageHours), tr('Nutzungszeit'), c.blue, Icons.schedule),
               kpi(UsageStats.fmtNum(s.messages), 'Anfragen in ${s.chats} Chats', c.violet, Icons.forum_outlined),
-              kpi(UsageStats.fmtNum(s.tokens), 'Tokens (ca.)', c.amber, Icons.token_outlined),
-              kpi('${s.activeDays}', 'aktive Tage', c.blue, Icons.calendar_today_outlined),
-              kpi(UsageStats.fmtHours(s.agentHours), 'Rechenzeit der KI', c.violet, Icons.memory),
-              kpi('${s.docs}', 'Dokumente erstellt', c.amber, Icons.description_outlined),
-              kpi('$local %', 'auf dem Gerät beantwortet', c.mint, Icons.phone_android),
+              kpi(UsageStats.fmtNum(s.tokens), tr('Tokens (ca.)'), c.amber, Icons.token_outlined),
+              kpi('${s.activeDays}', tr('aktive Tage'), c.blue, Icons.calendar_today_outlined),
+              kpi(UsageStats.fmtHours(s.agentHours), tr('Rechenzeit der KI'), c.violet, Icons.memory),
+              kpi('${s.docs}', tr('Dokumente erstellt'), c.amber, Icons.description_outlined),
+              kpi('$local %', tr('auf dem Gerät beantwortet'), c.mint, Icons.phone_android),
             ],
           );
         }),
-        _Section('Verlauf (12 Wochen)', child: _Weeks(s.lastWeeks)),
-        _Section('Themengebiete', child: _Bars(s.topTopics, c.violet)),
-        _Section('Funktionen', child: _Bars(s.topFeatures, c.blue)),
-        _Section('Gesparte Zeit nach Art', child: _Bars(s.topSaved, c.mint, hours: true)),
+        _Section(tr('Verlauf (12 Wochen)'), child: _Weeks(s.lastWeeks)),
+        _Section(tr('Themengebiete'), child: _Bars(s.topTopics, c.violet)),
+        _Section(tr('Funktionen'), child: _Bars(s.topFeatures, c.blue)),
+        _Section(tr('Gesparte Zeit nach Art'), child: _Bars(s.topSaved, c.mint, hours: true)),
         if (s.topSkills.isNotEmpty) _Section('Skills', child: _Bars(s.topSkills, c.amber)),
-        _Section('Tageszeit', child: _Hours(s.hours)),
+        _Section(tr('Tageszeit'), child: _Hours(s.hours)),
         const SizedBox(height: 8),
-        Text('Ersparnis: grobe Schätzung je Antwort (z. B. Web-Recherche 8 min, Word-Dokument 25 min, Präsentation 40 min, '
-            'Mitschrift 1,5 × Gesprächsdauer, einfache Antwort 2 min). Tokens aus Tempo × Dauer.',
+        Text((tr('Ersparnis: grobe Schätzung je Antwort (z. B. Web-Recherche 8 min, Word-Dokument 25 min, Präsentation 40 min, ') + tr('Mitschrift 1,5 × Gesprächsdauer, einfache Antwort 2 min). Tokens aus Tempo × Dauer.')),
             style: t.bodySmall?.copyWith(color: c.faint)),
         const Divider(height: 32),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Im Admin-Bereich anzeigen'),
-          subtitle: const Text('Beim Abgleich nur diese Zahlen an deine Agent-API senden – keine Inhalte, keine Chat-Titel.'),
+          title: Text(tr('Im Admin-Bereich anzeigen')),
+          subtitle: Text(tr('Beim Abgleich nur diese Zahlen an deine Agent-API senden – keine Inhalte, keine Chat-Titel.')),
           value: sync.config.shareStats,
           onChanged: (v) async {
             sync.config.shareStats = v;
@@ -87,7 +87,7 @@ class AnalyticsPage extends StatelessWidget {
                 await NativeFiles.openUrl('${sync.accountPage}#analytics');
               },
               icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Admin-Bereich öffnen'),
+              label: Text(tr('Admin-Bereich öffnen')),
             ),
           ),
       ]),
@@ -124,7 +124,7 @@ class _Bars extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final t = Theme.of(context).textTheme;
-    if (items.isEmpty) return Text('Noch keine Daten.', style: t.bodySmall?.copyWith(color: c.muted));
+    if (items.isEmpty) return Text(tr('Noch keine Daten.'), style: t.bodySmall?.copyWith(color: c.muted));
     final max = items.map((e) => e.value).fold<num>(0, (a, b) => b > a ? b : a);
     return Column(children: [
       for (final e in items)

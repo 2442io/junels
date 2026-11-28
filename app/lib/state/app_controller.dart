@@ -1,5 +1,6 @@
 // Zentraler App-Zustand: Modelle, Engine, Profile, Tools, Chats, Agenten-Lauf.
 
+import '../l10n.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
@@ -350,6 +351,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
   /// Getrennt vom restlichen Zustand, damit nicht die ganze App bei jedem Token neu baut.
   final ValueNotifier<bool?> darkMode = ValueNotifier(null);
   final ValueNotifier<String> uiStyle = ValueNotifier('standard');
+  final ValueNotifier<String> language = ValueNotifier('de');
 
   bool initialized = false;
   String? initError;
@@ -473,6 +475,8 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       await _loadDeviceSetup();
       darkMode.value = settings.darkMode;
       uiStyle.value = settings.uiStyle;
+      appLang = settings.appLanguage;
+      language.value = settings.appLanguage;
       settings.contextSize = device.clampContext(settings.contextSize, null);
       profiles = await storage.loadProfiles();
       if (!profiles.any((p) => p.id == settings.activeProfileId)) {
@@ -1413,6 +1417,15 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       ..internetAllowed = m == InternetMode.allowed;
     await storage.saveConversation(c);
     appLog('Internet', 'Chat „${c.title}“: ${m.label}');
+    notifyListeners();
+  }
+
+  /// Sprache der App und des Agenten (Antworten, Spracherkennung, Stimme)
+  Future<void> setLanguage(String lang) async {
+    settings.appLanguage = lang;
+    appLang = lang;
+    language.value = lang;
+    await storage.saveSettings(settings);
     notifyListeners();
   }
 
@@ -4472,6 +4485,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     // Skill: /befehl am Anfang oder automatisch erkannt (eigene Skills)
     // Amtsweg/Lebenslage ohne Adresse → Begleiten (offizielle Infos, dann gemeinsam durchs Formular)
     final skillHit = skills.match(input) ??
+        (voice ? skills.matchSpoken(input) : null) ??
         (wantsAmtsweg(input) && (skills.byCommand('begleiten')?.enabled ?? false) ? (skills.byCommand('begleiten')!, input) : null);
     final skill = skillHit?.$1;
     final skillTask = skillHit?.$2 ?? '';
@@ -4488,8 +4502,16 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
       openTranscriberRequest.value++;
       return;
     }
+    if (skill != null && skill.id == 'b-mitschrift' && voice) {
+      onAnswer?.call(
+          isEnglish
+              ? 'To transcribe, end the conversation and start the transcription from the lightning menu.'
+              : 'Für eine Mitschrift beende das Gespräch und starte sie im Blitz-Menü mit „Mitschrift starten“.',
+          true);
+      return;
+    }
     // Web-Job-Skill: läuft selbstständig im Browser, Fortschritt als Karte (hier und in „Ergebnisse“)
-    if (skill != null && (skill.job || skill.macro.isNotEmpty) && !headless && !voice) {
+    if (skill != null && (skill.job || skill.macro.isNotEmpty) && !headless) {
       final task = skillTask.trim();
       final job = webJobs.start(
           goal: task.isEmpty ? (skill.when.isNotEmpty ? skill.when : skill.name) : '$task${skill.when.isEmpty ? '' : ' (${skill.when})'}',
@@ -4508,6 +4530,12 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
         await storage.saveConversation(conv);
       }
       notifyListeners();
+      // Im Gespräch: kurz sagen, dass es läuft (Ergebnis kommt in „Ergebnisse“ und als Mitteilung)
+      onAnswer?.call(
+          isEnglish
+              ? 'Okay, I\'m running ${skill.name} as a web job. You\'ll find the result under Results – I\'ll let you know.'
+              : 'Okay, ich starte ${skill.name} als Web-Job. Das Ergebnis findest du unter Ergebnisse, ich sage Bescheid.',
+          true);
       return;
     }
     notifier.doneFor(conv.id); // offene Aktionen dieses Chats gelten als erledigt, sobald du weitermachst
@@ -4684,7 +4712,7 @@ class AppController extends ChangeNotifier with WidgetsBindingObserver {
     if (rag.isNotEmpty) turnInput = '$rag\n\nFrage des Nutzers: $turnInput';
 
     // Sprache des Nutzers ausdrücklich vorgeben (kleine Modelle rutschen sonst ins Deutsche)
-    final lang = detectLanguage(input);
+    final lang = detectLanguage(input) ?? (isEnglish ? 'en' : null);
     if (lang != null && lang != 'de') turnInput = '$turnInput\n\n[${languageHint(lang)}]';
     if (!deviceOnline) {
       turnInput = '$turnInput\n\n[Hinweis: Das Gerät ist gerade offline. Antworte mit deinem Wissen und sag kurz dazu, '

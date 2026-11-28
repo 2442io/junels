@@ -9,6 +9,7 @@ import 'self_test_page.dart';
 import 'monitor_page.dart';
 import 'conversation_page.dart';
 import 'theme.dart';
+import '../l10n.dart';
 
 /// AppBar mit Schnellnavigation (⋯-Raster rechts), sobald man tiefer als die Startseite ist.
 class JAppBar extends AppBar {
@@ -38,7 +39,7 @@ class QuickNavButton extends StatelessWidget {
     if (MediaQuery.sizeOf(context).width < 700) return const SizedBox.shrink();
     // überall gleich: auf jeder Seite, auch am Desktop und auf der Startseite
     return IconButton(
-      tooltip: 'Schnell wechseln',
+      tooltip: tr('Schnell wechseln'),
       icon: const Icon(Icons.apps_rounded),
       onPressed: () => showQuickNav(context),
     );
@@ -84,15 +85,15 @@ Future<void> showQuickNav(BuildContext context) async {
             child: Row(children: [
               TextButton.icon(
                 icon: const Icon(Icons.menu),
-                label: const Text('Menü'),
+                label: Text(tr('Menü')),
                 onPressed: canLeft ? () => Navigator.pop(ctx, 'left') : null,
               ),
               const Spacer(),
-              IconButton(tooltip: 'Schließen', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+              IconButton(tooltip: tr('Schließen'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
               const Spacer(),
               TextButton.icon(
                 icon: const Icon(Icons.dashboard_outlined),
-                label: const Text('Artefakte'),
+                label: Text(tr('Artefakte')),
                 iconAlignment: IconAlignment.end,
                 onPressed: canRight ? () => Navigator.pop(ctx, 'right') : null,
               ),
@@ -102,7 +103,7 @@ Future<void> showQuickNav(BuildContext context) async {
             Expanded(
               child: FilledButton.icon(
                 icon: const Icon(Icons.forum_outlined),
-                label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Zum Chat')),
+                label: FittedBox(fit: BoxFit.scaleDown, child: Text(tr('Zum Chat'))),
                 onPressed: () => Navigator.pop(ctx, 'home'),
               ),
             ),
@@ -110,7 +111,7 @@ Future<void> showQuickNav(BuildContext context) async {
             Expanded(
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.add),
-                label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Neuer Chat')),
+                label: FittedBox(fit: BoxFit.scaleDown, child: Text(tr('Neuer Chat'))),
                 onPressed: () => Navigator.pop(ctx, 'new'),
               ),
             ),
@@ -201,16 +202,16 @@ Future<void> showQuickNav(BuildContext context) async {
 }
 
 String _short(AppSection s) => switch (s) {
-      AppSection.inbox => 'Benach­richtigungen',
-      AppSection.flows => 'Prozesse',
-      AppSection.tasks => 'Geplant',
-      AppSection.prompts => 'Vorlagen',
-      AppSection.skills => 'Skills & Abläufe',
-      AppSection.knowledge => 'Wissen',
-      AppSection.activity => 'Aktivität',
-      AppSection.settings => 'Einstellungen',
-      AppSection.help => 'Hilfe',
-      _ => s.label,
+      AppSection.inbox => tr('Benach­richtigungen'),
+      AppSection.flows => tr('Prozesse'),
+      AppSection.tasks => tr('Geplant'),
+      AppSection.prompts => tr('Vorlagen'),
+      AppSection.skills => tr('Skills & Abläufe'),
+      AppSection.knowledge => tr('Wissen'),
+      AppSection.activity => tr('Aktivität'),
+      AppSection.settings => tr('Einstellungen'),
+      AppSection.help => tr('Hilfe'),
+      _ => s.title,
     };
 
 
@@ -244,7 +245,7 @@ class QuickFabLayer extends StatelessWidget {
                     final ctx = ShellControls.navigatorKey.currentState?.overlay?.context;
                     if (ctx != null) showQuickNav(ctx);
                   },
-                  child: SizedBox(width: 54, height: 54, child: Icon(Icons.apps_rounded, color: scheme.onPrimaryContainer, semanticLabel: 'Schnellmenü')),
+                  child: SizedBox(width: 54, height: 54, child: Icon(Icons.apps_rounded, color: scheme.onPrimaryContainer, semanticLabel: tr('Schnellmenü'))),
                 ),
               ),
             );

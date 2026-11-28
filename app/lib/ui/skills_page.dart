@@ -26,6 +26,7 @@ import 'tasks_page.dart' show TemplateCard;
 import 'prompt_editor.dart' show editPrompt, runSavedPrompt;
 import 'device_page.dart' show setupMorningBriefing;
 import 'watchlist_page.dart' show showWatchDialog, WatchlistPage;
+import '../l10n.dart';
 
 const skillIcons = <String, IconData>{
   'auto_awesome': Icons.auto_awesome,
@@ -101,12 +102,12 @@ String whenLabel(DateTime d) {
 }
 
 class _SkillsPageState extends State<SkillsPage> {
-  static const _tabs = [
-    ('all', 'Alle', Icons.dashboard_outlined),
-    ('schedule', 'Geplant', Icons.schedule),
+  static final _tabs = [
+    ('all', tr('Alle'), Icons.dashboard_outlined),
+    ('schedule', tr('Geplant'), Icons.schedule),
     ('skill', 'Skills', Icons.auto_awesome),
-    ('flow', 'Abläufe', Icons.account_tree_outlined),
-    ('watch', 'Beobachtet', Icons.radar),
+    ('flow', tr('Abläufe'), Icons.account_tree_outlined),
+    ('watch', tr('Beobachtet'), Icons.radar),
   ];
   bool _showBasis = false;
   bool _onlyProblems = false;
@@ -140,10 +141,10 @@ class _SkillsPageState extends State<SkillsPage> {
           initialIndex: _initialTab,
           child: Scaffold(
             appBar: JAppBar(
-              title: const Text('Skills & Abläufe'),
+              title: Text(tr('Skills & Abläufe')),
               actions: [
                 PopupMenuButton<String>(
-                  tooltip: 'Mehr',
+                  tooltip: tr('Mehr'),
                   onSelected: (v) async {
                     switch (v) {
                       case 'import':
@@ -152,7 +153,7 @@ class _SkillsPageState extends State<SkillsPage> {
                         final list = [...lib.own, ...lib.basis.where((b) => b.edited)];
                         if (list.isEmpty) {
                           ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(content: Text('Noch keine eigenen oder angepassten Skills')));
+                              .showSnackBar(SnackBar(content: Text(tr('Noch keine eigenen oder angepassten Skills'))));
                           return;
                         }
                         await shareSkillZip(list, 'junels-skills', flows: app.flows.flows);
@@ -163,11 +164,11 @@ class _SkillsPageState extends State<SkillsPage> {
                         goHome(context);
                     }
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'results', child: ListTile(leading: Icon(Icons.inbox_outlined), title: Text('Ergebnisse ansehen'))),
-                    PopupMenuItem(value: 'monitor', child: ListTile(leading: Icon(Icons.insights_outlined), title: Text('Überwachung'))),
-                    PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.download_outlined), title: Text('Importieren'))),
-                    PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Exportieren (ZIP)'))),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'results', child: ListTile(leading: Icon(Icons.inbox_outlined), title: Text(tr('Ergebnisse ansehen')))),
+                    PopupMenuItem(value: 'monitor', child: ListTile(leading: Icon(Icons.insights_outlined), title: Text(tr('Überwachung')))),
+                    PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.download_outlined), title: Text(tr('Importieren')))),
+                    PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.ios_share), title: Text(tr('Exportieren (ZIP)')))),
                   ],
                 ),
               ],
@@ -196,7 +197,7 @@ class _SkillsPageState extends State<SkillsPage> {
               builder: (context) => FloatingActionButton.extended(
                 heroTag: null,
                 icon: const Icon(Icons.add),
-                label: const Text('Neu'),
+                label: Text(tr('Neu')),
                 onPressed: () => showCreateSheet(context, preferred: _tabs[DefaultTabController.of(context).index].$1),
               ),
             ),
@@ -220,11 +221,11 @@ class _SkillsPageState extends State<SkillsPage> {
             if (skillKind(app, s) == k && (!_onlyProblems || problems.contains(s))) s
         ];
     final intro = switch (tab) {
-      'schedule' => 'Laufen von selbst zur eingestellten Zeit. Die Ergebnisse findest du gesammelt unter „Ergebnisse“.',
-      'skill' => 'Anleitungen für wiederkehrende Aufgaben – im Chat mit /befehl aufrufen oder automatisch erkennen lassen.',
-      'flow' => 'Mehrere Schritte hintereinander (z. B. suchen → zusammenfassen → als Word speichern → Push).',
-      'watch' => 'Junels meldet sich, wenn sich auf einer Webseite oder zu einem Thema etwas ändert.',
-      _ => 'Alles, was Junels für dich kann und von selbst erledigt – an einem Ort.',
+      'schedule' => tr('Laufen von selbst zur eingestellten Zeit. Die Ergebnisse findest du gesammelt unter „Ergebnisse“.'),
+      'skill' => tr('Anleitungen für wiederkehrende Aufgaben – im Chat mit /befehl aufrufen oder automatisch erkennen lassen.'),
+      'flow' => tr('Mehrere Schritte hintereinander (z. B. suchen → zusammenfassen → als Word speichern → Push).'),
+      'watch' => tr('Junels meldet sich, wenn sich auf einer Webseite oder zu einem Thema etwas ändert.'),
+      _ => tr('Alles, was Junels für dich kann und von selbst erledigt – an einem Ort.'),
     };
     Widget section(String title, List<Widget> children, {Widget? trailing}) => children.isEmpty
         ? const SizedBox.shrink()
@@ -265,7 +266,7 @@ class _SkillsPageState extends State<SkillsPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(_onlyProblems
-                    ? 'Nur Einträge mit Problemen – tippen für alle'
+                    ? tr('Nur Einträge mit Problemen – tippen für alle')
                     : '${problems.length} ${problems.length == 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit (Fehler oder unterbrochen)'),
               ),
               Icon(_onlyProblems ? Icons.close : Icons.filter_list, size: 20),
@@ -275,7 +276,7 @@ class _SkillsPageState extends State<SkillsPage> {
     ];
     switch (tab) {
       case 'all':
-        final groups = [('schedule', 'Geplant'), ('watch', 'Beobachtet'), ('flow', 'Abläufe'), ('skill', 'Skills')];
+        final groups = [('schedule', tr('Geplant')), ('watch', tr('Beobachtet')), ('flow', tr('Abläufe')), ('skill', 'Skills')];
         final any = own.isNotEmpty || legacyPlans.isNotEmpty;
         if (!any) children.add(_welcome(context));
         for (final g in groups) {
@@ -293,18 +294,18 @@ class _SkillsPageState extends State<SkillsPage> {
             child: Panel(
               child: EmptyHint(
                 icon: Icons.alarm_add_outlined,
-                title: 'Noch nichts geplant',
-                text: 'Eine geplante Aufgabe ist ein Skill mit Uhrzeit – z. B. jeden Morgen die wichtigsten News als Tabelle.',
+                title: tr('Noch nichts geplant'),
+                text: tr('Eine geplante Aufgabe ist ein Skill mit Uhrzeit – z. B. jeden Morgen die wichtigsten News als Tabelle.'),
                 action: FilledButton.icon(
                   icon: const Icon(Icons.add),
-                  label: const Text('Geplante Aufgabe anlegen'),
+                  label: Text(tr('Geplante Aufgabe anlegen')),
                   onPressed: () => openPlanEditor(context),
                 ),
               ),
             ),
           ));
         }
-        children.add(section('Geplant', [
+        children.add(section(tr('Geplant'), [
           ...cards(list),
           if (!_onlyProblems) for (final p in legacyPlans) _PlanPromptCard(prompt: p),
         ]));
@@ -317,15 +318,15 @@ class _SkillsPageState extends State<SkillsPage> {
             child: Panel(
               child: EmptyHint(
                 icon: Icons.auto_awesome,
-                title: 'Noch keine eigenen Skills',
-                text: 'Beschreib einmal, wie eine Aufgabe geht – danach reicht /befehl im Chat.',
+                title: tr('Noch keine eigenen Skills'),
+                text: tr('Beschreib einmal, wie eine Aufgabe geht – danach reicht /befehl im Chat.'),
                 action: FilledButton.icon(
-                    icon: const Icon(Icons.add), label: const Text('Skill entwerfen'), onPressed: () => openSkillEditor(context, null)),
+                    icon: const Icon(Icons.add), label: Text(tr('Skill entwerfen')), onPressed: () => openSkillEditor(context, null)),
               ),
             ),
           ));
         }
-        children.add(section('Meine Skills', cards(list)));
+        children.add(section(tr('Meine Skills'), cards(list)));
         children.add(InkWell(
           onTap: () => setState(() => _showBasis = !_showBasis),
           child: SectionLabel('Basis-Skills (${lib.basis.length})',
@@ -341,17 +342,17 @@ class _SkillsPageState extends State<SkillsPage> {
             child: Panel(
               child: EmptyHint(
                 icon: Icons.account_tree_outlined,
-                title: 'Noch keine Abläufe',
-                text: 'Beschreib in einem Satz, was nacheinander passieren soll – Junels baut die Schritte.',
+                title: tr('Noch keine Abläufe'),
+                text: tr('Beschreib in einem Satz, was nacheinander passieren soll – Junels baut die Schritte.'),
                 action: FilledButton.icon(
                     icon: const Icon(Icons.auto_fix_high),
-                    label: const Text('Ablauf beschreiben'),
+                    label: Text(tr('Ablauf beschreiben')),
                     onPressed: () => describeNewFlow(context)),
               ),
             ),
           ));
         }
-        children.add(section('Abläufe', cards(list)));
+        children.add(section(tr('Abläufe'), cards(list)));
       case 'watch':
         final list = of('watch');
         if (list.isEmpty && legacyWatch.isEmpty) {
@@ -360,15 +361,15 @@ class _SkillsPageState extends State<SkillsPage> {
             child: Panel(
               child: EmptyHint(
                 icon: Icons.radar,
-                title: 'Noch keine Beobachtungen',
-                text: 'Preis, Termin, Webseite oder Thema – Junels schaut regelmäßig nach und meldet sich bei Änderungen.',
+                title: tr('Noch keine Beobachtungen'),
+                text: tr('Preis, Termin, Webseite oder Thema – Junels schaut regelmäßig nach und meldet sich bei Änderungen.'),
                 action: FilledButton.icon(
-                    icon: const Icon(Icons.add), label: const Text('Etwas beobachten'), onPressed: () => showWatchDialog(context)),
+                    icon: const Icon(Icons.add), label: Text(tr('Etwas beobachten')), onPressed: () => showWatchDialog(context)),
               ),
             ),
           ));
         }
-        children.add(section('Beobachtet', [...cards(list), if (legacyWatch.isNotEmpty) legacyWatchCard()]));
+        children.add(section(tr('Beobachtet'), [...cards(list), if (legacyWatch.isNotEmpty) legacyWatchCard()]));
     }
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
@@ -407,13 +408,13 @@ class _SkillsPageState extends State<SkillsPage> {
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Womit fangen wir an?', style: t.titleMedium),
+        Text(tr('Womit fangen wir an?'), style: t.titleMedium),
         const SizedBox(height: 10),
-        option(Icons.schedule, 'Etwas regelmäßig erledigen', 'z. B. jeden Morgen News, Wetter und Termine', () => openPlanEditor(context)),
-        option(Icons.auto_awesome, 'Eine Aufgabe beibringen', 'Anleitung einmal schreiben, dann /befehl im Chat',
+        option(Icons.schedule, tr('Etwas regelmäßig erledigen'), tr('z. B. jeden Morgen News, Wetter und Termine'), () => openPlanEditor(context)),
+        option(Icons.auto_awesome, tr('Eine Aufgabe beibringen'), tr('Anleitung einmal schreiben, dann /befehl im Chat'),
             () => openSkillEditor(context, null)),
-        option(Icons.radar, 'Etwas beobachten', 'Melden, wenn sich Preis, Seite oder Thema ändert', () => showWatchDialog(context)),
-        option(Icons.account_tree_outlined, 'Mehrere Schritte verbinden', 'Ablauf beschreiben – Junels baut ihn',
+        option(Icons.radar, tr('Etwas beobachten'), tr('Melden, wenn sich Preis, Seite oder Thema ändert'), () => showWatchDialog(context)),
+        option(Icons.account_tree_outlined, tr('Mehrere Schritte verbinden'), tr('Ablauf beschreiben – Junels baut ihn'),
             () => describeNewFlow(context)),
       ]),
     );
@@ -425,40 +426,40 @@ class _SkillsPageState extends State<SkillsPage> {
     final cards = <Widget>[
       TemplateCard(
         icon: Icons.wb_twilight,
-        title: 'Morgen-Übersicht',
-        text: 'Termine, Wetter und Nachrichten jeden Morgen.',
+        title: tr('Morgen-Übersicht'),
+        text: tr('Termine, Wetter und Nachrichten jeden Morgen.'),
         done: hasMorning,
         onTap: () => setupMorningBriefing(context),
       ),
       TemplateCard(
         icon: Icons.event_note_outlined,
-        title: 'Termine vorbereiten',
-        text: 'Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.',
+        title: tr('Termine vorbereiten'),
+        text: tr('Mo–Fr 7:30: pro Termin eine Notiz mit Firma, Webseite, Fragen und Zielen.'),
         done: hasPrep,
         onTap: () async {
           await app.createMeetingPrep();
           if (context.mounted) {
             ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30')));
+                .showSnackBar(SnackBar(content: Text(tr('„Termine vorbereiten“ angelegt – läuft Mo–Fr um 7:30'))));
           }
         },
       ),
       TemplateCard(
         icon: Icons.newspaper,
-        title: 'News zu einem Thema',
-        text: 'Täglich die wichtigsten Meldungen zu deinem Thema – z. B. als Karten.',
+        title: tr('News zu einem Thema'),
+        text: tr('Täglich die wichtigsten Meldungen zu deinem Thema – z. B. als Karten.'),
         onTap: () => openPlanEditor(context,
             name: 'News: …',
-            task: 'Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.',
+            task: tr('Suche die wichtigsten aktuellen Nachrichten zum Thema „…“ und fasse sie in 5 Punkten zusammen.'),
             output: OutputView.cards),
       ),
       TemplateCard(
         icon: Icons.summarize_outlined,
-        title: 'Wochenrückblick',
-        text: 'Freitags: woran du diese Woche gearbeitet hast und was offen ist.',
+        title: tr('Wochenrückblick'),
+        text: tr('Freitags: woran du diese Woche gearbeitet hast und was offen ist.'),
         onTap: () => openPlanEditor(context,
-            name: 'Wochenrückblick',
-            task: 'Fasse zusammen, woran ich diese Woche gearbeitet habe (Chats und Aktivitäten), und nenne offene Punkte.',
+            name: tr('Wochenrückblick'),
+            task: tr('Fasse zusammen, woran ich diese Woche gearbeitet habe (Chats und Aktivitäten), und nenne offene Punkte.'),
             kind: ScheduleKind.weekly,
             weekday: DateTime.friday,
             hour: 16,
@@ -466,7 +467,7 @@ class _SkillsPageState extends State<SkillsPage> {
       ),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const SectionLabel('Schnell einrichten', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+      SectionLabel(tr('Schnell einrichten'), padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
       LayoutBuilder(builder: (context, box) {
         final cols = box.maxWidth >= 640 ? 2 : 1;
         final w = (box.maxWidth - (cols - 1) * 10) / cols;
@@ -476,8 +477,8 @@ class _SkillsPageState extends State<SkillsPage> {
       Panel(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: SwitchListTile(
-          title: const Text('Nach Terminen Folgemail vorschlagen'),
-          subtitle: const Text('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.'),
+          title: Text(tr('Nach Terminen Folgemail vorschlagen')),
+          subtitle: Text(tr('Push-Nachricht, sobald ein Termin vorbei ist – ein Tipp öffnet den Entwurf.')),
           value: app.settings.meetingFollowUp,
           onChanged: (v) => app.setMeetingFollowUp(v),
         ),
@@ -490,7 +491,7 @@ class _SkillsPageState extends State<SkillsPage> {
 Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) async {
   final picked = await showSheet<String>(
     context: context,
-    title: 'Neu anlegen',
+    title: tr('Neu anlegen'),
     builder: (ctx) {
       final t = Theme.of(ctx).textTheme;
       Widget option(String v, IconData icon, String title, String text) => ListTile(
@@ -503,14 +504,14 @@ Future<void> showCreateSheet(BuildContext context, {String preferred = 'all'}) a
       return Padding(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          option('job', Icons.explore_outlined, 'Einmal im Web erledigen',
-              'Auftrag in einem Satz – Junels macht es jetzt selbst im Browser (ohne Skill anzulegen)'),
-          option('schedule', Icons.schedule, 'Geplante Aufgabe', 'Läuft von selbst zu einer Uhrzeit – Ergebnis unter „Ergebnisse“'),
-          option('skill', Icons.auto_awesome, 'Skill', 'Anleitung für eine wiederkehrende Aufgabe, Aufruf per /befehl'),
-          option('flow', Icons.account_tree_outlined, 'Ablauf', 'Mehrere Schritte – beschreiben, Junels baut ihn'),
-          option('watch', Icons.radar, 'Beobachtung', 'Melden, wenn sich etwas ändert'),
-          option('empty', Icons.add_box_outlined, 'Leerer Ablauf', 'Selbst aus Bausteinen bauen'),
-          option('import', Icons.download_outlined, 'Importieren', 'SKILL.md, ZIP oder Link'),
+          option('job', Icons.explore_outlined, tr('Einmal im Web erledigen'),
+              tr('Auftrag in einem Satz – Junels macht es jetzt selbst im Browser (ohne Skill anzulegen)')),
+          option('schedule', Icons.schedule, tr('Geplante Aufgabe'), tr('Läuft von selbst zu einer Uhrzeit – Ergebnis unter „Ergebnisse“')),
+          option('skill', Icons.auto_awesome, 'Skill', tr('Anleitung für eine wiederkehrende Aufgabe, Aufruf per /befehl')),
+          option('flow', Icons.account_tree_outlined, tr('Ablauf'), tr('Mehrere Schritte – beschreiben, Junels baut ihn')),
+          option('watch', Icons.radar, tr('Beobachtung'), tr('Melden, wenn sich etwas ändert')),
+          option('empty', Icons.add_box_outlined, tr('Leerer Ablauf'), tr('Selbst aus Bausteinen bauen')),
+          option('import', Icons.download_outlined, tr('Importieren'), tr('SKILL.md, ZIP oder Link')),
         ]),
       );
     },
@@ -541,23 +542,22 @@ Future<void> startJobDialog(BuildContext context) async {
     context: context,
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.explore_outlined),
-      title: const Text('Was soll Junels im Web erledigen?'),
+      title: Text(tr('Was soll Junels im Web erledigen?')),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         TextField(
           controller: ctl,
           autofocus: true,
           minLines: 2,
           maxLines: 5,
-          decoration: const InputDecoration(hintText: 'z. B. Finde die 5 günstigsten E-Bikes unter 2.000 € auf geizhals.at und mach eine Tabelle'),
+          decoration: InputDecoration(hintText: tr('z. B. Finde die 5 günstigsten E-Bikes unter 2.000 € auf geizhals.at und mach eine Tabelle')),
         ),
         const SizedBox(height: 8),
-        Text('Junels plant die Schritte, arbeitet im eingebauten Browser und prüft jeden Schritt. '
-            'Anmelden, CAPTCHA und Bezahlen machst du selbst – Junels wartet dann.',
+        Text((tr('Junels plant die Schritte, arbeitet im eingebauten Browser und prüft jeden Schritt. ') + tr('Anmelden, CAPTCHA und Bezahlen machst du selbst – Junels wartet dann.')),
             style: Theme.of(ctx).textTheme.bodySmall),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Starten')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Abbrechen'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: Text(tr('Starten'))),
       ],
     ),
   );
@@ -605,12 +605,12 @@ class SkillCard extends StatelessWidget {
       if (s.macro.isNotEmpty)
         StatusChip('vorgemacht · ${s.macro.length} Schritte', color: c.violet, icon: Icons.play_circle_outline, dense: true)
       else if (s.job)
-        StatusChip('Web-Job', color: c.violet, icon: Icons.explore_outlined, dense: true),
+        StatusChip(tr('Web-Job'), color: c.violet, icon: Icons.explore_outlined, dense: true),
       if (s.output.isNotEmpty) StatusChip(OutputView.labels[s.output] ?? s.output, color: c.blue, icon: outputViewIcon(s.output), dense: true),
-      if (running) StatusChip('Läuft', color: c.amber, soft: c.amberSoft, dense: true),
-      if (problem) StatusChip('Fehler', color: c.red, soft: c.redSoft, dense: true),
+      if (running) StatusChip(tr('Läuft'), color: c.amber, soft: c.amberSoft, dense: true),
+      if (problem) StatusChip(tr('Fehler'), color: c.red, soft: c.redSoft, dense: true),
       if (s.edited) StatusChip('angepasst', color: c.amber, dense: true),
-      if (plan != null && !on) StatusChip('Pausiert', color: c.muted, soft: c.raised, dense: true),
+      if (plan != null && !on) StatusChip(tr('Pausiert'), color: c.muted, soft: c.raised, dense: true),
     ];
     final line = [
       if (next != null) 'nächster Lauf ${whenLabel(next)}',
@@ -662,7 +662,7 @@ class SkillCard extends StatelessWidget {
               },
             ),
             IconButton(
-              tooltip: plan != null ? 'Jetzt ausführen' : 'Im Chat starten',
+              tooltip: plan != null ? tr('Jetzt ausführen') : tr('Im Chat starten'),
               icon: const Icon(Icons.play_arrow_rounded),
               onPressed: app.running
                   ? null
@@ -728,7 +728,7 @@ class _PlanPromptCard extends StatelessWidget {
             },
           ),
           IconButton(
-            tooltip: 'Jetzt ausführen',
+            tooltip: tr('Jetzt ausführen'),
             icon: const Icon(Icons.play_arrow_rounded),
             onPressed: app.running ? null : () => runSavedPrompt(context, app, p),
           ),
@@ -759,7 +759,7 @@ Future<void> showSkillImport(BuildContext context) async {
   final result = await showSheet<List<Skill>>(
     context: context,
     isScrollControlled: true,
-    title: 'Skills importieren',
+    title: tr('Skills importieren'),
     builder: (ctx) {
       var busy = false;
       String? err;
@@ -772,7 +772,7 @@ Future<void> showSkillImport(BuildContext context) async {
           });
           try {
             final list = await f();
-            if (list.isEmpty) throw Exception('Keine gültige SKILL.md gefunden');
+            if (list.isEmpty) throw Exception(tr('Keine gültige SKILL.md gefunden'));
             if (ctx.mounted) Navigator.pop(ctx, list);
           } catch (e) {
             set(() {
@@ -786,14 +786,12 @@ Future<void> showSkillImport(BuildContext context) async {
           padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(ctx).bottom),
           child: SingleChildScrollView(
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-              Text('SKILL.md nach dem Agent-Skills-Standard (Claude, Codex, Cursor, Gemini CLI …), auch als ZIP/.skill mit '
-                  'mehreren Skills. Werkzeugnamen werden übersetzt; references/ & Co. bleiben als Dateien erhalten. '
-                  'Skripte werden nur als Text übernommen und nie ausgeführt.',
+              Text((tr('SKILL.md nach dem Agent-Skills-Standard (Claude, Codex, Cursor, Gemini CLI …), auch als ZIP/.skill mit ') + tr('mehreren Skills. Werkzeugnamen werden übersetzt; references/ & Co. bleiben als Dateien erhalten. ') + tr('Skripte werden nur als Text übernommen und nie ausgeführt.')),
                   style: t.bodySmall),
               const SizedBox(height: 14),
               FilledButton.icon(
                 icon: const Icon(Icons.folder_open),
-                label: const Text('Datei(en) wählen – .md, .zip, .skill'),
+                label: Text(tr('Datei(en) wählen – .md, .zip, .skill')),
                 onPressed: busy
                     ? null
                     : () => run(() async {
@@ -808,7 +806,7 @@ Future<void> showSkillImport(BuildContext context) async {
                         }),
               ),
               const SizedBox(height: 18),
-              Text('Von einem Link', style: t.titleSmall),
+              Text(tr('Von einem Link'), style: t.titleSmall),
               const SizedBox(height: 6),
               Row(children: [
                 Expanded(
@@ -816,23 +814,23 @@ Future<void> showSkillImport(BuildContext context) async {
                     controller: linkCtrl,
                     keyboardType: TextInputType.url,
                     autocorrect: false,
-                    decoration: const InputDecoration(isDense: true, hintText: 'github.com/…/SKILL.md, Ordner oder .zip'),
+                    decoration: InputDecoration(isDense: true, hintText: tr('github.com/…/SKILL.md, Ordner oder .zip')),
                   ),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.tonal(
                   onPressed: busy ? null : () => run(() => SkillImport.fromLink(linkCtrl.text, available: tools)),
-                  child: const Text('Laden'),
+                  child: Text(tr('Laden')),
                 ),
               ]),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('Lädt nur diese eine Adresse aus dem Internet.', style: t.bodySmall),
+                child: Text(tr('Lädt nur diese eine Adresse aus dem Internet.'), style: t.bodySmall),
               ),
               const SizedBox(height: 18),
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
-                title: const Text('Text einfügen'),
+                title: Text(tr('Text einfügen')),
                 children: [
                   TextField(
                     controller: textCtrl,
@@ -849,7 +847,7 @@ Future<void> showSkillImport(BuildContext context) async {
                           : () => run(() async => [
                                 if (SkillImport.fromText(textCtrl.text, available: tools) case final s?) s,
                               ]),
-                      child: const Text('Übernehmen'),
+                      child: Text(tr('Übernehmen')),
                     ),
                   ),
                 ],
@@ -890,7 +888,7 @@ Future<void> showSkillImport(BuildContext context) async {
     } else {
       await nav.push(MaterialPageRoute(builder: (_) => withFlow.contains(one) ? SkillEditor(skill: one) : SkillEditor(draft: one)));
     }
-    if (withFlow.isNotEmpty) m.showSnackBar(const SnackBar(content: Text('Ablauf übernommen – pausiert, bis du ihn einschaltest')));
+    if (withFlow.isNotEmpty) m.showSnackBar(SnackBar(content: Text(tr('Ablauf übernommen – pausiert, bis du ihn einschaltest'))));
     return;
   }
   for (final s in result) {
@@ -976,14 +974,14 @@ class _SkillEditorState extends State<SkillEditor> {
     _apply();
     if (forRecording && s.name.isEmpty) {
       // Vormachen ohne Namen: vorläufiger Name, der Befehl wird daraus gebildet
-      s.name = 'Vorgemachter Ablauf';
+      s.name = tr('Vorgemachter Ablauf');
       s.slug = AppScope.read(context).skills.uniqueSlug(s.name, exceptId: s.id);
       _name.text = s.name;
       _slug.text = s.slug;
     }
     // Anleitung oder vorgemachter Ablauf – eins von beiden reicht (aus dem Vormachen wird die Anleitung geschrieben)
     if (s.name.isEmpty || (s.instructions.isEmpty && s.macro.isEmpty && !forRecording)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name und „Was soll Junels tun?“ ausfüllen – oder vormachen')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Name und „Was soll Junels tun?“ ausfüllen – oder vormachen'))));
       return false;
     }
     final clash = AppScope.read(context).skills.all.where((o) => o.id != s.id && o.command == s.command).firstOrNull;
@@ -1017,9 +1015,8 @@ class _SkillEditorState extends State<SkillEditor> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           secondary: Icon(Icons.explore_outlined, color: s.job ? c.violet : c.muted),
-          title: const Text('Als Web-Job ausführen'),
-          subtitle: const Text('Junels plant, erledigt es selbstständig im Browser und prüft jeden Schritt. '
-              'Läuft im Hintergrund weiter – Fortschritt in „Ergebnisse“.'),
+          title: Text(tr('Als Web-Job ausführen')),
+          subtitle: Text((tr('Junels plant, erledigt es selbstständig im Browser und prüft jeden Schritt. ') + tr('Läuft im Hintergrund weiter – Fortschritt in „Ergebnisse“.'))),
           value: s.job || s.macro.isNotEmpty,
           onChanged: (v) => setState(() => s.job = v),
         ),
@@ -1029,12 +1026,12 @@ class _SkillEditorState extends State<SkillEditor> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(s.macro.isEmpty ? 'Vormachen' : '${s.macro.length} Schritte vorgemacht', style: t.titleSmall),
+              Text(s.macro.isEmpty ? tr('Vormachen') : '${s.macro.length} Schritte vorgemacht', style: t.titleSmall),
               Text(
                   s.macro.isEmpty
-                      ? 'Einmal selbst im Browser zeigen – Junels schreibt daraus die Anleitung und spielt es danach ab.'
+                      ? tr('Einmal selbst im Browser zeigen – Junels schreibt daraus die Anleitung und spielt es danach ab.')
                       : params.isEmpty
-                          ? 'Wird genauso abgespielt.'
+                          ? tr('Wird genauso abgespielt.')
                           : 'Platzhalter: ${params.map((p) => '{$p}').join(', ')} – z. B. /${s.command} ${s.macroParams[params.first]}',
                   style: t.bodySmall?.copyWith(color: c.muted)),
             ]),
@@ -1044,13 +1041,13 @@ class _SkillEditorState extends State<SkillEditor> {
         Wrap(spacing: 8, runSpacing: 8, children: [
           FilledButton.tonalIcon(
             icon: const Icon(Icons.fiber_manual_record, size: 18),
-            label: Text(s.macro.isEmpty ? 'Vormachen' : 'Neu vormachen'),
+            label: Text(s.macro.isEmpty ? tr('Vormachen') : tr('Neu vormachen')),
             onPressed: () => _record(context),
           ),
           if (s.macro.isNotEmpty) ...[
             OutlinedButton.icon(
               icon: const Icon(Icons.list_alt, size: 18),
-              label: const Text('Schritte'),
+              label: Text(tr('Schritte')),
               onPressed: () async {
                 if (!_save()) return;
                 final app = AppScope.read(context);
@@ -1063,7 +1060,7 @@ class _SkillEditorState extends State<SkillEditor> {
                 s.macro = [];
                 s.macroParams = {};
               }),
-              child: const Text('Entfernen'),
+              child: Text(tr('Entfernen')),
             ),
           ],
         ]),
@@ -1076,22 +1073,21 @@ class _SkillEditorState extends State<SkillEditor> {
     final url = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Wo fängt es an?'),
+        title: Text(tr('Wo fängt es an?')),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Junels öffnet die Seite im eingebauten Browser. Mach den Ablauf einfach vor – suchen, filtern, ausfüllen. '
-              'Mit „Fertig“ oben im Browser speicherst du ihn. Passwörter und andere 🔒-Felder werden nie aufgezeichnet.'),
+          Text((tr('Junels öffnet die Seite im eingebauten Browser. Mach den Ablauf einfach vor – suchen, filtern, ausfüllen. ') + tr('Mit „Fertig“ oben im Browser speicherst du ihn. Passwörter und andere 🔒-Felder werden nie aufgezeichnet.'))),
           const SizedBox(height: 12),
           TextField(
             controller: ctl,
             autofocus: true,
             keyboardType: TextInputType.url,
-            decoration: const InputDecoration(labelText: 'Startseite', hintText: 'z. B. geizhals.at'),
+            decoration: InputDecoration(labelText: tr('Startseite'), hintText: tr('z. B. geizhals.at')),
             onSubmitted: (v) => Navigator.pop(ctx, v),
           ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: const Text('Aufnahme starten')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Abbrechen'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctl.text), child: Text(tr('Aufnahme starten'))),
         ],
       ),
     );
@@ -1123,8 +1119,8 @@ class _SkillEditorState extends State<SkillEditor> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           secondary: Icon(Icons.schedule, color: _planOn ? c.mint : c.muted),
-          title: const Text('Automatisch ausführen'),
-          subtitle: Text(_planOn ? 'Geplante Aufgabe – Ergebnis kommt in „Ergebnisse“' : 'Nur wenn du es startest (/befehl oder ▶)'),
+          title: Text(tr('Automatisch ausführen')),
+          subtitle: Text(_planOn ? tr('Geplante Aufgabe – Ergebnis kommt in „Ergebnisse“') : tr('Nur wenn du es startest (/befehl oder ▶)')),
           value: _planOn,
           onChanged: (v) => setState(() => _planOn = v),
         ),
@@ -1132,10 +1128,10 @@ class _SkillEditorState extends State<SkillEditor> {
           const SizedBox(height: 4),
           SegmentedButton<ScheduleKind>(
             showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: ScheduleKind.daily, label: Text('Täglich')),
+            segments: [
+              ButtonSegment(value: ScheduleKind.daily, label: Text(tr('Täglich'))),
               ButtonSegment(value: ScheduleKind.weekdays, label: Text('Mo–Fr')),
-              ButtonSegment(value: ScheduleKind.weekly, label: Text('Wöchentlich')),
+              ButtonSegment(value: ScheduleKind.weekly, label: Text(tr('Wöchentlich'))),
             ],
             selected: {_kind},
             onSelectionChanged: (v) => setState(() => _kind = v.first),
@@ -1147,7 +1143,7 @@ class _SkillEditorState extends State<SkillEditor> {
                 child: DropdownButtonFormField<int>(
                   initialValue: _weekday,
                   isDense: true,
-                  decoration: const InputDecoration(labelText: 'Tag', isDense: true),
+                  decoration: InputDecoration(labelText: tr('Tag'), isDense: true),
                   items: [
                     for (var i = 1; i <= 7; i++) DropdownMenuItem(value: i, child: Text(SavedPrompt.weekdayNames[i - 1])),
                   ],
@@ -1174,14 +1170,14 @@ class _SkillEditorState extends State<SkillEditor> {
           ]),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Push-Nachricht, wenn fertig'),
+            title: Text(tr('Push-Nachricht, wenn fertig')),
             value: _notify,
             onChanged: (v) => setState(() => _notify = v),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Internet ohne Rückfrage'),
-            subtitle: Text('Beim geplanten Lauf ist niemand da, der „Ja“ sagt', style: t.bodySmall),
+            title: Text(tr('Internet ohne Rückfrage')),
+            subtitle: Text(tr('Beim geplanten Lauf ist niemand da, der „Ja“ sagt'), style: t.bodySmall),
             value: s.internet == 'allow',
             onChanged: (v) => setState(() => s.internet = v ? 'allow' : 'ask'),
           ),
@@ -1199,7 +1195,7 @@ class _SkillEditorState extends State<SkillEditor> {
     final known = {for (final x in tools) x.name};
     return Scaffold(
       appBar: JAppBar(
-        title: Text(_isNew ? (_planOn ? 'Neue geplante Aufgabe' : 'Neuer Skill') : s.name),
+        title: Text(_isNew ? (_planOn ? tr('Neue geplante Aufgabe') : tr('Neuer Skill')) : s.name),
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) async {
@@ -1209,7 +1205,7 @@ class _SkillEditorState extends State<SkillEditor> {
                 case 'copy':
                   _apply();
                   await Clipboard.setData(ClipboardData(text: s.toMarkdown()));
-                  m.showSnackBar(const SnackBar(content: Text('SKILL.md kopiert')));
+                  m.showSnackBar(SnackBar(content: Text(tr('SKILL.md kopiert'))));
                 case 'share':
                   _apply();
                   await shareSkillZip([s], s.specName, flows: AppScope.read(context).flows.flows);
@@ -1238,10 +1234,10 @@ class _SkillEditorState extends State<SkillEditor> {
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: Text('„${s.name}“ löschen?'),
-                        content: const Text('Der Skill und sein Ablauf (Auslöser, Schritte, Verlauf) werden gelöscht.'),
+                        content: Text(tr('Der Skill und sein Ablauf (Auslöser, Schritte, Verlauf) werden gelöscht.')),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Löschen')),
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Abbrechen'))),
+                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Löschen'))),
                         ],
                       ),
                     );
@@ -1254,14 +1250,14 @@ class _SkillEditorState extends State<SkillEditor> {
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy), title: Text('Als SKILL.md kopieren'))),
-              const PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.ios_share), title: Text('Teilen (Skill-Paket .zip)'))),
-              const PopupMenuItem(value: 'check', child: ListTile(leading: Icon(Icons.verified_outlined), title: Text('Standard prüfen'))),
-              const PopupMenuItem(value: 'dup', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text('Duplizieren'))),
+              PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy), title: Text(tr('Als SKILL.md kopieren')))),
+              PopupMenuItem(value: 'share', child: ListTile(leading: Icon(Icons.ios_share), title: Text(tr('Teilen (Skill-Paket .zip)')))),
+              PopupMenuItem(value: 'check', child: ListTile(leading: Icon(Icons.verified_outlined), title: Text(tr('Standard prüfen')))),
+              PopupMenuItem(value: 'dup', child: ListTile(leading: Icon(Icons.copy_all_outlined), title: Text(tr('Duplizieren')))),
               if (s.builtin && s.edited)
-                const PopupMenuItem(value: 'reset', child: ListTile(leading: Icon(Icons.restart_alt), title: Text('Zurücksetzen'))),
+                PopupMenuItem(value: 'reset', child: ListTile(leading: Icon(Icons.restart_alt), title: Text(tr('Zurücksetzen')))),
               if (!s.builtin && !_isNew)
-                const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Löschen'))),
+                PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline), title: Text(tr('Löschen')))),
             ],
           ),
         ],
@@ -1269,7 +1265,7 @@ class _SkillEditorState extends State<SkillEditor> {
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 120), children: [
         Row(children: [
           PopupMenuButton<String>(
-            tooltip: 'Symbol',
+            tooltip: tr('Symbol'),
             onSelected: (v) => setState(() => s.icon = v),
             itemBuilder: (_) => [
               for (final e in skillIcons.entries) PopupMenuItem(value: e.key, child: Icon(e.value)),
@@ -1285,7 +1281,7 @@ class _SkillEditorState extends State<SkillEditor> {
           Expanded(
             child: TextField(
               controller: _name,
-              decoration: const InputDecoration(labelText: 'Name', hintText: 'z. B. Rechnungen sammeln'),
+              decoration: InputDecoration(labelText: tr('Name'), hintText: tr('z. B. Rechnungen sammeln')),
               onChanged: (v) => setState(() {}),
             ),
           ),
@@ -1295,24 +1291,24 @@ class _SkillEditorState extends State<SkillEditor> {
           controller: _steps,
           minLines: 5,
           maxLines: 14,
-          decoration: const InputDecoration(
-            labelText: 'Was soll Junels tun?',
-            helperText: 'In eigenen Worten – oder unten bei „Im Web erledigen“ vormachen, dann schreibt Junels das hier',
+          decoration: InputDecoration(
+            labelText: tr('Was soll Junels tun?'),
+            helperText: tr('In eigenen Worten – oder unten bei „Im Web erledigen“ vormachen, dann schreibt Junels das hier'),
             helperMaxLines: 2,
             alignLabelWithHint: true,
             hintText: '1. Suche im Postfach nach Rechnungen dieses Monats\n2. Liste Betrag, Absender, Datum\n3. Erstelle ein Dokument „Rechnungen <Monat>“',
           ),
         ),
         const SizedBox(height: 18),
-        Text('Wann', style: t.titleSmall),
+        Text(tr('Wann'), style: t.titleSmall),
         const SizedBox(height: 8),
         _planSection(context),
         const SizedBox(height: 18),
-        Text('Darstellung', style: t.titleSmall),
+        Text(tr('Darstellung'), style: t.titleSmall),
         const SizedBox(height: 8),
         OutputViewField(
           value: s.output,
-          label: 'So soll das Ergebnis aussehen',
+          label: tr('So soll das Ergebnis aussehen'),
           onChanged: (v) => setState(() {
             s.output = v;
             // Datei-Format: passendes Werkzeug gleich mit auswählen
@@ -1321,7 +1317,7 @@ class _SkillEditorState extends State<SkillEditor> {
           }),
         ),
         const SizedBox(height: 18),
-        Text('Im Web erledigen', style: t.titleSmall),
+        Text(tr('Im Web erledigen'), style: t.titleSmall),
         const SizedBox(height: 8),
         _jobSection(context),
         const SizedBox(height: 12),
@@ -1330,17 +1326,17 @@ class _SkillEditorState extends State<SkillEditor> {
           childrenPadding: const EdgeInsets.only(bottom: 12),
           expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
           initiallyExpanded: _isNew && !_planOn,
-          title: const Text('Aufruf im Chat'),
+          title: Text(tr('Aufruf im Chat')),
           subtitle: Text('/${s.command}${s.auto ? ' · erkennt passende Nachrichten' : ''}'),
           children: [
         const SizedBox(height: 10),
         TextField(
           controller: _slug,
           decoration: InputDecoration(
-            labelText: 'Befehl im Chat',
+            labelText: tr('Befehl im Chat'),
             prefixText: '/',
             hintText: Skill.slugify(_name.text),
-            helperText: 'Leer = aus dem Namen · auch der Name im Standard (a-z, 0-9, -)',
+            helperText: tr('Leer = aus dem Namen · auch der Name im Standard (a-z, 0-9, -)'),
           ),
         ),
         const SizedBox(height: 10),
@@ -1348,20 +1344,20 @@ class _SkillEditorState extends State<SkillEditor> {
           controller: _when,
           minLines: 1,
           maxLines: 3,
-          decoration: const InputDecoration(
-              labelText: 'Wann nutzen', hintText: 'z. B. Wenn ich meine Rechnungen vom Monat zusammenstellen will'),
+          decoration: InputDecoration(
+              labelText: tr('Wann nutzen'), hintText: tr('z. B. Wenn ich meine Rechnungen vom Monat zusammenstellen will')),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Automatisch erkennen'),
-          subtitle: const Text('Junels nutzt den Skill, wenn deine Nachricht zur Beschreibung passt – sonst nur per /befehl'),
+          title: Text(tr('Automatisch erkennen')),
+          subtitle: Text(tr('Junels nutzt den Skill, wenn deine Nachricht zur Beschreibung passt – sonst nur per /befehl')),
           value: s.auto,
           onChanged: (v) => setState(() => s.auto = v),
         ),
         const SizedBox(height: 10),
         TextField(
           controller: _inputs,
-          decoration: const InputDecoration(labelText: 'Angaben, nach denen gefragt wird', hintText: 'z. B. Monat, Konto'),
+          decoration: InputDecoration(labelText: tr('Angaben, nach denen gefragt wird'), hintText: tr('z. B. Monat, Konto')),
         ),
           ],
         ),
@@ -1370,13 +1366,13 @@ class _SkillEditorState extends State<SkillEditor> {
           childrenPadding: const EdgeInsets.only(bottom: 12),
           expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
           initiallyExpanded: false,
-          title: const Text('Werkzeuge, Internet & Modell'),
-          subtitle: Text(s.tools.isEmpty ? 'Werkzeuge automatisch wie im Chat' : '${s.tools.length} Werkzeuge'),
+          title: Text(tr('Werkzeuge, Internet & Modell')),
+          subtitle: Text(s.tools.isEmpty ? tr('Werkzeuge automatisch wie im Chat') : '${s.tools.length} Werkzeuge'),
           children: [
         const SizedBox(height: 16),
-        Text('Werkzeuge', style: t.titleSmall),
+        Text(tr('Werkzeuge'), style: t.titleSmall),
         const SizedBox(height: 2),
-        Text('Keins gewählt = automatisch wie im Chat. Gewählt = nur diese (verlässlicher).', style: t.bodySmall?.copyWith(color: c.muted)),
+        Text(tr('Keins gewählt = automatisch wie im Chat. Gewählt = nur diese (verlässlicher).'), style: t.bodySmall?.copyWith(color: c.muted)),
         const SizedBox(height: 8),
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final x in tools)
@@ -1405,9 +1401,9 @@ class _SkillEditorState extends State<SkillEditor> {
         const SizedBox(height: 14),
         DropdownButtonFormField<String>(
           initialValue: s.tools.contains(s.requiredTool) ? s.requiredTool : '',
-          decoration: const InputDecoration(labelText: 'Ergebnis muss entstehen mit'),
+          decoration: InputDecoration(labelText: tr('Ergebnis muss entstehen mit')),
           items: [
-            const DropdownMenuItem(value: '', child: Text('Frei – Antwort im Chat')),
+            DropdownMenuItem(value: '', child: Text(tr('Frei – Antwort im Chat'))),
             for (final n in s.tools.where(known.contains))
               DropdownMenuItem(value: n, child: Text(tools.firstWhere((x) => x.name == n).title)),
           ],
@@ -1417,7 +1413,7 @@ class _SkillEditorState extends State<SkillEditor> {
         DropdownButtonFormField<String>(
           initialValue: s.internet,
           isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Internet', helperText: 'Gilt nur, wenn dieser Skill läuft'),
+          decoration: InputDecoration(labelText: tr('Internet'), helperText: tr('Gilt nur, wenn dieser Skill läuft')),
           items: [
             for (final e in Skill.internetLabels.entries)
               DropdownMenuItem(
@@ -1436,12 +1432,12 @@ class _SkillEditorState extends State<SkillEditor> {
           initialValue: s.model,
           isExpanded: true,
           decoration: InputDecoration(
-            labelText: 'Modell (KI-Weiche)',
+            labelText: tr('Modell (KI-Weiche)'),
             helperText: s.model == 'cloud' || s.model == 'hybrid-cloud'
                 ? 'Cloud: Inhalte gehen an ${AppScope.read(context).cloudProvider?.name ?? 'den Cloud-Anbieter (noch nicht eingerichtet)'}'
                 : (s.model == 'onprem' || s.model == 'hybrid-onprem')
                     ? 'Eigener Server: ${AppScope.read(context).onPremProvider?.name ?? 'noch nicht eingerichtet'}'
-                    : 'Wie im Chat eingestellt oder fest für diesen Skill',
+                    : tr('Wie im Chat eingestellt oder fest für diesen Skill'),
           ),
           items: [
             for (final e in Skill.modelLabels.entries) DropdownMenuItem(value: e.key, child: Text(e.value, overflow: TextOverflow.ellipsis)),
@@ -1455,11 +1451,11 @@ class _SkillEditorState extends State<SkillEditor> {
           childrenPadding: const EdgeInsets.only(bottom: 12),
           expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
           initiallyExpanded: false,
-          title: const Text('Auslöser & weitere Schritte'),
-          subtitle: Text(s.flowId == null ? 'z. B. bei Änderung, danach als Word speichern' : 'Ablauf verbunden'),
+          title: Text(tr('Auslöser & weitere Schritte')),
+          subtitle: Text(s.flowId == null ? tr('z. B. bei Änderung, danach als Word speichern') : tr('Ablauf verbunden')),
           children: [
         const SizedBox(height: 4),
-        Text('Soll der Skill auch von selbst laufen – nach Zeitplan, wenn sich etwas ändert, oder mit weiteren Schritten danach?',
+        Text(tr('Soll der Skill auch von selbst laufen – nach Zeitplan, wenn sich etwas ändert, oder mit weiteren Schritten danach?'),
             style: t.bodySmall?.copyWith(color: c.muted)),
         const SizedBox(height: 8),
         Builder(builder: (context) {
@@ -1469,7 +1465,7 @@ class _SkillEditorState extends State<SkillEditor> {
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.account_tree_outlined, size: 18),
-                label: const Text('Auslöser oder Schritte hinzufügen'),
+                label: Text(tr('Auslöser oder Schritte hinzufügen')),
                 onPressed: s.builtin
                     ? null
                     : () async {
@@ -1486,7 +1482,7 @@ class _SkillEditorState extends State<SkillEditor> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 icon: const Icon(Icons.link_off, size: 18),
-                label: const Text('Ablauf entfernen'),
+                label: Text(tr('Ablauf entfernen')),
                 onPressed: () async {
                   await app.flows.remove(wf);
                   if (mounted) setState(() => s.flowId = null);
@@ -1500,14 +1496,14 @@ class _SkillEditorState extends State<SkillEditor> {
         const SizedBox(height: 6),
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
-          title: const Text('Wissen & Beispiele (optional)'),
+          title: Text(tr('Wissen & Beispiele (optional)')),
           children: [
             TextField(
               controller: _knowledge,
               minLines: 3,
               maxLines: 12,
-              decoration: const InputDecoration(
-                hintText: 'Fakten, Formulierungen, ein Beispiel-Ergebnis – wird bei jeder Nutzung mitgegeben',
+              decoration: InputDecoration(
+                hintText: tr('Fakten, Formulierungen, ein Beispiel-Ergebnis – wird bei jeder Nutzung mitgegeben'),
                 alignLabelWithHint: true,
               ),
             ),
@@ -1516,7 +1512,7 @@ class _SkillEditorState extends State<SkillEditor> {
         ExpansionTile(
           tilePadding: EdgeInsets.zero,
           title: Text('Dateien (${s.files.length})'),
-          subtitle: const Text('references/, scripts/, assets/ – liest Junels nur bei Bedarf'),
+          subtitle: Text(tr('references/, scripts/, assets/ – liest Junels nur bei Bedarf')),
           children: [
             for (final f in s.files.keys.toList()..sort())
               ListTile(
@@ -1530,11 +1526,11 @@ class _SkillEditorState extends State<SkillEditor> {
                   builder: (ctx) => AlertDialog(
                     title: Text(f),
                     content: SizedBox(width: 560, child: SingleChildScrollView(child: SelectableText(s.files[f]!))),
-                    actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Schließen'))],
+                    actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Schließen')))],
                   ),
                 ),
                 trailing: IconButton(
-                  tooltip: 'Entfernen',
+                  tooltip: tr('Entfernen'),
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => setState(() => s.files.remove(f)),
                 ),
@@ -1543,7 +1539,7 @@ class _SkillEditorState extends State<SkillEditor> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 icon: const Icon(Icons.add),
-                label: const Text('Datei hinzufügen'),
+                label: Text(tr('Datei hinzufügen')),
                 onPressed: () async {
                   final m = ScaffoldMessenger.of(context);
                   final pick = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any, withData: true);
@@ -1569,7 +1565,7 @@ class _SkillEditorState extends State<SkillEditor> {
             Expanded(
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Testen'),
+                label: Text(tr('Testen')),
                 onPressed: () {
                   if (!_save()) return;
                   final app = AppScope.read(context);
@@ -1583,7 +1579,7 @@ class _SkillEditorState extends State<SkillEditor> {
             Expanded(
               child: FilledButton.icon(
                 icon: const Icon(Icons.check),
-                label: const Text('Speichern'),
+                label: Text(tr('Speichern')),
                 onPressed: () {
                   if (_save()) Navigator.of(context).pop();
                 },
@@ -1638,14 +1634,18 @@ class _MacroReviewPageState extends State<MacroReviewPage> {
               AppScope.read(context).skills.upsert(s);
               Navigator.pop(context);
             },
-            child: const Text('Speichern'),
+            child: Text(tr('Speichern')),
           ),
         ],
       ),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 60), children: [
-        Text('So spielt Junels den Ablauf ab. Eingaben in {geschweiften Klammern} sind Platzhalter – '
-            'die füllst du beim Aufruf, z. B. „/${s.command} ${s.macroParams.values.firstOrNull ?? 'Wert'}“. '
-            'Findet Junels einen Knopf nicht mehr, springt das Modell für diesen Schritt ein.',
+        Text(
+            isEnglish
+                ? 'This is how Junels replays the flow. Inputs in {curly braces} are placeholders – you fill them when calling it, '
+                    'e.g. “/${s.command} ${s.macroParams.values.firstOrNull ?? 'value'}”. If Junels can\'t find a button anymore, the model steps in for this step.'
+                : 'So spielt Junels den Ablauf ab. Eingaben in {geschweiften Klammern} sind Platzhalter – '
+                    'die füllst du beim Aufruf, z. B. „/${s.command} ${s.macroParams.values.firstOrNull ?? 'Wert'}“. '
+                    'Findet Junels einen Knopf nicht mehr, springt das Modell für diesen Schritt ein.',
             style: t.bodySmall?.copyWith(color: c.muted)),
         const SizedBox(height: 12),
         for (var i = 0; i < s.macro.length; i++)
@@ -1664,7 +1664,7 @@ class _MacroReviewPageState extends State<MacroReviewPage> {
                         padding: const EdgeInsets.only(top: 6),
                         child: TextFormField(
                           initialValue: s.macro[i].value,
-                          decoration: const InputDecoration(isDense: true, labelText: 'Wert', helperText: 'z. B. {suchbegriff} für einen Platzhalter'),
+                          decoration: InputDecoration(isDense: true, labelText: tr('Wert'), helperText: tr('z. B. {suchbegriff} für einen Platzhalter')),
                           onChanged: (v) => setState(() {
                             s.macro[i].value = v;
                             _syncParams();
@@ -1675,7 +1675,7 @@ class _MacroReviewPageState extends State<MacroReviewPage> {
                 ),
                 if (i > 0)
                   IconButton(
-                    tooltip: 'Schritt entfernen',
+                    tooltip: tr('Schritt entfernen'),
                     icon: const Icon(Icons.delete_outline),
                     onPressed: () => setState(() {
                       s.macro.removeAt(i);
@@ -1687,7 +1687,7 @@ class _MacroReviewPageState extends State<MacroReviewPage> {
           ),
         if (s.macroParams.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Text('Platzhalter (Standardwerte)', style: t.titleSmall),
+          Text(tr('Platzhalter (Standardwerte)'), style: t.titleSmall),
           const SizedBox(height: 8),
           for (final p in s.macroParams.keys.toList())
             Padding(

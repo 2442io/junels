@@ -29,6 +29,7 @@ import 'transcribe_page.dart' show openTranscriber;
 import 'theme.dart';
 import 'prompt_editor.dart';
 import 'system_check.dart';
+import '../l10n.dart';
 
 class ChatView extends StatefulWidget {
   const ChatView({super.key});
@@ -165,7 +166,7 @@ class _ChatViewState extends State<ChatView> {
                       child: Center(
                         child: FloatingActionButton.small(
                           heroTag: null,
-                          tooltip: 'Zum Ende',
+                          tooltip: tr('Zum Ende'),
                           onPressed: () => setState(() {
                             _stickToBottom = true;
                             if (_scroll.hasClients) {
@@ -206,7 +207,7 @@ List<_FeedItem> _feedItems(List<ChatEntry> all, String? filter) {
     if (filter != null && !id.startsWith(filter)) continue;
     if (id.startsWith('voice:')) {
       final it = voice.putIfAbsent(id, () {
-        final n = _FeedItem(id, e.origin ?? '🎙 Gespräch');
+        final n = _FeedItem(id, e.origin ?? tr('🎙 Gespräch'));
         items.add(n);
         return n;
       });
@@ -217,7 +218,7 @@ List<_FeedItem> _feedItems(List<ChatEntry> all, String? filter) {
       pendingQuestion = e;
       continue;
     }
-    final it = _FeedItem(id, e.origin ?? 'Ergebnis');
+    final it = _FeedItem(id, e.origin ?? tr('Ergebnis'));
     if (pendingQuestion != null && pendingQuestion.originId == e.originId) it.entries.add(pendingQuestion);
     pendingQuestion = null;
     it.entries.add(e);
@@ -243,9 +244,9 @@ class _FeedViewState extends State<_FeedView> {
   String _day(DateTime d) {
     final now = DateTime.now();
     final diff = DateTime(now.year, now.month, now.day).difference(DateTime(d.year, d.month, d.day)).inDays;
-    if (diff == 0) return 'Heute';
-    if (diff == 1) return 'Gestern';
-    if (diff < 7) return const ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][d.weekday - 1];
+    if (diff == 0) return tr('Heute');
+    if (diff == 1) return tr('Gestern');
+    if (diff < 7) return [tr('Montag'), tr('Dienstag'), tr('Mittwoch'), tr('Donnerstag'), tr('Freitag'), tr('Samstag'), tr('Sonntag')][d.weekday - 1];
     return '${d.day}.${d.month}.${d.year}';
   }
 
@@ -261,8 +262,8 @@ class _FeedViewState extends State<_FeedView> {
           padding: const EdgeInsets.all(24),
           child: EmptyHint(
             icon: Icons.inbox_outlined,
-            title: app.feedFilter.value == null ? 'Noch keine Ergebnisse' : 'Nichts in dieser Auswahl',
-            text: 'Hier landet alles, was von selbst läuft: geplante Aufgaben, Abläufe, Beobachtungen und Gespräche.',
+            title: app.feedFilter.value == null ? tr('Noch keine Ergebnisse') : tr('Nichts in dieser Auswahl'),
+            text: tr('Hier landet alles, was von selbst läuft: geplante Aufgaben, Abläufe, Beobachtungen und Gespräche.'),
           ),
         ),
       );
@@ -308,13 +309,13 @@ class _FeedCard extends StatelessWidget {
   final VoidCallback onToggle;
 
   static (IconData, String) _kind(String id) => switch (id) {
-        _ when id.startsWith('flow:') => (Icons.account_tree_outlined, 'Ablauf'),
-        _ when id.startsWith('prompt:') => (Icons.schedule, 'Geplant'),
-        _ when id.startsWith('voice:') => (Icons.graphic_eq, 'Gespräch'),
-        _ when id.startsWith('watch:') => (Icons.radar, 'Beobachtung'),
-        'mcp' => (Icons.electrical_services, 'Extern'),
-        _ when id.startsWith('job:') => (Icons.explore_outlined, 'Web-Job'),
-        _ => (Icons.inbox_outlined, 'Ergebnis'),
+        _ when id.startsWith('flow:') => (Icons.account_tree_outlined, tr('Ablauf')),
+        _ when id.startsWith('prompt:') => (Icons.schedule, tr('Geplant')),
+        _ when id.startsWith('voice:') => (Icons.graphic_eq, tr('Gespräch')),
+        _ when id.startsWith('watch:') => (Icons.radar, tr('Beobachtung')),
+        'mcp' => (Icons.electrical_services, tr('Extern')),
+        _ when id.startsWith('job:') => (Icons.explore_outlined, tr('Web-Job')),
+        _ => (Icons.inbox_outlined, tr('Ergebnis')),
       };
 
   static String _title(String origin) => origin.replaceFirst(RegExp(r'^[^\p{L}\d]+', unicode: true), '').trim();
@@ -404,7 +405,7 @@ class _FeedCard extends StatelessWidget {
       body = Row(children: [
         const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         const SizedBox(width: 10),
-        Text('läuft …', style: t.bodyMedium),
+        Text(tr('läuft …'), style: t.bodyMedium),
       ]);
     } else {
       body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -479,7 +480,7 @@ class _FeedCard extends StatelessWidget {
                 child: Container(width: 8, height: 8, decoration: BoxDecoration(color: tint, shape: BoxShape.circle)),
               ),
             PopupMenuButton<String>(
-              tooltip: 'Mehr',
+              tooltip: tr('Mehr'),
               icon: Icon(Icons.more_horiz, color: c.muted),
               onSelected: (v) async {
                 switch (v) {
@@ -499,11 +500,11 @@ class _FeedCard extends StatelessWidget {
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'chat', child: ListTile(leading: Icon(Icons.forum_outlined), title: Text('Im Chat weiterführen'))),
+                PopupMenuItem(value: 'chat', child: ListTile(leading: Icon(Icons.forum_outlined), title: Text(tr('Im Chat weiterführen')))),
                 if (_canRerun(app))
-                  const PopupMenuItem(value: 'again', child: ListTile(leading: Icon(Icons.replay), title: Text('Nochmal ausführen'))),
-                const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy), title: Text('Kopieren'))),
-                const PopupMenuItem(value: 'remove', child: ListTile(leading: Icon(Icons.delete_outline), title: Text('Entfernen'))),
+                  PopupMenuItem(value: 'again', child: ListTile(leading: Icon(Icons.replay), title: Text(tr('Nochmal ausführen')))),
+                PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy), title: Text(tr('Kopieren')))),
+                PopupMenuItem(value: 'remove', child: ListTile(leading: Icon(Icons.delete_outline), title: Text(tr('Entfernen')))),
               ],
             ),
           ]),
@@ -514,13 +515,13 @@ class _FeedCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: onToggle,
                 icon: Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 18),
-                label: Text(expanded ? 'Weniger' : 'Ganz anzeigen'),
+                label: Text(expanded ? tr('Weniger') : tr('Ganz anzeigen')),
               ),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _continue(context, app),
               icon: Icon(Icons.reply, size: 18, color: scheme.primary),
-              label: const Text('Nachfragen'),
+              label: Text(tr('Nachfragen')),
             ),
           ]),
         ]),
@@ -579,12 +580,12 @@ class _FeedFilterBar extends StatelessWidget {
     }
     int count(String prefix) => entries.where((e) => e.role == 'assistant' && (e.originId ?? '').startsWith(prefix)).length;
     final kinds = <(String, String)>[
-      ('job:', '🧭 Web-Jobs'),
-      ('flow:', '⚙ Abläufe'),
-      ('prompt:', '⏱ Geplant'),
-      ('voice:', '🎙 Gespräche'),
-      ('watch:', '👁 Beobachtungen'),
-      ('mcp', '🔌 Extern'),
+      ('job:', tr('🧭 Web-Jobs')),
+      ('flow:', tr('⚙ Abläufe')),
+      ('prompt:', tr('⏱ Geplant')),
+      ('voice:', tr('🎙 Gespräche')),
+      ('watch:', tr('👁 Beobachtungen')),
+      ('mcp', tr('🔌 Extern')),
     ].where((k) => count(k.$1) > 0).toList();
     final f = app.feedFilter.value;
     Widget chip(String label, String? value) => Padding(
@@ -605,7 +606,7 @@ class _FeedFilterBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
         children: [
-          chip('Alle', null),
+          chip(tr('Alle'), null),
           for (final k in kinds) chip(k.$2, k.$1),
           // einzelne Abläufe/Aufgaben (die neuesten), wenn es mehrere gibt
           if (seen.length > 1)
@@ -700,7 +701,7 @@ class _ResultCarouselState extends State<ResultCarousel> {
                       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                         Icon(rest > 0 ? Icons.arrow_forward : Icons.search, color: scheme.primary, size: 32),
                         const SizedBox(height: 8),
-                        Text(rest > 0 ? 'Weitere laden\n($rest)' : 'Mehr suchen',
+                        Text(rest > 0 ? 'Weitere laden\n($rest)' : tr('Mehr suchen'),
                             textAlign: TextAlign.center, style: t.labelLarge?.copyWith(color: scheme.primary)),
                       ]),
                     ),
@@ -826,23 +827,23 @@ class _LiveStatusState extends State<_LiveStatus> {
     final since = app.runningHere ? app.runStarted : (loading ? app.loadStarted : null);
     String label;
     if (loading) {
-      label = 'Modell wird geladen';
+      label = tr('Modell wird geladen');
     } else if (app.runningHere) {
       final last = app.current?.entries.lastOrNull;
       final step = last?.steps.lastOrNull;
       if (last == null) {
-        label = 'Agent arbeitet';
+        label = tr('Agent arbeitet');
       } else if (last.text.isNotEmpty) {
-        label = 'Schreibt die Antwort';
+        label = tr('Schreibt die Antwort');
       } else if (step?.tool != null && step!.observation == null) {
         label = 'Nutzt ${step.tool}';
       } else if (last.steps.isNotEmpty) {
         label = 'Denkt nach (Schritt ${last.steps.length + 1})';
       } else {
-        label = 'Liest die Anfrage';
+        label = tr('Liest die Anfrage');
       }
     } else {
-      label = 'Modell wird vorbereitet';
+      label = tr('Modell wird vorbereitet');
     }
     final el = since == null ? '' : ' · ${formatDuration(DateTime.now().difference(since).inMilliseconds)}';
     final scheme = Theme.of(context).colorScheme;
@@ -865,13 +866,13 @@ class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.app});
   final AppController app;
 
-  static const _ideas = <(IconData, String, String)>[
-    (Icons.wb_sunny_outlined, 'Wetter', 'Wie wird das Wetter morgen in Wien?'),
-    (Icons.newspaper, 'Nachrichten', 'Was sind die wichtigsten Tech-News heute?'),
-    (Icons.slideshow_outlined, 'Präsentation', 'Erstelle eine Präsentation mit 5 Folien über die Vorteile lokaler KI.'),
-    (Icons.travel_explore, 'Im Web suchen', 'Such auf geizhals.at nach einem leisen Staubsauger-Roboter.'),
-    (Icons.calculate_outlined, 'Rechnen', 'Was sind 15 % von 2.340 €?'),
-    (Icons.schedule, 'Automatisieren', 'Schick mir jeden Montag um 8 Uhr eine Wochenvorschau meiner Termine.'),
+  static final _ideas = <(IconData, String, String)>[
+    (Icons.wb_sunny_outlined, tr('Wetter'), tr('Wie wird das Wetter morgen in Wien?')),
+    (Icons.newspaper, tr('Nachrichten'), tr('Was sind die wichtigsten Tech-News heute?')),
+    (Icons.slideshow_outlined, tr('Präsentation'), tr('Erstelle eine Präsentation mit 5 Folien über die Vorteile lokaler KI.')),
+    (Icons.travel_explore, tr('Im Web suchen'), tr('Such auf geizhals.at nach einem leisen Staubsauger-Roboter.')),
+    (Icons.calculate_outlined, tr('Rechnen'), tr('Was sind 15 % von 2.340 €?')),
+    (Icons.schedule, tr('Automatisieren'), tr('Schick mir jeden Montag um 8 Uhr eine Wochenvorschau meiner Termine.')),
   ];
 
   @override
@@ -880,7 +881,7 @@ class _EmptyState extends StatelessWidget {
     final c = AppColors.of(context);
     final noModel = app.models.isEmpty && !app.canChat;
     final hour = DateTime.now().hour;
-    final greet = hour < 11 ? 'Guten Morgen' : (hour < 18 ? 'Hallo' : 'Guten Abend');
+    final greet = hour < 11 ? tr('Guten Morgen') : (hour < 18 ? tr('Hallo') : tr('Guten Abend'));
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
@@ -891,26 +892,32 @@ class _EmptyState extends StatelessWidget {
             children: [
               const BrandMark(size: 52),
               const SizedBox(height: 18),
-              Text(noModel ? 'Willkommen bei Junels' : '$greet! Woran arbeiten wir?',
+              Text(noModel ? tr('Willkommen bei Junels') : (isEnglish ? '$greet! What are we working on?' : '$greet! Woran arbeiten wir?'),
                   style: t.headlineSmall?.copyWith(fontSize: 26), textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text(
                 noModel
-                    ? 'Dein KI-Agent läuft auf diesem Gerät. Der Systemcheck prüft dein Gerät und lädt das passende Modell – '
-                        'oder du bindest einen eigenen Server bzw. Cloud-Anbieter an.'
+                    ? (tr('Dein KI-Agent läuft auf diesem Gerät. Der Systemcheck prüft dein Gerät und lädt das passende Modell – ') + tr('oder du bindest einen eigenen Server bzw. Cloud-Anbieter an.'))
                     : app.canChat
-                        ? 'Frag etwas, häng eine Datei an oder gib einen Auftrag. ${app.routingLabel == null ? 'Alles läuft lokal.' : app.routingLabel!}'
-                        : 'Wähle ein Modell, um zu starten.',
+                        ? (isEnglish
+                            ? 'Ask something, attach a file or give a task. ${app.routingLabel == null ? 'Everything runs locally.' : app.routingLabel!}'
+                            : 'Frag etwas, häng eine Datei an oder gib einen Auftrag. ${app.routingLabel == null ? 'Alles läuft lokal.' : app.routingLabel!}')
+                        : tr('Wähle ein Modell, um zu starten.'),
                 textAlign: TextAlign.center,
                 style: t.bodyLarge?.copyWith(color: c.muted),
               ),
-              const SizedBox(height: 26),
+              TextButton.icon(
+                onPressed: () => app.setLanguage(isEnglish ? 'de' : 'en'),
+                icon: const Icon(Icons.translate, size: 16),
+                label: Text(isEnglish ? 'Auf Deutsch umstellen' : 'Switch to English'),
+              ),
+              const SizedBox(height: 14),
               if (noModel || !app.canChat)
                 Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: [
                   FilledButton.icon(
                     onPressed: () => openSystemCheck(context),
                     icon: const Icon(Icons.speed_outlined, size: 18),
-                    label: const Text('Systemcheck & Modell laden'),
+                    label: Text(tr('Systemcheck & Modell laden')),
                   ),
                 ])
               else
@@ -956,14 +963,14 @@ class _UserBubble extends StatelessWidget {
     final text = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Nachricht bearbeiten'),
+        title: Text(tr('Nachricht bearbeiten')),
         content: SizedBox(
           width: 560,
           child: TextField(controller: ctrl, autofocus: true, minLines: 3, maxLines: 12),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Senden')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Abbrechen'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(tr('Senden'))),
         ],
       ),
     );
@@ -977,21 +984,21 @@ class _UserBubble extends StatelessWidget {
     final app = AppScope.of(context);
     final actions = Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(
-        tooltip: 'Bearbeiten und neu senden',
+        tooltip: tr('Bearbeiten und neu senden'),
         visualDensity: VisualDensity.compact,
         iconSize: 16,
         icon: const Icon(Icons.edit_outlined),
         onPressed: app.running ? null : () => _edit(context),
       ),
       IconButton(
-        tooltip: 'Wiederholen',
+        tooltip: tr('Wiederholen'),
         visualDensity: VisualDensity.compact,
         iconSize: 16,
         icon: const Icon(Icons.replay),
         onPressed: app.running ? null : () => app.resendFrom(index),
       ),
       IconButton(
-        tooltip: 'Kopieren',
+        tooltip: tr('Kopieren'),
         visualDensity: VisualDensity.compact,
         iconSize: 16,
         icon: const Icon(Icons.copy),
@@ -1049,7 +1056,7 @@ class _UserBubble extends StatelessWidget {
                     TextSpan(text: entry.text),
                     if (app.isQueued(entry))
                       TextSpan(
-                        text: '\n⏳ wartet auf die laufende Antwort',
+                        text: tr('\n⏳ wartet auf die laufende Antwort'),
                         style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
                       ),
                   ]),
@@ -1107,12 +1114,12 @@ class _AssistantMessage extends StatelessWidget {
               child: Panel(padding: const EdgeInsets.fromLTRB(12, 10, 8, 4), child: JobPanel(jobId: entry.originId!.substring(4))),
             ),
           if (waiting)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Row(children: [
                 SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                 SizedBox(width: 10),
-                Text('Verarbeite Prompt …'),
+                Text(tr('Verarbeite Prompt …')),
               ]),
             ),
           if (entry.text.isNotEmpty && shaped)
@@ -1132,7 +1139,7 @@ class _AssistantMessage extends StatelessWidget {
             ResultCarousel(
               cards: entry.cards,
               loadImages: !(AppScope.of(context).current?.internetOff ?? false),
-              onMore: () => AppScope.read(context).pendingInput.value = 'Such bitte weitere Ergebnisse dazu.',
+              onMore: () => AppScope.read(context).pendingInput.value = tr('Such bitte weitere Ergebnisse dazu.'),
             ),
           if (entry.error != null)
             Container(
@@ -1193,7 +1200,7 @@ class _AssistantMessage extends StatelessWidget {
                         ],
                         if (entry.durationMs != null || entry.tokensPerSecond != null)
                           Row(mainAxisSize: MainAxisSize.min, children: [
-                            if (entry.truncated) Text('gekürzt · ', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                            if (entry.truncated) Text(tr('gekürzt · '), style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
                             if (entry.durationMs != null) ...[
                               Icon(Icons.timer_outlined, size: 13, color: scheme.onSurfaceVariant),
                               const SizedBox(width: 3),
@@ -1207,7 +1214,7 @@ class _AssistantMessage extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Neu generieren',
+                    tooltip: tr('Neu generieren'),
                     visualDensity: VisualDensity.compact,
                     iconSize: 16,
                     icon: const Icon(Icons.refresh),
@@ -1216,14 +1223,14 @@ class _AssistantMessage extends StatelessWidget {
                   if (entry.text.isNotEmpty) _SpeakButton(entry: entry),
                   if (entry.text.isNotEmpty)
                     PopupMenuButton<String>(
-                      tooltip: 'Mehr',
+                      tooltip: tr('Mehr'),
                       iconSize: 16,
                       padding: EdgeInsets.zero,
                       icon: const Icon(Icons.more_horiz),
                       onSelected: (v) {
                         if (v == 'copy') {
                           Clipboard.setData(ClipboardData(text: entry.text));
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kopiert'), duration: Duration(seconds: 1)));
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Kopiert')), duration: Duration(seconds: 1)));
                         } else if (v == 'skill') {
                           _saveAsSkill(context, index);
                         } else if (v.startsWith('view:')) {
@@ -1231,9 +1238,9 @@ class _AssistantMessage extends StatelessWidget {
                         }
                       },
                       itemBuilder: (_) => [
-                        const PopupMenuItem(value: 'copy', child: ListTile(dense: true, leading: Icon(Icons.copy, size: 20), title: Text('Antwort kopieren'))),
-                        const PopupMenuItem(
-                            value: 'skill', child: ListTile(dense: true, leading: Icon(Icons.auto_awesome, size: 20), title: Text('Als Skill speichern'))),
+                        PopupMenuItem(value: 'copy', child: ListTile(dense: true, leading: Icon(Icons.copy, size: 20), title: Text(tr('Antwort kopieren')))),
+                        PopupMenuItem(
+                            value: 'skill', child: ListTile(dense: true, leading: Icon(Icons.auto_awesome, size: 20), title: Text(tr('Als Skill speichern')))),
                         const PopupMenuDivider(),
                         for (final v in const [
                           OutputView.text,
@@ -1290,7 +1297,7 @@ class _Sources extends StatelessWidget {
         runSpacing: 4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text('Quellen:', style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(tr('Quellen:'), style: t.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
           for (final r in sources)
             Tooltip(
               message: r.url ?? r.label,
@@ -1328,7 +1335,7 @@ class _SpeakButton extends StatelessWidget {
       builder: (context, key, _) {
         final speaking = identical(key, entry);
         return IconButton(
-          tooltip: speaking ? 'Vorlesen stoppen' : 'Vorlesen',
+          tooltip: speaking ? tr('Vorlesen stoppen') : tr('Vorlesen'),
           visualDensity: VisualDensity.compact,
           iconSize: 18,
           icon: Icon(speaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined),
@@ -1496,7 +1503,7 @@ class _MicButton extends StatelessWidget {
                   decoration: BoxDecoration(color: scheme.error.withValues(alpha: 0.18), shape: BoxShape.circle),
                 ),
                 IconButton(
-                  tooltip: 'Aufnahme beenden',
+                  tooltip: tr('Aufnahme beenden'),
                   icon: Icon(Icons.stop_circle, color: scheme.error),
                   onPressed: onTap,
                 ),
@@ -1512,7 +1519,7 @@ class _MicButton extends StatelessWidget {
           );
         }
         return IconButton(
-          tooltip: 'Spracheingabe (Whisper)',
+          tooltip: tr('Spracheingabe (Whisper)'),
           icon: const Icon(Icons.mic_none),
           onPressed: onTap,
         );
@@ -1625,7 +1632,7 @@ class _InputBarState extends State<_InputBar> {
       try {
         final text = await app.finishVoiceInput();
         if (text.trim().isEmpty) {
-          messenger.showSnackBar(const SnackBar(content: Text('Nichts verstanden – bitte nochmal.')));
+          messenger.showSnackBar(SnackBar(content: Text(tr('Nichts verstanden – bitte nochmal.'))));
           return;
         }
         final existing = _ctrl.text.trim();
@@ -1640,8 +1647,8 @@ class _InputBarState extends State<_InputBar> {
     if (v.phase.value != VoicePhase.idle) return;
     if (app.sttModelPath == null) {
       messenger.showSnackBar(SnackBar(
-        content: const Text('Für Spracheingabe zuerst ein Whisper-Modell laden.'),
-        action: SnackBarAction(label: 'Systemcheck', onPressed: () => openSystemCheck(context)),
+        content: Text(tr('Für Spracheingabe zuerst ein Whisper-Modell laden.')),
+        action: SnackBarAction(label: tr('Systemcheck'), onPressed: () => openSystemCheck(context)),
       ));
       return;
     }
@@ -1670,7 +1677,7 @@ class _InputBarState extends State<_InputBar> {
         duration: const Duration(seconds: 8),
         action: app.engine != null && app.modelSupportsVision
             ? SnackBarAction(
-                label: 'Laden',
+                label: tr('Laden'),
                 onPressed: () {
                   final c = modelCatalog.where((e) => e.id == app.loadedModel?.catalogId).firstOrNull;
                   if (c != null) app.downloadVision(c);
@@ -1706,7 +1713,7 @@ class _InputBarState extends State<_InputBar> {
                           const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                           const SizedBox(width: 10),
                           Expanded(child: Text(app.imageProgress!)),
-                          TextButton(onPressed: app.cancelImage, child: const Text('Abbrechen')),
+                          TextButton(onPressed: app.cancelImage, child: Text(tr('Abbrechen'))),
                         ]),
                       ),
                     ),
@@ -1780,11 +1787,11 @@ class _InputBarState extends State<_InputBar> {
                                 ),
                               if (suggest) ...[
                                 const VerticalDivider(width: 12, indent: 8, endIndent: 8),
-                                for (final (label, text) in const [
-                                  ('Zusammenfassen', 'Was steht auf dem Bild? Fasse es kurz zusammen.'),
-                                  ('Text abschreiben', 'Schreib den Text auf dem Bild vollständig ab.'),
-                                  ('Termin anlegen', 'Lies Datum, Uhrzeit, Ort und Titel vom Bild und trag den Termin in meinen Kalender ein.'),
-                                  ('Kassenbon', 'Lies den Kassenbon: Geschäft, Datum, Positionen und Gesamtbetrag als Tabelle.'),
+                                for (final (label, text) in [
+                                  (tr('Zusammenfassen'), tr('Was steht auf dem Bild? Fasse es kurz zusammen.')),
+                                  (tr('Text abschreiben'), tr('Schreib den Text auf dem Bild vollständig ab.')),
+                                  (tr('Termin anlegen'), tr('Lies Datum, Uhrzeit, Ort und Titel vom Bild und trag den Termin in meinen Kalender ein.')),
+                                  (tr('Kassenbon'), tr('Lies den Kassenbon: Geschäft, Datum, Positionen und Gesamtbetrag als Tabelle.')),
                                 ])
                                   Padding(
                                     padding: const EdgeInsets.only(right: 6),
@@ -1818,36 +1825,36 @@ class _InputBarState extends State<_InputBar> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      PillIconButton(icon: Icons.apps_rounded, tooltip: 'Schnellmenü', onPressed: () => showQuickNav(context)),
+                      PillIconButton(icon: Icons.apps_rounded, tooltip: tr('Schnellmenü'), onPressed: () => showQuickNav(context)),
                     ]),
                   ),
                   LayoutBuilder(builder: (context, box) {
                     final tools = <Widget>[
                       if (Platform.isAndroid)
                         PopupMenuButton<String>(
-                          tooltip: 'Anhängen',
+                          tooltip: tr('Anhängen'),
                           icon: const Icon(Icons.attach_file),
                           enabled: !app.runningHere,
                           onSelected: (v) => v == 'photo' ? _photo() : _attach(),
-                          itemBuilder: (_) => const [
+                          itemBuilder: (_) => [
                             PopupMenuItem(
                               value: 'photo',
-                              child: ListTile(dense: true, leading: Icon(Icons.photo_camera_outlined), title: Text('Foto aufnehmen')),
+                              child: ListTile(dense: true, leading: Icon(Icons.photo_camera_outlined), title: Text(tr('Foto aufnehmen'))),
                             ),
                             PopupMenuItem(
                               value: 'file',
-                              child: ListTile(dense: true, leading: Icon(Icons.attach_file), title: Text('Datei oder Bild wählen')),
+                              child: ListTile(dense: true, leading: Icon(Icons.attach_file), title: Text(tr('Datei oder Bild wählen'))),
                             ),
                           ],
                         )
                       else
                         IconButton(
-                          tooltip: 'Datei anhängen (PDF, Bilder, TXT, MD, CSV, JSON)',
+                          tooltip: tr('Datei anhängen (PDF, Bilder, TXT, MD, CSV, JSON)'),
                           icon: const Icon(Icons.attach_file),
                           onPressed: app.runningHere ? null : _attach,
                         ),
                       PopupMenuButton<String>(
-                        tooltip: 'Skills, Prompts & Vorlagen',
+                        tooltip: tr('Skills, Prompts & Vorlagen'),
                         icon: const Icon(Icons.bolt_outlined),
                         enabled: !app.runningHere,
                         onSelected: (v) {
@@ -1869,13 +1876,13 @@ class _InputBarState extends State<_InputBar> {
                           _focus.requestFocus();
                         },
                         itemBuilder: (_) => [
-                          const PopupMenuItem(
+                          PopupMenuItem(
                             value: '__mitschrift__',
                             child: ListTile(
                               dense: true,
                               leading: Icon(Icons.record_voice_over_outlined, size: 20),
-                              title: Text('Mitschrift starten'),
-                              subtitle: Text('Gespräch mitschreiben, danach auswerten'),
+                              title: Text(tr('Mitschrift starten')),
+                              subtitle: Text(tr('Gespräch mitschreiben, danach auswerten')),
                             ),
                           ),
                           const PopupMenuDivider(),
@@ -1903,15 +1910,15 @@ class _InputBarState extends State<_InputBar> {
                           const PopupMenuDivider(),
                           for (final (label, text) in promptPresets) PopupMenuItem(value: text, child: Text(label)),
                           const PopupMenuDivider(),
-                          const PopupMenuItem(
+                          PopupMenuItem(
                             value: '__save__',
-                            child: ListTile(dense: true, leading: Icon(Icons.bookmark_add_outlined, size: 20), title: Text('Eingabe als Prompt speichern …')),
+                            child: ListTile(dense: true, leading: Icon(Icons.bookmark_add_outlined, size: 20), title: Text(tr('Eingabe als Prompt speichern …'))),
                           ),
                         ],
                       ),
                       _MicButton(onTap: app.running ? null : _toggleVoice),
                       IconButton(
-                        tooltip: 'Gesprächsmodus – freihändig sprechen',
+                        tooltip: tr('Gesprächsmodus – freihändig sprechen'),
                         icon: const Icon(Icons.record_voice_over_outlined),
                         onPressed: ready && !app.running ? () => openConversation(context) : null,
                       ),
@@ -1927,10 +1934,10 @@ class _InputBarState extends State<_InputBar> {
                       style: Theme.of(context).textTheme.bodyLarge,
                       decoration: InputDecoration(
                         hintText: !ready
-                            ? 'Zuerst ein Modell laden oder einen Anbieter einrichten'
+                            ? tr('Zuerst ein Modell laden oder einen Anbieter einrichten')
                             : app.runningHere
-                                ? 'Kommentar ergänzen – der Agent berücksichtigt ihn sofort …'
-                                : (app.warming ? 'Modell wird vorbereitet … (du kannst schon schreiben)' : 'Frag Junels oder gib einen Auftrag …'),
+                                ? tr('Kommentar ergänzen – der Agent berücksichtigt ihn sofort …')
+                                : (app.warming ? tr('Modell wird vorbereitet … (du kannst schon schreiben)') : tr('Frag Junels oder gib einen Auftrag …')),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -1947,12 +1954,12 @@ class _InputBarState extends State<_InputBar> {
                               valueListenable: _ctrl,
                               builder: (context, v, _) => v.text.trim().isEmpty
                                   ? IconButton.filledTonal(
-                                      tooltip: 'Stopp',
+                                      tooltip: tr('Stopp'),
                                       icon: const Icon(Icons.stop_rounded, size: 20),
                                       onPressed: app.stop,
                                     )
                                   : IconButton.filled(
-                                      tooltip: 'Kommentar an den laufenden Auftrag',
+                                      tooltip: tr('Kommentar an den laufenden Auftrag'),
                                       icon: const Icon(Icons.add_comment_outlined, size: 19),
                                       onPressed: _send,
                                     ),
@@ -1960,7 +1967,7 @@ class _InputBarState extends State<_InputBar> {
                           : ValueListenableBuilder<TextEditingValue>(
                               valueListenable: _ctrl,
                               builder: (context, v, _) => IconButton.filled(
-                                tooltip: 'Senden',
+                                tooltip: tr('Senden'),
                                 icon: const Icon(Icons.arrow_upward_rounded, size: 20),
                                 onPressed: ready && (v.text.trim().isNotEmpty || app.attachments.isNotEmpty) ? _send : null,
                               ),
@@ -2050,7 +2057,7 @@ class _ActionCardState extends State<ActionCard> {
     final t = Theme.of(context).textTheme;
     final mail = a['type'] == 'email';
     final appAct = a['type'] == 'app';
-    final who = (a['name'] ?? '').isNotEmpty ? a['name']! : ((a['to'] ?? '').isEmpty ? 'Empfänger fehlt' : a['to']!);
+    final who = (a['name'] ?? '').isNotEmpty ? a['name']! : ((a['to'] ?? '').isEmpty ? tr('Empfänger fehlt') : a['to']!);
     final status = a['status'] ?? 'pending';
     final pending = status == 'pending';
     final direct = mail && app.settings.smtpReady && (a['to'] ?? '').contains('@');
@@ -2076,9 +2083,9 @@ class _ActionCardState extends State<ActionCard> {
               Chip(
                 visualDensity: VisualDensity.compact,
                 label: Text(switch (status) {
-                  'sent' => appAct ? 'Ausgeführt ✓' : 'Gesendet ✓',
-                  'opened' => mail ? 'In Mail-App geöffnet' : 'In WhatsApp geöffnet',
-                  'discarded' => 'Verworfen',
+                  'sent' => appAct ? tr('Ausgeführt ✓') : tr('Gesendet ✓'),
+                  'opened' => mail ? tr('In Mail-App geöffnet') : tr('In WhatsApp geöffnet'),
+                  'discarded' => tr('Verworfen'),
                   _ => status,
                 }),
               ),
@@ -2113,19 +2120,19 @@ class _ActionCardState extends State<ActionCard> {
                 icon: _busy
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : Icon(appAct ? Icons.play_arrow : (direct ? Icons.send : Icons.open_in_new), size: 18),
-                label: Text(appAct ? 'Ausführen' : (direct ? 'Senden' : (mail ? 'In Mail-App öffnen' : 'In WhatsApp öffnen'))),
+                label: Text(appAct ? tr('Ausführen') : (direct ? tr('Senden') : (mail ? tr('In Mail-App öffnen') : tr('In WhatsApp öffnen')))),
               ),
-              if (!appAct) OutlinedButton(onPressed: _busy ? null : () => _edit(context, app, a), child: const Text('Bearbeiten')),
+              if (!appAct) OutlinedButton(onPressed: _busy ? null : () => _edit(context, app, a), child: Text(tr('Bearbeiten'))),
               TextButton(
                 onPressed: _busy ? null : () => app.updateAction(widget.entry, widget.index, {'status': 'discarded'}),
-                child: const Text('Verwerfen'),
+                child: Text(tr('Verwerfen')),
               ),
             ]),
             if (mail && !app.settings.smtpReady)
               TextButton(
                 style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
                 onPressed: () => showMailAccountDialog(context),
-                child: const Text('Direkt aus Junels senden einrichten'),
+                child: Text(tr('Direkt aus Junels senden einrichten')),
               ),
           ],
         ],
@@ -2141,21 +2148,21 @@ class _ActionCardState extends State<ActionCard> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(mail ? 'E-Mail bearbeiten' : 'Nachricht bearbeiten'),
+        title: Text(mail ? tr('E-Mail bearbeiten') : tr('Nachricht bearbeiten')),
         content: SizedBox(
           width: 520,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: to, decoration: InputDecoration(labelText: mail ? 'An (E-Mail-Adresse)' : 'An (Nummer)')),
-              if (mail) TextField(controller: subject, decoration: const InputDecoration(labelText: 'Betreff')),
+              TextField(controller: to, decoration: InputDecoration(labelText: mail ? tr('An (E-Mail-Adresse)') : tr('An (Nummer)'))),
+              if (mail) TextField(controller: subject, decoration: InputDecoration(labelText: tr('Betreff'))),
               const SizedBox(height: 8),
               TextField(controller: body, maxLines: 10, minLines: 4, decoration: const InputDecoration(border: OutlineInputBorder())),
             ]),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Übernehmen')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Abbrechen'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Übernehmen'))),
         ],
       ),
     );
@@ -2197,35 +2204,33 @@ Future<void> showMailAccountDialog(BuildContext context) async {
       }
 
       return AlertDialog(
-        title: const Text('Mail-Konto'),
+        title: Text(tr('Mail-Konto')),
         content: SizedBox(
           width: 480,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Mit deinem Mail-Konto schickt Junels freigegebene E-Mails selbst ab – nur nach deinem Tipp auf „Senden“ – '
-                  'und kann auf Wunsch deinen Posteingang ansehen.'),
+              Text((tr('Mit deinem Mail-Konto schickt Junels freigegebene E-Mails selbst ab – nur nach deinem Tipp auf „Senden“ – ') + tr('und kann auf Wunsch deinen Posteingang ansehen.'))),
               const SizedBox(height: 8),
-              TextField(controller: user, decoration: const InputDecoration(labelText: 'Deine E-Mail-Adresse'), onChanged: guess),
+              TextField(controller: user, decoration: InputDecoration(labelText: tr('Deine E-Mail-Adresse')), onChanged: guess),
               TextField(
                 controller: pw,
                 obscureText: true,
                 decoration: InputDecoration(
-                  labelText: st.smtpUser.isEmpty ? 'Passwort bzw. App-Passwort' : 'Neues Passwort (leer = behalten)',
-                  helperText: 'Gmail, iCloud, Yahoo: App-Passwort im Konto erstellen (bei 2-Faktor-Anmeldung nötig).',
+                  labelText: st.smtpUser.isEmpty ? tr('Passwort bzw. App-Passwort') : tr('Neues Passwort (leer = behalten)'),
+                  helperText: tr('Gmail, iCloud, Yahoo: App-Passwort im Konto erstellen (bei 2-Faktor-Anmeldung nötig).'),
                   helperMaxLines: 2,
                 ),
               ),
               Row(children: [
-                Expanded(flex: 3, child: TextField(controller: host, decoration: const InputDecoration(labelText: 'Postausgang (SMTP)'))),
+                Expanded(flex: 3, child: TextField(controller: host, decoration: InputDecoration(labelText: tr('Postausgang (SMTP)')))),
                 const SizedBox(width: 8),
                 Expanded(child: TextField(controller: port, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number)),
               ]),
               const SizedBox(height: 6),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Posteingang lesen'),
-                subtitle: const Text('Nur Absender, Betreff, Datum und Status – für „Was ist liegengeblieben?“ und Fragen zu Mails. '
-                    'Junels ändert nichts im Postfach.'),
+                title: Text(tr('Posteingang lesen')),
+                subtitle: Text((tr('Nur Absender, Betreff, Datum und Status – für „Was ist liegengeblieben?“ und Fragen zu Mails. ') + tr('Junels ändert nichts im Postfach.'))),
                 value: imapOn,
                 onChanged: (v) => setS(() {
                   imapOn = v;
@@ -2234,7 +2239,7 @@ Future<void> showMailAccountDialog(BuildContext context) async {
               ),
               if (imapOn)
                 Row(children: [
-                  Expanded(flex: 3, child: TextField(controller: imapHost, decoration: const InputDecoration(labelText: 'Posteingang (IMAP)'))),
+                  Expanded(flex: 3, child: TextField(controller: imapHost, decoration: InputDecoration(labelText: tr('Posteingang (IMAP)')))),
                   const SizedBox(width: 8),
                   Expanded(child: TextField(controller: imapPort, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number)),
                 ]),
@@ -2245,9 +2250,11 @@ Future<void> showMailAccountDialog(BuildContext context) async {
                 Expanded(
                   child: Text(
                       Vault.secure
-                          ? 'Das Passwort liegt verschlüsselt im Tresor des Geräts (${Platform.isMacOS ? 'Schlüsselbund' : 'Android-Keystore'}). '
-                              'Der Agent kann es nicht lesen.'
-                          : 'Auf diesem System gibt es keinen Tresor – das Passwort gilt nur bis zum Beenden.',
+                          ? (isEnglish
+                              ? 'The password is stored encrypted in the device vault (${Platform.isMacOS ? 'Keychain' : 'Android Keystore'}). The agent cannot read it.'
+                              : 'Das Passwort liegt verschlüsselt im Tresor des Geräts (${Platform.isMacOS ? 'Schlüsselbund' : 'Android-Keystore'}). '
+                                  'Der Agent kann es nicht lesen.')
+                          : tr('Auf diesem System gibt es keinen Tresor – das Passwort gilt nur bis zum Beenden.'),
                       style: Theme.of(ctx).textTheme.bodySmall),
                 ),
               ]),
@@ -2261,9 +2268,9 @@ Future<void> showMailAccountDialog(BuildContext context) async {
                 await app.removeSmtp();
                 if (ctx.mounted) Navigator.pop(ctx);
               },
-              child: const Text('Entfernen'),
+              child: Text(tr('Entfernen')),
             ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Abbrechen'))),
           FilledButton(
             onPressed: () async {
               if (user.text.trim().isEmpty || host.text.trim().isEmpty) return;
@@ -2271,7 +2278,7 @@ Future<void> showMailAccountDialog(BuildContext context) async {
               await app.saveImap(enabled: imapOn, host: imapHost.text, port: int.tryParse(imapPort.text) ?? 993);
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            child: const Text('Speichern'),
+            child: Text(tr('Speichern')),
           ),
         ],
       );

@@ -7,6 +7,7 @@ import '../state/app_controller.dart';
 import '../state/app_scope.dart';
 import 'settings_page.dart' show openSettings;
 import 'theme.dart';
+import '../l10n.dart';
 
 class InternetMenu extends StatelessWidget {
   const InternetMenu({super.key, this.compact = false});
@@ -33,7 +34,7 @@ class InternetMenu extends StatelessWidget {
             InternetMode.allowed => c.amber,
           };
     return PopupMenuButton<InternetMode>(
-      tooltip: offline ? 'Kein Netz – Junels antwortet mit dem Modell auf dem Gerät' : 'Internet: ${mode.label}',
+      tooltip: offline ? tr('Kein Netz – Junels antwortet mit dem Modell auf dem Gerät') : 'Internet: ${mode.label}',
       child: Container(
         height: 38,
         width: compact ? 38 : null,
@@ -47,9 +48,9 @@ class InternetMenu extends StatelessWidget {
           Icon(offline ? Icons.wifi_off : iconFor(mode), size: 18, color: color),
           if (!compact) const SizedBox(width: 6),
           if (!compact)
-            Text(offline ? 'Kein Netz' : switch (mode) {
+            Text(offline ? tr('Kein Netz') : switch (mode) {
             InternetMode.off => 'Offline',
-            InternetMode.ask => 'Fragen',
+            InternetMode.ask => tr('Fragen'),
             InternetMode.allowed => 'Online',
           }, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: color)),
         ]),
@@ -61,12 +62,11 @@ class InternetMenu extends StatelessWidget {
             context: context,
             builder: (ctx) => AlertDialog(
               icon: const Icon(Icons.public),
-              title: const Text('Internet für diesen Chat erlauben?'),
-              content: const Text('Der Agent darf dann ohne weitere Nachfrage Webseiten lesen und im Web suchen. '
-                  'Es werden nur die Suchanfragen bzw. Adressen gesendet – das Sprachmodell läuft weiter lokal.'),
+              title: Text(tr('Internet für diesen Chat erlauben?')),
+              content: Text((tr('Der Agent darf dann ohne weitere Nachfrage Webseiten lesen und im Web suchen. ') + tr('Es werden nur die Suchanfragen bzw. Adressen gesendet – das Sprachmodell läuft weiter lokal.'))),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Erlauben')),
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Abbrechen'))),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Erlauben'))),
               ],
             ),
           );
@@ -84,9 +84,9 @@ class InternetMenu extends StatelessWidget {
               leading: Icon(iconFor(m), color: m == InternetMode.allowed ? c.amber : null),
               title: Text(m.label),
               subtitle: Text(switch (m) {
-                InternetMode.off => 'Keine Websuche, keine Webseiten',
-                InternetMode.ask => 'Vor jedem Zugriff nachfragen',
-                InternetMode.allowed => 'Ohne Nachfrage',
+                InternetMode.off => tr('Keine Websuche, keine Webseiten'),
+                InternetMode.ask => tr('Vor jedem Zugriff nachfragen'),
+                InternetMode.allowed => tr('Ohne Nachfrage'),
               }),
               trailing: m == mode ? const Icon(Icons.check) : null,
             ),
@@ -121,9 +121,9 @@ class AiModeMenu extends StatelessWidget {
     final effective = own ?? (app.settings.routing == 'hybrid' ? 'hybrid-${app.settings.hybridTarget}' : app.settings.routing);
     final short = switch (app.routingOf(conv)) {
       'onprem' => 'On-Prem',
-      'cloud' => 'Cloud',
+      'cloud' => tr('Cloud'),
       'hybrid' => 'Hybrid',
-      _ => 'Gerät',
+      _ => tr('Gerät'),
     };
     final color = switch (app.routingOf(conv)) {
       'cloud' => c.blue,
@@ -160,21 +160,21 @@ class AiModeMenu extends StatelessWidget {
             dense: true,
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.settings_suggest_outlined),
-            title: const Text('Standard'),
+            title: Text(tr('Standard')),
             subtitle: Text('wie in den Einstellungen: ${AppController.routingName(app.settings.routing == 'hybrid' ? 'hybrid-${app.settings.hybridTarget}' : app.settings.routing)}'),
             trailing: own == null ? Icon(Icons.check, color: c.mint, size: 18) : null,
           ),
         ),
         const PopupMenuDivider(),
-        item('local', enabled: app.status == EngineStatus.ready || app.models.isNotEmpty, sub: 'Alles bleibt auf diesem Gerät'),
-        item('onprem', enabled: hasOnPrem, sub: hasOnPrem ? app.onPremProvider!.label : 'Kein Server eingerichtet'),
-        item('cloud', enabled: hasCloud, sub: hasCloud ? app.cloudProvider!.label : 'Kein Cloud-Anbieter eingerichtet'),
-        item('hybrid-onprem', enabled: hasOnPrem, sub: 'Erst am Gerät, klappt es nicht: dein Server'),
-        item('hybrid-cloud', enabled: hasCloud, sub: 'Erst am Gerät, dann Cloud nach Freigabe'),
+        item('local', enabled: app.status == EngineStatus.ready || app.models.isNotEmpty, sub: tr('Alles bleibt auf diesem Gerät')),
+        item('onprem', enabled: hasOnPrem, sub: hasOnPrem ? app.onPremProvider!.label : tr('Kein Server eingerichtet')),
+        item('cloud', enabled: hasCloud, sub: hasCloud ? app.cloudProvider!.label : tr('Kein Cloud-Anbieter eingerichtet')),
+        item('hybrid-onprem', enabled: hasOnPrem, sub: tr('Erst am Gerät, klappt es nicht: dein Server')),
+        item('hybrid-cloud', enabled: hasCloud, sub: tr('Erst am Gerät, dann Cloud nach Freigabe')),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: '__settings',
-          child: ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(Icons.tune), title: Text('Anbieter verwalten …')),
+          child: ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: Icon(Icons.tune), title: Text(tr('Anbieter verwalten …'))),
         ),
       ],
       child: Container(
